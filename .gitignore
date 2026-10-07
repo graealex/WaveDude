@@ -1,0 +1,12 @@
+# Visual Studio / build output
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.cache
+TestResults/
+
+# local scratch
+_tools/smoke.png
+_tools/*.txt

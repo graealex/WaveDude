@@ -1,0 +1,17 @@
+# Normalize text files to LF in the repository; check out with the platform's native line endings.
+* text=auto
+
+*.cs      text
+*.csproj  text
+*.sln     text eol=crlf
+*.resx    text
+*.config  text
+*.settings text
+*.md      text
+*.py      text
+
+*.ico     binary
+*.png     binary
+*.jpg     binary
+*.exe     binary
+*.dll     binary
