@@ -6,13 +6,19 @@ using System.Text;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// Thin P/Invoke layer over OpenCL.dll (the ICD loader installed with the graphics driver) plus a few query
-	/// helpers. Used by <see cref="GpuDeviceInfo"/> and <see cref="GpuWaveSimulator"/>; every call returns an
-	/// OpenCL error code (0 = CL_SUCCESS) that callers route through <see cref="Check"/>. Loading the DLL is
-	/// deferred to the first call, so <see cref="DllNotFoundException"/> and friends surface there.
+	/// The part of the OpenCL 1.2 C interface that the GPU simulation needs, called directly from OpenCL.dll (the
+	/// ICD loader) plus a few query helpers. OpenCL.dll is installed with the driver of the graphics card (NVIDIA,
+	/// Intel and AMD all install it), so no extra package is needed. Names and parameters follow the C header
+	/// (cl.h); <c>size_t</c> is an <see cref="IntPtr"/>, <c>cl_bitfield</c> a <c>ulong</c>, <c>cl_uint</c> a
+	/// <c>uint</c> and <c>cl_bool</c> a <c>uint</c>. Used by <see cref="GpuDeviceInfo"/> and
+	/// <see cref="GpuWaveSimulator"/>; every call returns an OpenCL error code (0 = CL_SUCCESS) that callers route
+	/// through <see cref="Check"/>. Loading the DLL is deferred to the first call, so
+	/// <see cref="DllNotFoundException"/> and friends surface there.
 	/// </summary>
 	internal sealed class OpenClApi
 	{
+		// ---- platforms and devices
+
 		/// <summary>clGetPlatformIDs: with <paramref name="platforms"/> null only counts the platforms into <paramref name="numPlatforms"/>.</summary>
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
 		internal static extern int clGetPlatformIDs(uint numEntries, IntPtr[] platforms, ref uint numPlatforms);
@@ -24,6 +30,8 @@ namespace _2D_wave_sim_V01
 		/// <summary>clGetDeviceInfo: raw bytes of a device property; with <paramref name="paramValue"/> null only reports the size in <paramref name="sizeRet"/>. Wrapped by <see cref="DeviceInfoBytes"/>.</summary>
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
 		internal static extern int clGetDeviceInfo(IntPtr device, uint paramName, IntPtr paramSize, byte[] paramValue, ref IntPtr sizeRet);
+
+		// ---- context, queue, program, kernels
 
 		/// <summary>clCreateContext: creates a context for the given devices; <paramref name="properties"/> is a zero-terminated key/value list (see <see cref="ContextPlatformProperty"/>). Release with <see cref="clReleaseContext"/>.</summary>
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
@@ -61,6 +69,8 @@ namespace _2D_wave_sim_V01
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, EntryPoint = "clSetKernelArg", ExactSpelling = true, SetLastError = true)]
 		internal static extern int clSetKernelArgFloat(IntPtr kernel, uint argIndex, IntPtr argSize, ref float argValue);
 
+		// ---- memory and execution
+
 		/// <summary>clCreateBuffer: a device buffer of <paramref name="size"/> bytes with the given CL_MEM flags (<see cref="MemReadWrite"/>). Release with <see cref="clReleaseMemObject"/>.</summary>
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
 		internal static extern IntPtr clCreateBuffer(IntPtr context, ulong flags, IntPtr size, IntPtr hostPtr, ref int errcode);
@@ -85,6 +95,8 @@ namespace _2D_wave_sim_V01
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
 		internal static extern int clFinish(IntPtr queue);
 
+		// ---- release
+
 		/// <summary>clReleaseMemObject: drops a reference to a buffer created by <see cref="clCreateBuffer"/>.</summary>
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
 		internal static extern int clReleaseMemObject(IntPtr memObj);
@@ -104,6 +116,8 @@ namespace _2D_wave_sim_V01
 		/// <summary>clReleaseContext: drops a reference to a context created by <see cref="clCreateContext"/>.</summary>
 		[DllImport("OpenCL.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
 		internal static extern int clReleaseContext(IntPtr context);
+
+		// ---- helpers
 
 		/// <summary>Throws if an OpenCL call did not return CL_SUCCESS.</summary>
 		/// <param name="code">Return value or errcode output of the OpenCL call.</param>
@@ -282,6 +296,8 @@ namespace _2D_wave_sim_V01
 			}
 		}
 
+		// ---- constants, spelled as in cl.h
+
 		/// <summary>CL_DEVICE_TYPE_GPU (1 &lt;&lt; 2).</summary>
 		internal const ulong DeviceTypeGpu = 4UL;
 
@@ -289,33 +305,33 @@ namespace _2D_wave_sim_V01
 		internal const ulong MemReadWrite = 1UL;
 
 		/// <summary>CL_CONTEXT_PLATFORM (0x1084): property key for the platform in <see cref="clCreateContext"/>.</summary>
-		internal const int ContextPlatformProperty = 4228;
+		internal const int ContextPlatformProperty = 0x1084;
 
 		/// <summary>CL_PLATFORM_NAME (0x0902).</summary>
-		internal const uint PlatformNameInfo = 2306U;
+		internal const uint PlatformNameInfo = 0x902U;
 
 		/// <summary>CL_DEVICE_MAX_COMPUTE_UNITS (0x1002), cl_uint.</summary>
-		internal const uint DeviceMaxComputeUnits = 4098U;
+		internal const uint DeviceMaxComputeUnits = 0x1002U;
 
 		/// <summary>CL_DEVICE_MAX_CLOCK_FREQUENCY (0x100C), cl_uint in MHz.</summary>
-		internal const uint DeviceMaxClockFrequency = 4108U;
+		internal const uint DeviceMaxClockFrequency = 0x100CU;
 
 		/// <summary>CL_DEVICE_MAX_MEM_ALLOC_SIZE (0x1010), cl_ulong bytes.</summary>
-		internal const uint DeviceMaxMemAllocSize = 4112U;
+		internal const uint DeviceMaxMemAllocSize = 0x1010U;
 
 		/// <summary>CL_DEVICE_GLOBAL_MEM_SIZE (0x101F), cl_ulong bytes.</summary>
-		internal const uint DeviceGlobalMemSize = 4127U;
+		internal const uint DeviceGlobalMemSize = 0x101FU;
 
 		/// <summary>CL_DEVICE_NAME (0x102B), string.</summary>
-		internal const uint DeviceName = 4139U;
+		internal const uint DeviceName = 0x102BU;
 
 		/// <summary>CL_DEVICE_VENDOR (0x102C), string.</summary>
-		internal const uint DeviceVendor = 4140U;
+		internal const uint DeviceVendor = 0x102CU;
 
 		/// <summary>CL_DEVICE_HOST_UNIFIED_MEMORY (0x1035), cl_bool: non-zero for devices sharing host memory (integrated GPUs).</summary>
-		internal const uint DeviceHostUnifiedMemory = 4149U;
+		internal const uint DeviceHostUnifiedMemory = 0x1035U;
 
 		/// <summary>CL_PROGRAM_BUILD_LOG (0x1183), string.</summary>
-		internal const uint ProgramBuildLog = 4483U;
+		internal const uint ProgramBuildLog = 0x1183U;
 	}
 }

@@ -12,8 +12,8 @@ namespace _2D_wave_sim_V01
 	{
 		public GpuDeviceInfo()
 		{
-			this.Name = "";
-			this.Vendor = "";
+			Name = "";
+			Vendor = "";
 		}
 
 		/// <summary>
@@ -103,10 +103,10 @@ namespace _2D_wave_sim_V01
 		/// <summary>CL_DEVICE_VENDOR, or "" when the query fails.</summary>
 		public string Vendor;
 
-		/// <summary>True when the device does not share memory with the host (CL_DEVICE_HOST_UNIFIED_MEMORY is 0), i.e. a discrete card.</summary>
+		/// <summary>True for a card with its own memory (the NVIDIA GeForce; CL_DEVICE_HOST_UNIFIED_MEMORY is 0), false for the graphics of the processor (Intel UHD).</summary>
 		public bool Discrete;
 
-		/// <summary>Rough throughput rank: compute units × max clock in MHz (clock at least 1).</summary>
+		/// <summary>Compute units times clock (MHz, at least 1): a rough measure of the speed.</summary>
 		public double Score;
 
 		/// <summary>CL_DEVICE_GLOBAL_MEM_SIZE in bytes.</summary>

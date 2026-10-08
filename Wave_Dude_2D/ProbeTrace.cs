@@ -11,37 +11,25 @@ namespace _2D_wave_sim_V01
 	{
 		public ProbeTrace()
 		{
-			this.Series = new ProbeSeries();
+			Series = new ProbeSeries();
 		}
 
 		/// <summary>Number of simulation steps completed when this trace was last updated; used to gate "start after step" line probes in the painter.</summary>
 		public int StepsSampled { get; set; }
 
 		/// <summary>Latest line-probe profile (one value per pixel along the line, A to B), or null until the first profile arrives and always for point probes.</summary>
-		public float[] Profile
-		{
-			get
-			{
-				return this._profile;
-			}
-		}
+		public float[] Profile => _profile;
 
 		/// <summary>Length of the probe line in canvas pixels (distance A to B); 0 for point probes. Used as the x-axis span of the profile graph.</summary>
-		public double ProfileLength
-		{
-			get
-			{
-				return this._profileLength;
-			}
-		}
+		public double ProfileLength => _profileLength;
 
 		/// <summary>Replaces the current profile. The array is kept by reference, not copied, so callers must not modify it afterwards.</summary>
 		/// <param name="values">Sampled values along the line, A to B.</param>
 		/// <param name="length">Line length in canvas pixels.</param>
 		public void SetProfile(float[] values, double length)
 		{
-			this._profile = values;
-			this._profileLength = length;
+			_profile = values;
+			_profileLength = length;
 		}
 
 		/// <summary>Latest profile array; null until <see cref="SetProfile"/> is first called.</summary>

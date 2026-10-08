@@ -8,8 +8,8 @@ namespace _2D_wave_sim_V01
 	public enum ProbeScaleMode
 	{
 		/// <summary>Shows a sliding window of the last <see cref="ProbeSettings.RunningWindow"/> steps.</summary>
-		Running,
+		Running = 0,
 		/// <summary>Shows the whole run: from the start step to the total step count (or to the samples so far when <see cref="ProbeSettings.AutoScaleX"/> is set).</summary>
-		Full
+		Full = 1
 	}
 }

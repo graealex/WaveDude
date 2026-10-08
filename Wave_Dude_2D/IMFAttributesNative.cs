@@ -5,9 +5,11 @@ namespace _2D_wave_sim_V01
 {
 	/// <summary>
 	/// Hand-written COM import of Media Foundation's <c>IMFAttributes</c> (IID 2CD2D921-...), used by
-	/// <see cref="MfVideoWriter"/> to set media-type attributes. The method order mirrors the native vtable and
-	/// must not change; only the three <c>Set*</c> members that are actually called carry real signatures, the rest
-	/// are parameterless placeholders that keep the slots aligned (never call them). All methods return an HRESULT.
+	/// <see cref="MfVideoWriter"/> to set media-type attributes. Only the order of the methods matters (it is the
+	/// order of the entries in the COM method table) and it must not change; only the three <c>Set*</c> members that
+	/// are actually called carry real signatures, the rest are parameterless placeholders that keep the slots aligned
+	/// (never call them). All methods return an HRESULT. <see cref="IMFSampleNative"/> repeats all 30 of these slots
+	/// instead of deriving from this interface, because .NET does not inherit base-interface methods in COM interfaces.
 	/// </summary>
 	[Guid("2CD2D921-C447-44A7-A13C-4ADABFC247E3")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

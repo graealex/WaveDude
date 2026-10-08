@@ -8,8 +8,8 @@ namespace _2D_wave_sim_V01
 	public enum ProbePlaceOn
 	{
 		/// <summary>The wave field (amplitude) output. Only <see cref="ProbeMeasurement.Amplitude"/> is valid here.</summary>
-		Field,
+		Field = 0,
 		/// <summary>The intensity output. Allows <see cref="ProbeMeasurement.Intensity"/> and <see cref="ProbeMeasurement.IntegratedIntensity"/>.</summary>
-		Intensity
+		Intensity = 1
 	}
 }

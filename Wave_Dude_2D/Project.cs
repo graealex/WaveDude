@@ -21,91 +21,42 @@ namespace _2D_wave_sim_V01
 		/// <param name="config">The configuration loaded from, or to be written to, that folder.</param>
 		internal Project(string folderPath, ProjectConfig config)
 		{
-			this._folderPath = folderPath;
-			this._config = config;
-			this._config.ProjectName = this.Name;
+			_folderPath = folderPath;
+			_config = config;
+			// the folder name is the one and only project name
+			_config.ProjectName = Name;
 		}
 
 		/// <summary>Project name, i.e. the name of the project folder.</summary>
-		public string Name
-		{
-			get
-			{
-				return Path.GetFileName(this._folderPath);
-			}
-		}
+		public string Name => Path.GetFileName(_folderPath);
 
 		/// <summary>Full path of the project folder.</summary>
-		public string FolderPath
-		{
-			get
-			{
-				return this._folderPath;
-			}
-		}
+		public string FolderPath => _folderPath;
 
 		/// <summary>Parent of the project folder (the project root), or an empty string when the folder has no parent.</summary>
-		public string RootFolder
-		{
-			get
-			{
-				return Path.GetDirectoryName(this._folderPath) ?? "";
-			}
-		}
+		public string RootFolder => Path.GetDirectoryName(_folderPath) ?? "";
 
 		/// <summary>The configuration loaded from (or to be written to) <see cref="ConfigFilePath"/>; mutable, shared with the editor.</summary>
-		public ProjectConfig Config
-		{
-			get
-			{
-				return this._config;
-			}
-		}
+		public ProjectConfig Config => _config;
 
-		/// <summary>Full path of the <c>configuration.json</c> file inside the project folder.</summary>
-		public string ConfigFilePath
-		{
-			get
-			{
-				return Path.Combine(this._folderPath, "configuration.json");
-			}
-		}
+		/// <summary>Full path of the configuration file (<see cref="ProjectConfig.FileName"/>) inside the project folder.</summary>
+		public string ConfigFilePath => Path.Combine(_folderPath, ProjectConfig.FileName);
 
-		/// <summary>The <c>assets</c> sub-folder (user files kept with the project).</summary>
-		public string AssetsFolder
-		{
-			get
-			{
-				return Path.Combine(this._folderPath, "assets");
-			}
-		}
+		/// <summary>
+		/// The <see cref="ProjectStore.AssetsFolderName"/> sub-folder: where the user can keep any third-party
+		/// files used by the project (e.g. the original Photoshop file of a scene image). Not read or written by
+		/// the simulator itself.
+		/// </summary>
+		public string AssetsFolder => Path.Combine(_folderPath, ProjectStore.AssetsFolderName);
 
-		/// <summary>The <c>output_frames</c> sub-folder where exported PNG frames are written.</summary>
-		public string OutputFramesFolder
-		{
-			get
-			{
-				return Path.Combine(this._folderPath, "output_frames");
-			}
-		}
+		/// <summary>The <see cref="ProjectStore.OutputFramesFolderName"/> sub-folder where exported PNG frames are written.</summary>
+		public string OutputFramesFolder => Path.Combine(_folderPath, ProjectStore.OutputFramesFolderName);
 
-		/// <summary>The <c>output_video</c> sub-folder where exported videos are written.</summary>
-		public string OutputVideoFolder
-		{
-			get
-			{
-				return Path.Combine(this._folderPath, "output_video");
-			}
-		}
+		/// <summary>The <see cref="ProjectStore.OutputVideoFolderName"/> sub-folder where exported videos are written.</summary>
+		public string OutputVideoFolder => Path.Combine(_folderPath, ProjectStore.OutputVideoFolderName);
 
-		/// <summary>The <c>scene_images</c> sub-folder into which scene images chosen from elsewhere are copied.</summary>
-		public string SceneImageFolder
-		{
-			get
-			{
-				return Path.Combine(this._folderPath, "scene_images");
-			}
-		}
+		/// <summary>The <see cref="ProjectStore.SceneImageFolderName"/> sub-folder into which scene images chosen from elsewhere are copied.</summary>
+		public string SceneImageFolder => Path.Combine(_folderPath, ProjectStore.SceneImageFolderName);
 
 		/// <summary>
 		/// Re-stamps the project name and writes <see cref="Config"/> to <see cref="ConfigFilePath"/>
@@ -113,8 +64,8 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void Save()
 		{
-			this._config.ProjectName = this.Name;
-			this._config.Save(this.ConfigFilePath);
+			_config.ProjectName = Name;
+			_config.Save(ConfigFilePath);
 		}
 
 		/// <summary>Full path of the project folder; its last segment is the project name.</summary>

@@ -17,15 +17,15 @@ namespace _2D_wave_sim_V01
 		/// <summary>Creates one empty <see cref="ProbeTrace"/> and one pending sample list per probe of <paramref name="sampler"/>.</summary>
 		public ProbeCollector(ProbeSampler sampler)
 		{
-			this._pending = new List<List<float>>();
-			this._sampler = sampler;
-			this.Traces = new ProbeTrace[sampler.Count];
-			this._totals = new double[sampler.Count];
-			this._fresh = new bool[sampler.Count];
+			_pending = new List<List<float>>();
+			_sampler = sampler;
+			Traces = new ProbeTrace[sampler.Count];
+			_totals = new double[sampler.Count];
+			_fresh = new bool[sampler.Count];
 			for (int i = 0; i < sampler.Count; i++)
 			{
-				this.Traces[i] = new ProbeTrace();
-				this._pending.Add(new List<float>());
+				Traces[i] = new ProbeTrace();
+				_pending.Add(new List<float>());
 			}
 		}
 
@@ -40,15 +40,17 @@ namespace _2D_wave_sim_V01
 		/// <param name="stepsDone">Steps completed so far; recorded as <see cref="ProbeTrace.StepsSampled"/>.</param>
 		public void Collect(IWaveEngine engine, int stepsDone)
 		{
-			if (!this._sampler.HasSeries)
+			if (!_sampler.HasSeries)
 			{
 				return;
 			}
 			float[][] samples = engine.TakeProbeSamples();
-			int lastStepsDone = this._lastStepsDone;
-			for (int i = 0; i < this._sampler.Count; i++)
+			// the number of steps already processed before this batch, so the absolute step of values[j] can be worked
+			// out below (one value per step, in order) - needed to purge a cumulative total from before "start after step"
+			int batchStartStep = _lastStepsDone;
+			for (int i = 0; i < _sampler.Count; i++)
 			{
-				if (this._sampler.IsProfile[i] || i >= samples.Length)
+				if (_sampler.IsProfile[i] || i >= samples.Length)
 				{
 					continue;
 				}
@@ -57,30 +59,32 @@ namespace _2D_wave_sim_V01
 				{
 					continue;
 				}
-				if (this._sampler.Cumulative[i])
+				if (_sampler.Cumulative[i])
 				{
-					bool useStartAfterStep = this._sampler.UseStartAfterStep[i];
-					int startAfterStep = this._sampler.StartAfterStep[i];
+					bool useStartAfterStep = _sampler.UseStartAfterStep[i];
+					int startAfterStep = _sampler.StartAfterStep[i];
 					for (int j = 0; j < values.Length; j++)
 					{
-						// sample j belongs to step lastStepsDone + j + 1 (one sample per step)
-						if (useStartAfterStep && lastStepsDone + j + 1 < startAfterStep)
+						// sample j belongs to step batchStartStep + j + 1 (one sample per step)
+						if (useStartAfterStep && batchStartStep + j + 1 < startAfterStep)
 						{
-							this._totals[i] = 0.0;
+							// before recording starts: keep the running total at zero, purging any intensity that
+							// arrived earlier, so the total does not jump the moment recording starts
+							_totals[i] = 0.0;
 							values[j] = 0f;
 						}
 						else
 						{
-							this._totals[i] += values[j];
-							values[j] = (float)this._totals[i];
+							_totals[i] += values[j];
+							values[j] = (float)_totals[i];
 						}
 					}
 				}
-				this.Traces[i].Series.Add(values);
-				this.Traces[i].StepsSampled = stepsDone;
-				this._pending[i].AddRange(values);
+				Traces[i].Series.Add(values);
+				Traces[i].StepsSampled = stepsDone;
+				_pending[i].AddRange(values);
 			}
-			this._lastStepsDone = stepsDone;
+			_lastStepsDone = stepsDone;
 		}
 
 		/// <summary>
@@ -93,22 +97,22 @@ namespace _2D_wave_sim_V01
 		/// <param name="stepsDone">Steps completed so far; recorded as <see cref="ProbeTrace.StepsSampled"/>.</param>
 		public void CollectProfiles(IWaveEngine engine, int stepsDone)
 		{
-			if (!this._sampler.HasProfiles)
+			if (!_sampler.HasProfiles)
 			{
 				return;
 			}
 			float[][] profiles = engine.ReadProbeProfiles();
-			for (int i = 0; i < this._sampler.Count; i++)
+			for (int i = 0; i < _sampler.Count; i++)
 			{
-				if (!this._sampler.IsProfile[i] || i >= profiles.Length || profiles[i] == null)
+				if (!_sampler.IsProfile[i] || i >= profiles.Length || profiles[i] == null)
 				{
 					continue;
 				}
-				this.Traces[i].SetProfile(profiles[i], this._sampler.Lengths[i]);
-				this.Traces[i].StepsSampled = stepsDone;
-				this._fresh[i] = true;
+				Traces[i].SetProfile(profiles[i], _sampler.Lengths[i]);
+				Traces[i].StepsSampled = stepsDone;
+				_fresh[i] = true;
 			}
-			this._lastStepsDone = stepsDone;
+			_lastStepsDone = stepsDone;
 		}
 
 		/// <summary>
@@ -119,20 +123,20 @@ namespace _2D_wave_sim_V01
 		/// <returns>A batch covering everything since the previous call; never null.</returns>
 		public ProbeUpdate TakeForUi()
 		{
-			int count = this._sampler.Count;
-			float[][] series = new float[count][];
+			int count = _sampler.Count;
+			float[][] samples = new float[count][];
 			float[][] profiles = new float[count][];
 			for (int i = 0; i < count; i++)
 			{
-				series[i] = this._pending[i].ToArray();
-				this._pending[i].Clear();
-				if (this._fresh[i])
+				samples[i] = _pending[i].ToArray();
+				_pending[i].Clear();
+				if (_fresh[i])
 				{
-					profiles[i] = this.Traces[i].Profile;
-					this._fresh[i] = false;
+					profiles[i] = Traces[i].Profile;
+					_fresh[i] = false;
 				}
 			}
-			return new ProbeUpdate(series, profiles, this._sampler.Lengths, this._lastStepsDone);
+			return new ProbeUpdate(samples, profiles, _sampler.Lengths, _lastStepsDone);
 		}
 
 		/// <summary>Worker-side trace per probe (index parallel to the sampler). Read by <see cref="ProbeOverlay.Burn"/> when burning graphs into exported frames.</summary>

@@ -14,12 +14,12 @@ namespace _2D_wave_sim_V01
 	{
 		public SimulationResult()
 		{
-			this.Message = "";
-			this.Files = new List<string>();
-			this.FieldFile = "";
-			this.IntensityFile = "";
-			this.Engine = "";
-			this.EngineNote = "";
+			Message = "";
+			Files = new List<string>();
+			FieldFile = "";
+			IntensityFile = "";
+			Engine = "";
+			EngineNote = "";
 		}
 
 		/// <summary>How the run ended.</summary>
@@ -46,16 +46,27 @@ namespace _2D_wave_sim_V01
 		/// <summary>Full path of the intensity video, or empty when the intensity was not exported.</summary>
 		public string IntensityFile;
 
-		/// <summary><see cref="IWaveEngine.Description"/> of the engine that ran; empty when engine creation itself failed.</summary>
+		/// <summary>
+		/// Where the simulation ran, the <see cref="IWaveEngine.Description"/> of the engine ("CPU (8 threads)",
+		/// "GPU: NVIDIA GeForce MX130 (OpenCL)"); empty when engine creation itself failed.
+		/// </summary>
 		public string Engine;
 
-		/// <summary>Note from <see cref="WaveEngineFactory.Create"/> about why the GPU was not used; empty when there is none.</summary>
+		/// <summary>Note from <see cref="WaveEngineFactory.Create"/>: why the GPU was not used when it was asked for; empty when there is none.</summary>
 		public string EngineNote;
 
-		/// <summary>Full-size field frame of the final state (with probe overlays burned in); null when no engine was created or rendering failed.</summary>
+		/// <summary>
+		/// A full simulation-resolution snapshot of the field (with probe overlays burned in), rendered right before the engine
+		/// was closed down, so a still export (the Preview tab's "Export current Field/Intensity frame" buttons) has something to
+		/// save even once the run has fully stopped and the live engine no longer exists. Null when the run failed before an
+		/// engine was created or rendering failed. The receiver owns the bitmap.
+		/// </summary>
 		public Bitmap LastFieldFrame;
 
-		/// <summary>Full-size intensity frame of the final state; null when the intensity was not tracked or rendering failed.</summary>
+		/// <summary>
+		/// The same snapshot of the intensity; null when the intensity was not tracked for this run (or, as for
+		/// <see cref="LastFieldFrame"/>, no engine was created or rendering failed). The receiver owns the bitmap.
+		/// </summary>
 		public Bitmap LastIntensityFrame;
 	}
 }

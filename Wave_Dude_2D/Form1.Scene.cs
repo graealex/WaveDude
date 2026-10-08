@@ -21,21 +21,28 @@ namespace _2D_wave_sim_V01
 	{
 		/// <summary>
 		/// Applies the Scene tab control settings that are not in the designer (preview zoom mode,
-		/// label ellipsis, text lengths, image-source scale range). Called once from the constructor.
+		/// label ellipsis, text lengths, image-source scale range). Called once from <c>Form1_Load</c>.
 		/// </summary>
 		private void InitializeSceneControls()
 		{
-			this.picImagePreview.BorderStyle = BorderStyle.FixedSingle;
-			this.picImagePreview.BackColor = SystemColors.ControlLight;
-			this.picImagePreview.SizeMode = PictureBoxSizeMode.Zoom;
-			this.lblImageNameAndSize.AutoSize = false;
-			this.lblImageNameAndSize.AutoEllipsis = true;
-			this.lblImageNameAndSize.Size = new Size(470, 20);
-			this.txtXSize.MaxLength = 5;
-			this.txtYsize.MaxLength = 5;
-			this.txtDampingEdgeSize.MaxLength = 4;
-			this.numScaleImageSource.Minimum = 0m;
-			this.numScaleImageSource.Maximum = 1000m;
+			picImagePreview.BorderStyle = BorderStyle.FixedSingle;
+			picImagePreview.BackColor = SystemColors.ControlLight;
+			picImagePreview.SizeMode = PictureBoxSizeMode.Zoom;
+			lblImageNameAndSize.AutoSize = false;
+			lblImageNameAndSize.AutoEllipsis = true;
+			lblImageNameAndSize.Size = new Size(470, 20);
+			txtXSize.MaxLength = 5;
+			txtYsize.MaxLength = 5;
+			txtDampingEdgeSize.MaxLength = 4;
+			// amplitude factor of the sources in the scene image
+			numScaleImageSource.Minimum = 0m;
+			numScaleImageSource.Maximum = (decimal)SceneSettings.MaxImageSourceScale;
+
+			// No ShowSceneInControls() here: grpSceneProperties is disabled until a real project exists
+			// (UpdateProjectAccess). Populating it now from a blank _scene would overwrite whatever defaults the
+			// Designer gave these controls before StartNewProject/SetCurrentProject ever get a chance to read them
+			// back out (see the matching comment in InitializeSimulationControls, where this actually matters -
+			// numSimulationSteps' Designer default of 3000).
 		}
 
 		/// <summary>
@@ -45,27 +52,28 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void LoadSceneFromProject()
 		{
-			if (this._project == null)
+			if (_project == null)
 			{
 				return;
 			}
-			this._scene = SceneSettings.FromConfig(this._project.Config);
-			this.ReplaceSceneImage(null);
-			if (this._scene.ImageFile.Length > 0)
+			_scene = SceneSettings.FromConfig(_project.Config);
+			ReplaceSceneImage(null);
+			if (_scene.ImageFile.Length > 0)
 			{
-				string imagePath = SceneSettings.ToFullPath(this._project.FolderPath, this._scene.ImageFile);
+				string imagePath = SceneSettings.ToFullPath(_project.FolderPath, _scene.ImageFile);
 				if (File.Exists(imagePath))
 				{
 					try
 					{
-						this.ReplaceSceneImage(Form1.LoadImageCopy(imagePath));
+						ReplaceSceneImage(Form1.LoadImageCopy(imagePath));
 					}
 					catch (Exception)
 					{
+						// the image label tells that the image could not be loaded (UpdateImageLabel)
 					}
 				}
 			}
-			this.ShowSceneInControls();
+			ShowSceneInControls();
 		}
 
 		/// <summary>
@@ -75,47 +83,47 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ShowSceneInControls()
 		{
-			this._loadingScene = true;
+			_loadingScene = true;
 			try
 			{
-				this.radUseSceneImage.Checked = this._scene.UseImage;
-				this.radUserDefinedScene.Checked = !this._scene.UseImage;
-				this.txtXSize.Text = this._scene.UserWidth.ToString(CultureInfo.InvariantCulture);
-				this.txtYsize.Text = this._scene.UserHeight.ToString(CultureInfo.InvariantCulture);
-				this.chkDampingEdge.Checked = this._scene.DampingEdgeEnabled;
-				this.txtDampingEdgeSize.Text = this._scene.DampingEdgeSize.ToString(CultureInfo.InvariantCulture);
-				this.chkUseImageSources.Checked = this._scene.UseSources;
-				this.numScaleImageSource.Value = Form1.ClampToRange(this.numScaleImageSource, this._scene.ImageSourceScale);
-				this.chkUseObjectSources.Checked = this._scene.UseObjectSources;
-				this.numRefractiveIndex.Value = Form1.ClampToRange(this.numRefractiveIndex, this._scene.BackgroundRefractiveIndex);
-				this.txtXSize.ForeColor = SystemColors.WindowText;
-				this.txtYsize.ForeColor = SystemColors.WindowText;
+				radUseSceneImage.Checked = _scene.UseImage;
+				radUserDefinedScene.Checked = !_scene.UseImage;
+				txtXSize.Text = _scene.UserWidth.ToString(CultureInfo.InvariantCulture);
+				txtYsize.Text = _scene.UserHeight.ToString(CultureInfo.InvariantCulture);
+				chkDampingEdge.Checked = _scene.DampingEdgeEnabled;
+				txtDampingEdgeSize.Text = _scene.DampingEdgeSize.ToString(CultureInfo.InvariantCulture);
+				chkUseImageSources.Checked = _scene.UseSources;
+				numScaleImageSource.Value = Form1.ClampToRange(numScaleImageSource, _scene.ImageSourceScale);
+				chkUseObjectSources.Checked = _scene.UseObjectSources;
+				numRefractiveIndex.Value = Form1.ClampToRange(numRefractiveIndex, _scene.BackgroundRefractiveIndex);
+				txtXSize.ForeColor = SystemColors.WindowText;
+				txtYsize.ForeColor = SystemColors.WindowText;
 			}
 			finally
 			{
-				this._loadingScene = false;
+				_loadingScene = false;
 			}
-			this.UpdateSceneControlState();
-			this.UpdateScenePreview();
-			this.ShowDampingValidity();
+			UpdateSceneControlState();
+			UpdateScenePreview();
+			ShowDampingValidity();
 		}
 
 		/// <summary>Enables or disables the Scene tab controls according to the scene mode (image vs. user-defined size), the damping-edge checkbox and the image-sources checkbox.</summary>
 		private void UpdateSceneControlState()
 		{
-			bool useImage = this._scene.UseImage;
-			this.btnLoadSceneImage.Enabled = useImage;
-			this.lblImageNameAndSize.Enabled = useImage;
-			this.txtXSize.Enabled = !useImage;
-			this.txtYsize.Enabled = !useImage;
-			this.lblX.Enabled = !useImage;
-			this.lblPix.Enabled = !useImage;
-			this.numRefractiveIndex.Enabled = !useImage;
-			this.Label20.Enabled = !useImage;
-			this.txtDampingEdgeSize.Enabled = this._scene.DampingEdgeEnabled;
-			this.Label1.Enabled = this._scene.DampingEdgeEnabled;
-			this.numScaleImageSource.Enabled = this._scene.UseSources;
-			this.lblScaleImgSourceIntensity.Enabled = this._scene.UseSources;
+			bool useImage = _scene.UseImage;
+			btnLoadSceneImage.Enabled = useImage;
+			lblImageNameAndSize.Enabled = useImage;
+			txtXSize.Enabled = !useImage;
+			txtYsize.Enabled = !useImage;
+			lblX.Enabled = !useImage;
+			lblPix.Enabled = !useImage;
+			numRefractiveIndex.Enabled = !useImage; // a scene image has its own refractive index per pixel
+			Label20.Enabled = !useImage;
+			txtDampingEdgeSize.Enabled = _scene.DampingEdgeEnabled;
+			Label1.Enabled = _scene.DampingEdgeEnabled;
+			numScaleImageSource.Enabled = _scene.UseSources;
+			lblScaleImgSourceIntensity.Enabled = _scene.UseSources;
 		}
 
 		/// <summary>
@@ -125,37 +133,38 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void UpdateScenePreview()
 		{
-			this.UpdateImageLabel();
-			if (this._scene.UseImage)
+			UpdateImageLabel();
+			if (_scene.UseImage)
 			{
-				this.picImagePreview.SizeMode = PictureBoxSizeMode.Zoom;
-				this.picImagePreview.Image = this._sceneImage;
-				this.DisposeEmptyPreview();
+				picImagePreview.SizeMode = PictureBoxSizeMode.Zoom;
+				picImagePreview.Image = _sceneImage;
+				DisposeEmptyPreview();
 			}
 			else
 			{
-				this.picImagePreview.SizeMode = PictureBoxSizeMode.CenterImage;
-				Bitmap preview = this.MakeEmptyCanvasPreview(this._scene.UserWidth, this._scene.UserHeight);
-				this.picImagePreview.Image = preview;
-				this.DisposeEmptyPreview();
-				this._emptyPreview = preview;
+				// user defined canvas: an empty picture with the proportions of the canvas
+				picImagePreview.SizeMode = PictureBoxSizeMode.CenterImage;
+				Bitmap preview = MakeEmptyCanvasPreview(_scene.UserWidth, _scene.UserHeight);
+				picImagePreview.Image = preview;
+				DisposeEmptyPreview();
+				_emptyPreview = preview;
 			}
 		}
 
 		/// <summary>Sets the image name/size label: no image, image configured but not loadable, or file name with pixel size.</summary>
 		private void UpdateImageLabel()
 		{
-			if (this._scene.ImageFile.Length == 0)
+			if (_scene.ImageFile.Length == 0)
 			{
-				this.lblImageNameAndSize.Text = "(no image loaded)";
+				lblImageNameAndSize.Text = "(no image loaded)";
 			}
-			else if (this._sceneImage == null)
+			else if (_sceneImage == null)
 			{
-				this.lblImageNameAndSize.Text = "(image not found or not readable: " + Path.GetFileName(this._scene.ImageFile) + ")";
+				lblImageNameAndSize.Text = "(image not found or not readable: " + Path.GetFileName(_scene.ImageFile) + ")";
 			}
 			else
 			{
-				this.lblImageNameAndSize.Text = Path.GetFileName(this._scene.ImageFile) + "  (" + this._sceneImage.Width.ToString(CultureInfo.InvariantCulture) + " x " + this._sceneImage.Height.ToString(CultureInfo.InvariantCulture) + " px)";
+				lblImageNameAndSize.Text = Path.GetFileName(_scene.ImageFile) + "  (" + _sceneImage.Width.ToString(CultureInfo.InvariantCulture) + " x " + _sceneImage.Height.ToString(CultureInfo.InvariantCulture) + " px)";
 			}
 		}
 
@@ -169,8 +178,8 @@ namespace _2D_wave_sim_V01
 		/// <returns>A new bitmap; the caller stores it in <c>_emptyPreview</c> and disposes it.</returns>
 		private Bitmap MakeEmptyCanvasPreview(int canvasWidth, int canvasHeight)
 		{
-			int maxWidth = Math.Max(16, this.picImagePreview.ClientSize.Width - 8);
-			int maxHeight = Math.Max(16, this.picImagePreview.ClientSize.Height - 8);
+			int maxWidth = Math.Max(16, picImagePreview.ClientSize.Width - 8);
+			int maxHeight = Math.Max(16, picImagePreview.ClientSize.Height - 8);
 			double scale = Math.Min((double)maxWidth / canvasWidth, (double)maxHeight / canvasHeight);
 			int previewWidth = Math.Max(2, (int)Math.Round(canvasWidth * scale));
 			int previewHeight = Math.Max(2, (int)Math.Round(canvasHeight * scale));
@@ -196,10 +205,10 @@ namespace _2D_wave_sim_V01
 		/// <summary>Disposes the placeholder preview bitmap, if any. Callers assign a new preview image first.</summary>
 		private void DisposeEmptyPreview()
 		{
-			if (this._emptyPreview != null)
+			if (_emptyPreview != null)
 			{
-				this._emptyPreview.Dispose();
-				this._emptyPreview = null;
+				_emptyPreview.Dispose();
+				_emptyPreview = null;
 			}
 		}
 
@@ -211,31 +220,37 @@ namespace _2D_wave_sim_V01
 		/// <param name="newImage">The new scene image, or null to unload.</param>
 		private void ReplaceSceneImage(Bitmap newImage)
 		{
-			Bitmap oldImage = this._sceneImage;
-			this._sceneImage = newImage;
+			Bitmap oldImage = _sceneImage;
+			_sceneImage = newImage;
 			if (oldImage != null)
 			{
-				if (object.ReferenceEquals(this.picImagePreview.Image, oldImage))
+				if (object.ReferenceEquals(picImagePreview.Image, oldImage))
 				{
-					this.picImagePreview.Image = null;
+					picImagePreview.Image = null;
 				}
 				oldImage.Dispose();
 			}
-			this.UpdateGlowEdgesImage();
+			UpdateGlowEdgesImage();
 		}
 
-		/// <summary>Disposes the Sobel edge image and its resized cache.</summary>
+		/// <summary>
+		/// Disposes <c>_glowEdgesImage</c> and its cached resized copy (<see cref="GetGlowOverlayResized"/>) and
+		/// sets both to null, without touching <c>_sceneImage</c> - used both by <see cref="UpdateGlowEdgesImage"/>
+		/// (about to rebuild it from the scene image) and by <see cref="SceneMode_CheckedChanged"/> (switching to
+		/// <c>radUserDefinedScene</c>, where the overlay should disappear even though <c>_sceneImage</c> itself is
+		/// kept around in case the user switches back).
+		/// </summary>
 		private void ClearGlowEdgesImage()
 		{
-			if (this._glowEdgesImage != null)
+			if (_glowEdgesImage != null)
 			{
-				this._glowEdgesImage.Dispose();
-				this._glowEdgesImage = null;
+				_glowEdgesImage.Dispose();
+				_glowEdgesImage = null;
 			}
-			if (this._glowOverlayCache != null)
+			if (_glowOverlayCache != null)
 			{
-				this._glowOverlayCache.Dispose();
-				this._glowOverlayCache = null;
+				_glowOverlayCache.Dispose();
+				_glowOverlayCache = null;
 			}
 		}
 
@@ -245,36 +260,46 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void UpdateGlowEdgesImage()
 		{
-			this.ClearGlowEdgesImage();
-			if (this._sceneImage != null)
+			ClearGlowEdgesImage();
+			if (_sceneImage != null)
 			{
-				this._glowEdgesImage = Form1.ComputeGlowingEdges(this._sceneImage);
+				_glowEdgesImage = Form1.ComputeGlowingEdges(_sceneImage);
 			}
-			this.RefreshPreviewOverlay(this._picField, this.FieldOverlayGain());
-			this.RefreshPreviewOverlay(this._picIntensity, this.IntensityOverlayGain());
+			RefreshPreviewOverlay(_picField, FieldOverlayGain());
+			RefreshPreviewOverlay(_picIntensity, IntensityOverlayGain());
 		}
 
 		/// <summary>Overlay gain for the field preview: the brightness box value when the overlay checkbox is on, otherwise 0 (overlay off).</summary>
 		private double FieldOverlayGain()
 		{
-			return this.chkDiplayOverlayInField.Checked ? Convert.ToDouble(this.numBrightnessFieldOverlay.Value) : 0.0;
+			return chkDiplayOverlayInField.Checked ? Convert.ToDouble(numBrightnessFieldOverlay.Value) : 0.0;
 		}
 
 		/// <summary>Overlay gain for the intensity preview: the brightness box value when the overlay checkbox is on, otherwise 0 (overlay off).</summary>
 		private double IntensityOverlayGain()
 		{
-			return this.chkDiplayOverlayInIntensity.Checked ? Convert.ToDouble(this.numBrightnessIntensityOverlay.Value) : 0.0;
+			return chkDiplayOverlayInIntensity.Checked ? Convert.ToDouble(numBrightnessIntensityOverlay.Value) : 0.0;
 		}
 
 		/// <summary>
-		/// Computes a per-channel 3x3 Sobel gradient magnitude (scaled by 0.25, clamped to 255) of
-		/// <paramref name="source"/> on a black background, used as the glowing-edges preview overlay.
-		/// The source is first drawn into a 24bpp copy so any pixel format works. The outermost pixel
-		/// ring is always black, and images smaller than 3 x 3 give an all-black result.
+		/// Builds a "glowing edges" picture of <paramref name="source"/>: a same-size picture that is black except
+		/// along its edges (fast color changes), where each of the three color channels is set to how sharp the
+		/// change in THAT channel is there (a 3x3 Sobel gradient magnitude, scaled and clamped to a byte). This is
+		/// deliberately done per channel rather than as a single grayscale edge strength, so e.g. a hard
+		/// red-to-black edge lights up mostly in red - keeping a hint of the original colors in the edge lines, the
+		/// way Photoshop's "Glowing Edges" filter does. The local <c>GlowScale</c> constant is the one tunable
+		/// "how bright" knob - a typical hard (full black-to-white) edge produces a raw Sobel magnitude of up to
+		/// about 1442, and <c>GlowScale</c> brings that into the 0-255 byte range without every ordinary edge
+		/// saturating to pure white; ask if this should be stronger/weaker. The source is first drawn into a
+		/// 24bpp copy so any pixel format works. The outermost ring of pixels is left black (there is no full 3x3
+		/// neighborhood there), and images smaller than 3 x 3 give an all-black result. Used as the
+		/// glowing-edges overlay of the field / intensity previews and exports.
 		/// </summary>
 		/// <returns>A new 24bpp bitmap of the source size, owned by the caller.</returns>
 		private static Bitmap ComputeGlowingEdges(Bitmap source)
 		{
+			const double GlowScale = 0.25;
+
 			int width = source.Width;
 			int height = source.Height;
 			Bitmap edges = new Bitmap(width, height, PixelFormat.Format24bppRgb);
@@ -284,8 +309,9 @@ namespace _2D_wave_sim_V01
 			}
 			if (width < 3 || height < 3)
 			{
-				return edges;
+				return edges; // too small for a 3x3 kernel - stays plain black
 			}
+			// normalize the source into a plain 24bppRgb picture first (it may be indexed, 32bppArgb, ...)
 			using (Bitmap sourceCopy = new Bitmap(width, height, PixelFormat.Format24bppRgb))
 			{
 				using (Graphics g = Graphics.FromImage(sourceCopy))
@@ -302,6 +328,7 @@ namespace _2D_wave_sim_V01
 					byte[] sourcePixels = new byte[sourceStride * height];
 					byte[] edgePixels = new byte[edgesStride * height];
 					Marshal.Copy(sourceData.Scan0, sourcePixels, 0, sourcePixels.Length);
+					// 24bppRgb stores each pixel as three bytes, in B,G,R order
 					for (int y = 1; y < height - 1; y++)
 					{
 						int rowAbove = (y - 1) * sourceStride;
@@ -310,8 +337,9 @@ namespace _2D_wave_sim_V01
 						int edgeRow = y * edgesStride;
 						for (int x = 1; x < width - 1; x++)
 						{
+							// offsets of the left-hand pixel of the 3x3 window in each of its three rows
 							int above = rowAbove + (x - 1) * 3;
-							int center = row + (x - 1) * 3;
+							int middle = row + (x - 1) * 3;
 							int below = rowBelow + (x - 1) * 3;
 							int target = edgeRow + x * 3;
 							for (int channel = 0; channel < 3; channel++)
@@ -319,15 +347,14 @@ namespace _2D_wave_sim_V01
 								int topLeft = sourcePixels[above + channel];
 								int top = sourcePixels[above + 3 + channel];
 								int topRight = sourcePixels[above + 6 + channel];
-								int left = sourcePixels[center + channel];
-								int right = sourcePixels[center + 6 + channel];
+								int left = sourcePixels[middle + channel];
+								int right = sourcePixels[middle + 6 + channel];
 								int bottomLeft = sourcePixels[below + channel];
 								int bottom = sourcePixels[below + 3 + channel];
 								int bottomRight = sourcePixels[below + 6 + channel];
 								int gx = topRight + 2 * right + bottomRight - (topLeft + 2 * left + bottomLeft);
 								int gy = bottomLeft + 2 * bottom + bottomRight - (topLeft + 2 * top + topRight);
-								// 0.25 keeps a full-contrast step edge (gradient 4 * 255) just within the byte range.
-								double magnitude = Math.Sqrt((double)gx * gx + (double)gy * gy) * 0.25;
+								double magnitude = Math.Sqrt((double)gx * gx + (double)gy * gy) * GlowScale;
 								edgePixels[target + channel] = (byte)Math.Round(Math.Min(255.0, magnitude));
 							}
 						}
@@ -351,51 +378,58 @@ namespace _2D_wave_sim_V01
 		/// <returns>The cached 24bpp bitmap (owned by the form; do not dispose), or null when there is no scene image.</returns>
 		private Bitmap GetGlowOverlayResized(Size targetSize)
 		{
-			if (this._glowEdgesImage == null)
+			if (_glowEdgesImage == null)
 			{
 				return null;
 			}
-			if (this._glowOverlayCache != null && this._glowOverlayCacheSize.Equals(targetSize))
+			if (_glowOverlayCache != null && _glowOverlayCacheSize.Equals(targetSize))
 			{
-				return this._glowOverlayCache;
+				return _glowOverlayCache;
 			}
-			if (this._glowOverlayCache != null)
+			if (_glowOverlayCache != null)
 			{
-				this._glowOverlayCache.Dispose();
+				_glowOverlayCache.Dispose();
 			}
 			Bitmap resized = new Bitmap(Math.Max(1, targetSize.Width), Math.Max(1, targetSize.Height), PixelFormat.Format24bppRgb);
 			using (Graphics g = Graphics.FromImage(resized))
 			{
 				g.Clear(Color.Black);
 				g.InterpolationMode = InterpolationMode.HighQualityBilinear;
-				g.DrawImage(this._glowEdgesImage, new Rectangle(Point.Empty, targetSize));
+				g.DrawImage(_glowEdgesImage, new Rectangle(Point.Empty, targetSize));
 			}
-			this._glowOverlayCache = resized;
-			this._glowOverlayCacheSize = targetSize;
+			_glowOverlayCache = resized;
+			_glowOverlayCacheSize = targetSize;
 			return resized;
 		}
 
 		/// <summary>
-		/// Returns a copy of <paramref name="frame"/> with the glow overlay (resized to the frame)
-		/// multiplied by <paramref name="gain"/> and added to each RGB channel, saturating at 255.
-		/// Alpha is left untouched. Frames with fewer than 3 bytes per pixel, or no overlay, give a plain copy.
+		/// Returns a copy of <paramref name="frame"/> with the glow-edges overlay (<see cref="ComputeGlowingEdges"/>,
+		/// <see cref="GetGlowOverlayResized"/>) additively blended on top, each of the overlay's bytes multiplied by
+		/// <paramref name="gain"/> first (<c>numBrightnessFieldOverlay</c>/<c>numBrightnessIntensityOverlay</c> - 1
+		/// leaves <see cref="ComputeGlowingEdges"/>' own brightness as is, above 1 brightens the overlay, 0 removes
+		/// it entirely). Multiplying (rather than e.g. adding a flat offset) is what keeps a still-black background
+		/// black at any gain - 0 times anything is still 0 - while scaling up faint edges where the color change
+		/// was small, which is the actual complaint this is for: a plain "brightness" slider that also lifted the
+		/// black background to gray would defeat its own purpose here. The overlay's black pixels (no edge there)
+		/// leave the frame untouched, and its bright pixels brighten the frame, clamped at 255 per channel; alpha
+		/// is left untouched. Frames with fewer than 3 bytes per pixel, or no overlay, give a plain copy.
 		/// </summary>
-		/// <param name="frame">The raw preview frame; not modified.</param>
+		/// <param name="frame">The raw preview frame; never modified.</param>
 		/// <param name="gain">Overlay brightness multiplier; negative values count as 0.</param>
 		/// <returns>A new bitmap owned by the caller.</returns>
 		private Bitmap ComposeGlowOverlay(Bitmap frame, double gain)
 		{
-			Bitmap overlay = this.GetGlowOverlayResized(frame.Size);
+			Bitmap overlay = GetGlowOverlayResized(frame.Size);
 			Bitmap result = new Bitmap(frame);
 			if (overlay == null)
 			{
 				return result;
 			}
 			double overlayGain = Math.Max(0.0, gain);
-			int bytesPerPixel = Image.GetPixelFormatSize(result.PixelFormat) / 8;
-			if (bytesPerPixel < 3)
+			int bytesPerDstPixel = Image.GetPixelFormatSize(result.PixelFormat) / 8;
+			if (bytesPerDstPixel < 3)
 			{
-				return result;
+				return result; // an indexed/unexpected format we can't safely blend into
 			}
 			Rectangle bounds = new Rectangle(0, 0, frame.Width, frame.Height);
 			BitmapData resultData = result.LockBits(bounds, ImageLockMode.ReadWrite, result.PixelFormat);
@@ -416,8 +450,9 @@ namespace _2D_wave_sim_V01
 					int overlayRow = y * overlayStride;
 					for (int x = 0; x < width; x++)
 					{
-						int resultOffset = resultRow + x * bytesPerPixel;
+						int resultOffset = resultRow + x * bytesPerDstPixel;
 						int overlayOffset = overlayRow + x * 3;
+						// both layouts are B,G,R... (result may have a 4th, alpha byte - left untouched)
 						resultPixels[resultOffset] = (byte)Math.Round(Math.Min(255.0, resultPixels[resultOffset] + overlayPixels[overlayOffset] * overlayGain));
 						resultPixels[resultOffset + 1] = (byte)Math.Round(Math.Min(255.0, resultPixels[resultOffset + 1] + overlayPixels[overlayOffset + 1] * overlayGain));
 						resultPixels[resultOffset + 2] = (byte)Math.Round(Math.Min(255.0, resultPixels[resultOffset + 2] + overlayPixels[overlayOffset + 2] * overlayGain));
@@ -445,7 +480,7 @@ namespace _2D_wave_sim_V01
 			Image oldImage = box.Image;
 			Bitmap oldFrame = box.Tag as Bitmap;
 			box.Tag = frame;
-			box.Image = ((gain > 0.0 && this._glowEdgesImage != null) ? this.ComposeGlowOverlay(frame, gain) : frame);
+			box.Image = ((gain > 0.0 && _glowEdgesImage != null) ? ComposeGlowOverlay(frame, gain) : frame);
 			if (oldImage != null && !object.ReferenceEquals(oldImage, oldFrame))
 			{
 				oldImage.Dispose();
@@ -473,7 +508,7 @@ namespace _2D_wave_sim_V01
 				return;
 			}
 			Image oldImage = box.Image;
-			box.Image = ((gain > 0.0 && this._glowEdgesImage != null) ? this.ComposeGlowOverlay(frame, gain) : frame);
+			box.Image = ((gain > 0.0 && _glowEdgesImage != null) ? ComposeGlowOverlay(frame, gain) : frame);
 			if (oldImage != null && !object.ReferenceEquals(oldImage, frame))
 			{
 				oldImage.Dispose();
@@ -483,25 +518,31 @@ namespace _2D_wave_sim_V01
 		/// <summary>Toggling the field overlay re-composes the field preview.</summary>
 		private void chkDiplayOverlayInField_CheckedChanged(object sender, EventArgs e)
 		{
-			this.RefreshPreviewOverlay(this._picField, this.FieldOverlayGain());
+			RefreshPreviewOverlay(_picField, FieldOverlayGain());
 		}
 
 		/// <summary>Toggling the intensity overlay re-composes the intensity preview.</summary>
 		private void chkDiplayOverlayInIntensity_CheckedChanged(object sender, EventArgs e)
 		{
-			this.RefreshPreviewOverlay(this._picIntensity, this.IntensityOverlayGain());
+			RefreshPreviewOverlay(_picIntensity, IntensityOverlayGain());
 		}
 
-		/// <summary>Changing the field overlay brightness re-composes the field preview.</summary>
+		/// <summary>
+		/// Changing the field overlay brightness re-composes the field preview. <c>numBrightnessFieldOverlay</c> /
+		/// <c>numBrightnessIntensityOverlay</c> (Viewer tab, next to the "Display overlay" checkboxes) scale the
+		/// glow-edges overlay's own brightness - 1 is the Designer default (no change), higher brightens faint
+		/// edges, 0 is the same as unchecking the overlay entirely. See <see cref="ComposeGlowOverlay"/>'s gain
+		/// parameter for why a multiplier (not a flat offset) is used.
+		/// </summary>
 		private void numBrightnessFieldOverlay_ValueChanged(object sender, EventArgs e)
 		{
-			this.RefreshPreviewOverlay(this._picField, this.FieldOverlayGain());
+			RefreshPreviewOverlay(_picField, FieldOverlayGain());
 		}
 
-		/// <summary>Changing the intensity overlay brightness re-composes the intensity preview.</summary>
+		/// <summary>Changing the intensity overlay brightness re-composes the intensity preview (see <see cref="numBrightnessFieldOverlay_ValueChanged"/> for the gain semantics).</summary>
 		private void numBrightnessIntensityOverlay_ValueChanged(object sender, EventArgs e)
 		{
-			this.RefreshPreviewOverlay(this._picIntensity, this.IntensityOverlayGain());
+			RefreshPreviewOverlay(_picIntensity, IntensityOverlayGain());
 		}
 
 		/// <summary>
@@ -523,11 +564,11 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private Size EffectiveCanvas()
 		{
-			if (this._scene.UseImage)
+			if (_scene.UseImage)
 			{
-				return (this._sceneImage == null) ? Size.Empty : this._sceneImage.Size;
+				return (_sceneImage == null) ? Size.Empty : _sceneImage.Size;
 			}
-			return new Size(this._scene.UserWidth, this._scene.UserHeight);
+			return new Size(_scene.UserWidth, _scene.UserHeight);
 		}
 
 		/// <summary>
@@ -539,26 +580,26 @@ namespace _2D_wave_sim_V01
 		private void ImportSceneImageInto(PictureBox pic)
 		{
 			Image oldImage = pic.Image;
-			Bitmap canvas;
-			if (this._scene.UseImage && this._sceneImage != null)
+			Bitmap fresh;
+			if (_scene.UseImage && _sceneImage != null)
 			{
-				canvas = new Bitmap(this._sceneImage);
+				fresh = new Bitmap(_sceneImage);
 			}
 			else
 			{
-				Size size = this.EffectiveCanvas();
-				if (size.Width <= 0 || size.Height <= 0)
+				Size canvas = EffectiveCanvas();
+				if (canvas.Width <= 0 || canvas.Height <= 0)
 				{
 					MessageBox.Show(this, "The canvas size is not known yet\r\n(choose a scene image, or a user defined width and height, on the Configuration tab first).", "Import scene image", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 					return;
 				}
-				canvas = new Bitmap(size.Width, size.Height);
-				using (Graphics g = Graphics.FromImage(canvas))
+				fresh = new Bitmap(canvas.Width, canvas.Height);
+				using (Graphics g = Graphics.FromImage(fresh))
 				{
 					g.Clear(Color.Black);
 				}
 			}
-			pic.Image = canvas;
+			pic.Image = fresh;
 			pic.Invalidate();
 			if (oldImage != null)
 			{
@@ -577,24 +618,24 @@ namespace _2D_wave_sim_V01
 			{
 				return;
 			}
-			if (this._scene.UseImage && this._sceneImage != null)
+			if (_scene.UseImage && _sceneImage != null)
 			{
-				pic.Image = new Bitmap(this._sceneImage);
+				pic.Image = new Bitmap(_sceneImage);
 				pic.Invalidate();
 			}
 			else
 			{
-				Size size = this.EffectiveCanvas();
-				if (size.Width <= 0 || size.Height <= 0)
+				Size canvas = EffectiveCanvas();
+				if (canvas.Width <= 0 || canvas.Height <= 0)
 				{
-					return;
+					return; // canvas size not known yet - nothing to show
 				}
-				Bitmap canvas = new Bitmap(size.Width, size.Height);
-				using (Graphics g = Graphics.FromImage(canvas))
+				Bitmap placeholder = new Bitmap(canvas.Width, canvas.Height);
+				using (Graphics g = Graphics.FromImage(placeholder))
 				{
 					g.Clear(Color.Black);
 				}
-				pic.Image = canvas;
+				pic.Image = placeholder;
 				pic.Invalidate();
 			}
 		}
@@ -614,19 +655,19 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Validates the damping-edge text: it must be a whole number 1..8192 and, when the canvas
-		/// size is known, less than half of the smaller canvas side.
+		/// Validates the damping-edge text: it must be a whole number 1..<see cref="SceneSettings.MaxDampingEdgeSize"/>
+		/// and, when the canvas size is known, less than half of the smaller canvas side.
 		/// </summary>
 		/// <param name="text">Content of the damping-edge text box.</param>
 		/// <param name="value">Receives the parsed number.</param>
 		/// <returns>An empty string when acceptable, otherwise the message to show the user.</returns>
 		private string DampingProblem(string text, ref int value)
 		{
-			if (!Form1.TryParseInt(text, 1, 8192, ref value))
+			if (!Form1.TryParseInt(text, 1, SceneSettings.MaxDampingEdgeSize, ref value))
 			{
 				return "Enter a whole number of pixels, 1 or more.";
 			}
-			Size size = this.EffectiveCanvas();
+			Size size = EffectiveCanvas();
 			int smallerSide = Math.Min(size.Width, size.Height);
 			if (size.Width > 0 && 2 * value >= smallerSide)
 			{
@@ -639,18 +680,25 @@ namespace _2D_wave_sim_V01
 		private void ShowDampingValidity()
 		{
 			int value = 0;
-			bool valid = this.DampingProblem(this.txtDampingEdgeSize.Text, ref value).Length == 0;
-			this.txtDampingEdgeSize.ForeColor = valid ? SystemColors.WindowText : Color.Red;
+			bool valid = DampingProblem(txtDampingEdgeSize.Text, ref value).Length == 0;
+			txtDampingEdgeSize.ForeColor = valid ? SystemColors.WindowText : Color.Red;
 		}
 
 		/// <summary>
 		/// Switching between "use scene image" and "user defined" stores the mode, rebuilds or clears
 		/// the glow overlay, updates control enabling, the preview and the damping validation, and
 		/// marks the project changed. Ignored for the radio being unchecked and while <c>_loadingScene</c> is set.
+		/// Switching to <c>radUserDefinedScene</c> drops the glow-edges overlay (<see cref="ClearGlowEdgesImage"/>) -
+		/// without it, a "Display overlay" checkbox left checked on the Preview tab would otherwise keep showing
+		/// the old scene image's overlay, which no longer corresponds to anything in a user-defined scene, and that
+		/// stale overlay would then also be baked into any picture shared afterwards into the Sources/Probes tabs
+		/// (<see cref="CopyPreviewToTabs"/>). <c>_sceneImage</c> itself is kept (not disposed) so switching back to
+		/// <c>radUseSceneImage</c> restores the overlay too, via <see cref="UpdateGlowEdgesImage"/>, without needing
+		/// to reload the image file.
 		/// </summary>
 		private void SceneMode_CheckedChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
@@ -659,21 +707,21 @@ namespace _2D_wave_sim_V01
 			{
 				return;
 			}
-			this._scene.UseImage = object.ReferenceEquals(radio, this.radUseSceneImage);
-			if (this._scene.UseImage)
+			_scene.UseImage = object.ReferenceEquals(radio, radUseSceneImage);
+			if (_scene.UseImage)
 			{
-				this.UpdateGlowEdgesImage();
+				UpdateGlowEdgesImage();
 			}
 			else
 			{
-				this.ClearGlowEdgesImage();
-				this.RefreshPreviewOverlay(this._picField, this.FieldOverlayGain());
-				this.RefreshPreviewOverlay(this._picIntensity, this.IntensityOverlayGain());
+				ClearGlowEdgesImage();
+				RefreshPreviewOverlay(_picField, FieldOverlayGain());
+				RefreshPreviewOverlay(_picIntensity, IntensityOverlayGain());
 			}
-			this.UpdateSceneControlState();
-			this.UpdateScenePreview();
-			this.ShowDampingValidity();
-			this.MarkProjectChanged();
+			UpdateSceneControlState();
+			UpdateScenePreview();
+			ShowDampingValidity();
+			MarkProjectChanged();
 		}
 
 		/// <summary>
@@ -684,20 +732,20 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void btnLOadSceneImage_Click(object sender, EventArgs e)
 		{
-			string projectFolder = ((this._project == null) ? "" : this._project.FolderPath);
+			string projectFolder = ((_project == null) ? "" : _project.FolderPath);
 			using (OpenFileDialog dialog = new OpenFileDialog())
 			{
 				dialog.Title = "Choose the scene image";
 				dialog.Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.gif|All files (*.*)|*.*";
-				if (this._project != null)
+				if (_project != null)
 				{
-					if (Directory.Exists(this._project.SceneImageFolder))
+					if (Directory.Exists(_project.SceneImageFolder))
 					{
-						dialog.InitialDirectory = this._project.SceneImageFolder;
+						dialog.InitialDirectory = _project.SceneImageFolder;
 					}
 					else
 					{
-						dialog.InitialDirectory = this._project.FolderPath;
+						dialog.InitialDirectory = _project.FolderPath;
 					}
 				}
 				if (dialog.ShowDialog(this) != DialogResult.OK)
@@ -714,76 +762,78 @@ namespace _2D_wave_sim_V01
 					MessageBox.Show(this, "The file could not be read as an image:\r\n\r\n" + ex.Message, "Scene image", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
 					return;
 				}
-				this.ReplaceSceneImage(image);
+				ReplaceSceneImage(image);
+				// an image from outside the project's own folder is copied in, so the project does not depend on a file
+				// elsewhere on disk; the copy is what gets used and saved from here on
 				string imagePath = dialog.FileName;
-				if (this._project != null && !Form1.IsInsideFolder(imagePath, this._project.FolderPath))
+				if (_project != null && !Form1.IsInsideFolder(imagePath, _project.FolderPath))
 				{
-					imagePath = Form1.CopyIntoSceneImageFolder(this._project, imagePath);
+					imagePath = Form1.CopyIntoSceneImageFolder(_project, imagePath);
 				}
-				this._scene.ImageFile = SceneSettings.ToStoredPath(projectFolder, imagePath);
-				this._scene.UseImage = true;
+				_scene.ImageFile = SceneSettings.ToStoredPath(projectFolder, imagePath);
+				_scene.UseImage = true;
 			}
-			this._loadingScene = true;
+			_loadingScene = true;
 			try
 			{
-				this.radUseSceneImage.Checked = true;
+				radUseSceneImage.Checked = true;
 			}
 			finally
 			{
-				this._loadingScene = false;
+				_loadingScene = false;
 			}
-			this.UpdateSceneControlState();
-			this.UpdateScenePreview();
-			this.ShowDampingValidity();
-			this.MarkProjectChanged();
+			UpdateSceneControlState();
+			UpdateScenePreview();
+			ShowDampingValidity();
+			MarkProjectChanged();
 		}
 
 		/// <summary>
-		/// Typing a user-defined width or height (8..16384) stores it, refreshes the preview and damping
-		/// validation and marks the project changed; invalid text turns the box red and shows a tooltip
-		/// without changing the stored value.
+		/// Typing a user-defined width or height (<see cref="SceneSettings.MinCanvasSize"/>..<see cref="SceneSettings.MaxCanvasSize"/>)
+		/// stores it, refreshes the preview and damping validation and marks the project changed; invalid text
+		/// turns the box red and shows a tooltip without changing the stored value.
 		/// </summary>
 		private void CanvasSize_TextChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
 			TextBox box = (TextBox)sender;
 			int size = 0;
-			if (Form1.TryParseInt(box.Text, 8, 16384, ref size))
+			if (Form1.TryParseInt(box.Text, SceneSettings.MinCanvasSize, SceneSettings.MaxCanvasSize, ref size))
 			{
 				box.ForeColor = SystemColors.WindowText;
-				this._sceneTip.Hide(box);
-				if (object.ReferenceEquals(box, this.txtXSize))
+				_sceneTip.Hide(box);
+				if (object.ReferenceEquals(box, txtXSize))
 				{
-					this._scene.UserWidth = size;
+					_scene.UserWidth = size;
 				}
 				else
 				{
-					this._scene.UserHeight = size;
+					_scene.UserHeight = size;
 				}
-				this.UpdateScenePreview();
-				this.ShowDampingValidity();
-				this.MarkProjectChanged();
+				UpdateScenePreview();
+				ShowDampingValidity();
+				MarkProjectChanged();
 			}
 			else
 			{
 				box.ForeColor = Color.Red;
-				this._sceneTip.Show("Enter a whole number of pixels from 8 to 16384.", box, 0, box.Height + 2, 3000);
+				_sceneTip.Show("Enter a whole number of pixels from " + SceneSettings.MinCanvasSize.ToString(CultureInfo.InvariantCulture) + " to " + SceneSettings.MaxCanvasSize.ToString(CultureInfo.InvariantCulture) + ".", box, 0, box.Height + 2, 3000);
 			}
 		}
 
 		/// <summary>Stores the damping-edge on/off flag, enables or disables the size box and marks the project changed.</summary>
 		private void chkDampingEdge_CheckedChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
-			this._scene.DampingEdgeEnabled = this.chkDampingEdge.Checked;
-			this.UpdateSceneControlState();
-			this.MarkProjectChanged();
+			_scene.DampingEdgeEnabled = chkDampingEdge.Checked;
+			UpdateSceneControlState();
+			MarkProjectChanged();
 		}
 
 		/// <summary>
@@ -792,23 +842,23 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void DampingSize_TextChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
 			int value = 0;
-			string problem = this.DampingProblem(this.txtDampingEdgeSize.Text, ref value);
+			string problem = DampingProblem(txtDampingEdgeSize.Text, ref value);
 			if (problem.Length == 0)
 			{
-				this._scene.DampingEdgeSize = value;
-				this.txtDampingEdgeSize.ForeColor = SystemColors.WindowText;
-				this._sceneTip.Hide(this.txtDampingEdgeSize);
-				this.MarkProjectChanged();
+				_scene.DampingEdgeSize = value;
+				txtDampingEdgeSize.ForeColor = SystemColors.WindowText;
+				_sceneTip.Hide(txtDampingEdgeSize);
+				MarkProjectChanged();
 			}
 			else
 			{
-				this.txtDampingEdgeSize.ForeColor = Color.Red;
-				this._sceneTip.Show(problem, this.txtDampingEdgeSize, 0, this.txtDampingEdgeSize.Height + 2, 3000);
+				txtDampingEdgeSize.ForeColor = Color.Red;
+				_sceneTip.Show(problem, txtDampingEdgeSize, 0, txtDampingEdgeSize.Height + 2, 3000);
 			}
 		}
 
@@ -820,74 +870,74 @@ namespace _2D_wave_sim_V01
 		private void SceneText_Leave(object sender, EventArgs e)
 		{
 			TextBox box = (TextBox)sender;
-			this._sceneTip.Hide(box);
-			this._loadingScene = true;
+			_sceneTip.Hide(box);
+			_loadingScene = true;
 			try
 			{
-				if (object.ReferenceEquals(box, this.txtXSize))
+				if (object.ReferenceEquals(box, txtXSize))
 				{
-					box.Text = this._scene.UserWidth.ToString(CultureInfo.InvariantCulture);
+					box.Text = _scene.UserWidth.ToString(CultureInfo.InvariantCulture);
 				}
-				else if (object.ReferenceEquals(box, this.txtYsize))
+				else if (object.ReferenceEquals(box, txtYsize))
 				{
-					box.Text = this._scene.UserHeight.ToString(CultureInfo.InvariantCulture);
+					box.Text = _scene.UserHeight.ToString(CultureInfo.InvariantCulture);
 				}
 				else
 				{
-					box.Text = this._scene.DampingEdgeSize.ToString(CultureInfo.InvariantCulture);
+					box.Text = _scene.DampingEdgeSize.ToString(CultureInfo.InvariantCulture);
 				}
 				box.ForeColor = SystemColors.WindowText;
 			}
 			finally
 			{
-				this._loadingScene = false;
+				_loadingScene = false;
 			}
-			this.ShowDampingValidity();
+			ShowDampingValidity();
 		}
 
 		/// <summary>Stores whether green pixels of the scene image act as sources, enables or disables the scale box and marks the project changed.</summary>
 		private void chkUseSources_CheckedChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
-			this._scene.UseSources = this.chkUseImageSources.Checked;
-			this.UpdateSceneControlState();
-			this.MarkProjectChanged();
+			_scene.UseSources = chkUseImageSources.Checked;
+			UpdateSceneControlState();
+			MarkProjectChanged();
 		}
 
 		/// <summary>Stores whether the object sources from the source list are used and marks the project changed.</summary>
 		private void chkUseObjectSources_CheckedChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
-			this._scene.UseObjectSources = this.chkUseObjectSources.Checked;
-			this.MarkProjectChanged();
+			_scene.UseObjectSources = chkUseObjectSources.Checked;
+			MarkProjectChanged();
 		}
 
-		/// <summary>Stores the image-source intensity scale (0..1000) and marks the project changed.</summary>
+		/// <summary>Stores the image-source intensity scale (0..<see cref="SceneSettings.MaxImageSourceScale"/>) and marks the project changed.</summary>
 		private void ImageSourceScale_ValueChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
-			this._scene.ImageSourceScale = Convert.ToDouble(this.numScaleImageSource.Value);
-			this.MarkProjectChanged();
+			_scene.ImageSourceScale = Convert.ToDouble(numScaleImageSource.Value);
+			MarkProjectChanged();
 		}
 
 		/// <summary>Stores the background refractive index of the user-defined (empty) scene and marks the project changed.</summary>
 		private void RefractiveIndex_ValueChanged(object sender, EventArgs e)
 		{
-			if (this._loadingScene)
+			if (_loadingScene)
 			{
 				return;
 			}
-			this._scene.BackgroundRefractiveIndex = Convert.ToDouble(this.numRefractiveIndex.Value);
-			this.MarkProjectChanged();
+			_scene.BackgroundRefractiveIndex = Convert.ToDouble(numRefractiveIndex.Value);
+			MarkProjectChanged();
 		}
 
 		/// <summary>
@@ -903,7 +953,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>Jumps to the source list tab.</summary>
 		private void btnEditSourceList_Click(object sender, EventArgs e)
 		{
-			this.tabMainFunctions.SelectedTab = this.tabSourceList;
+			tabMainFunctions.SelectedTab = tabSourceList;
 		}
 	}
 }

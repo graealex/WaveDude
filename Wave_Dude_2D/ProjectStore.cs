@@ -9,8 +9,13 @@ namespace _2D_wave_sim_V01
 	/// Static helper that creates, opens, lists, renames and deletes project folders under a root
 	/// folder, and is the only code that constructs <see cref="Project"/> instances. A project folder
 	/// is any folder directly below the root that contains a configuration.json (or an empty legacy
-	/// Configuration.txt, which <see cref="Open"/> upgrades in place). Used by the Projects and
-	/// Outputs tabs and by the File menu; all methods are synchronous and do their own disk I/O.
+	/// Configuration.txt, which <see cref="Open"/> upgrades in place); the folder name is the project name.
+	/// The main folder of a project contains configuration.json and the sub-folders
+	/// <see cref="AssetsFolderName"/>, <see cref="OutputFramesFolderName"/>, <see cref="OutputVideoFolderName"/>
+	/// and <see cref="SceneImageFolderName"/>. The configuration is entirely in configuration.json; assets is
+	/// instead where the user can keep any third-party files used by the project, such as the original
+	/// Photoshop file of a scene image. Used by the Projects and Outputs tabs and by the File menu; all
+	/// methods are synchronous and do their own disk I/O.
 	/// </summary>
 	public sealed class ProjectStore
 	{
@@ -24,6 +29,7 @@ namespace _2D_wave_sim_V01
 		/// blank, no surrounding whitespace, no trailing dot, at most <see cref="MaxNameLength"/>
 		/// characters, no characters from <see cref="Path.GetInvalidFileNameChars"/>, and not a
 		/// reserved device name (CON, NUL, COM1, ...; the part before the first dot is checked).
+		/// The name is never changed silently.
 		/// </summary>
 		/// <returns>A user-facing error message, or "" when the name is acceptable.</returns>
 		public static string ValidateName(string projectName)
@@ -45,16 +51,15 @@ namespace _2D_wave_sim_V01
 				return "The project name is too long (at most " + ProjectStore.MaxNameLength.ToString() + " characters).";
 			}
 			char[] invalidChars = Path.GetInvalidFileNameChars();
-			for (int i = 0; i < projectName.Length; i++)
+			foreach (char ch in projectName)
 			{
-				char c = projectName[i];
-				if (Array.IndexOf(invalidChars, c) >= 0)
+				if (Array.IndexOf(invalidChars, ch) >= 0)
 				{
-					if (c < ' ')
+					if (ch < ' ')
 					{
 						return "The project name contains a control character.";
 					}
-					return "The project name contains the character '" + c.ToString() + "', which is not allowed in a folder name.";
+					return "The project name contains the character '" + ch.ToString() + "', which is not allowed in a folder name.";
 				}
 			}
 			string baseName = projectName.Split('.')[0].ToUpperInvariant();
@@ -108,11 +113,11 @@ namespace _2D_wave_sim_V01
 			{
 				if (!File.Exists(legacyPath))
 				{
-					throw new InvalidDataException("The folder '" + Path.GetFileName(folder) + "' is not a project folder: it contains no configuration.json.");
+					throw new InvalidDataException("The folder '" + Path.GetFileName(folder) + "' is not a project folder: it contains no " + ProjectConfig.FileName + ".");
 				}
 				if (File.ReadAllText(legacyPath).Trim().Length > 0)
 				{
-					throw new InvalidDataException("The file Configuration.txt is not empty and has no known format, so it was not replaced.");
+					throw new InvalidDataException("The file " + ProjectConfig.LegacyFileName + " is not empty and has no known format, so it was not replaced.");
 				}
 				project = new Project(folder, new ProjectConfig(Path.GetFileName(folder)));
 				project.Save();
@@ -222,6 +227,7 @@ namespace _2D_wave_sim_V01
 			string newFolder = ProjectStore.FolderPathFor(rootFolder, newProjectName);
 			if (string.Equals(folder, newFolder, StringComparison.OrdinalIgnoreCase))
 			{
+				// only a case change, or unchanged
 				return folder;
 			}
 			if (Directory.Exists(newFolder) || File.Exists(newFolder))
@@ -232,7 +238,7 @@ namespace _2D_wave_sim_V01
 			return newFolder;
 		}
 
-		/// <summary>Creates the standard sub-folders (<see cref="SubFolderNames"/>) inside a project folder; I/O and access errors are ignored.</summary>
+		/// <summary>Creates the standard sub-folders (<see cref="SubFolderNames"/>) inside a project folder; I/O and access errors are not fatal here.</summary>
 		private static void EnsureSubFolders(string folder)
 		{
 			try
@@ -244,6 +250,7 @@ namespace _2D_wave_sim_V01
 			}
 			catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
 			{
+				// not fatal: a folder that cannot be created is reported when it is needed
 			}
 		}
 
@@ -266,7 +273,7 @@ namespace _2D_wave_sim_V01
 			return path;
 		}
 
-		/// <summary>Sub-folder for user files that belong to the project (counted in the delete warning).</summary>
+		/// <summary>Sub-folder where the user keeps any third-party files that belong to the project, such as the original Photoshop file of a scene image; never read or written by the simulator itself (counted in the delete warning).</summary>
 		public const string AssetsFolderName = "assets";
 
 		/// <summary>Sub-folder the simulation writes rendered PNG frames into.</summary>
@@ -284,7 +291,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>The sub-folders every project folder gets, in creation order.</summary>
 		private static readonly string[] SubFolderNames = new string[] { AssetsFolderName, OutputFramesFolderName, OutputVideoFolderName, SceneImageFolderName };
 
-		/// <summary>Windows device names that cannot be used as a folder name (compared upper-case against the part before the first dot).</summary>
+		/// <summary>Names that Windows does not allow for a file or folder (compared upper-case against the part before the first dot).</summary>
 		private static readonly string[] ReservedNames = new string[]
 		{
 			"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",

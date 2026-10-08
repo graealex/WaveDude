@@ -26,12 +26,12 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void InitializeOutputsTab()
 		{
-			this._outputPreviewPic = new PictureBox();
-			this._outputPreviewPic.Dock = DockStyle.Fill;
-			this._outputPreviewPic.SizeMode = PictureBoxSizeMode.Zoom;
-			this.pnlPreview.Controls.Add(this._outputPreviewPic);
-			this.RefreshOutputProjectList("");
-			this.UpdateShareWithEditorsButton();
+			_outputPreviewPic = new PictureBox();
+			_outputPreviewPic.Dock = DockStyle.Fill;
+			_outputPreviewPic.SizeMode = PictureBoxSizeMode.Zoom;
+			pnlPreview.Controls.Add(_outputPreviewPic);
+			RefreshOutputProjectList("");
+			UpdateShareWithEditorsButton();
 		}
 
 		/// <summary>
@@ -42,48 +42,48 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void RefreshOutputProjectList(string preferredName = "")
 		{
-			string selectedName = (preferredName.Length > 0) ? preferredName : this.SelectedProjectName(this.lstAllProjects3);
-			List<Form1.ProjectListEntry> entries = this.BuildProjectEntries();
-			this.SortProjectEntries(entries, this._outputProjectSortColumn, this._outputProjectSortAscending);
-			this.PopulateProjectListView(this.lstAllProjects3, entries);
-			this.UpdateOutputProjectSortHeaders();
-			this.SelectProjectInList(this.lstAllProjects3, selectedName);
+			string selectedName = (preferredName.Length > 0) ? preferredName : SelectedProjectName(lstAllProjects3);
+			List<Form1.ProjectListEntry> entries = BuildProjectEntries();
+			SortProjectEntries(entries, _outputProjectSortColumn, _outputProjectSortAscending);
+			PopulateProjectListView(lstAllProjects3, entries);
+			UpdateOutputProjectSortHeaders();
+			SelectProjectInList(lstAllProjects3, selectedName);
 		}
 
 		/// <summary>Clicking a column header sorts the Outputs-tab project list by it; clicking the current sort column again flips the direction.</summary>
 		private void lstAllProjects3_ColumnClick(object sender, ColumnClickEventArgs e)
 		{
-			if (e.Column == this._outputProjectSortColumn)
+			if (e.Column == _outputProjectSortColumn)
 			{
-				this._outputProjectSortAscending = !this._outputProjectSortAscending;
+				_outputProjectSortAscending = !_outputProjectSortAscending;
 			}
 			else
 			{
-				this._outputProjectSortColumn = e.Column;
-				this._outputProjectSortAscending = true;
+				_outputProjectSortColumn = e.Column;
+				_outputProjectSortAscending = true;
 			}
-			this.RefreshOutputProjectList("");
+			RefreshOutputProjectList("");
 		}
 
 		/// <summary>Appends " ^" (ascending) or " v" (descending) to the header of the column the Outputs-tab project list is sorted by.</summary>
 		private void UpdateOutputProjectSortHeaders()
 		{
-			string arrow = this._outputProjectSortAscending ? " ^" : " v";
-			this.colProjectName2.Text = "Project name" + ((this._outputProjectSortColumn == 0) ? arrow : "");
-			this.colLastEdited2.Text = "Last edited" + ((this._outputProjectSortColumn == 1) ? arrow : "");
+			string arrow = _outputProjectSortAscending ? " ^" : " v";
+			colProjectName2.Text = "Project name" + ((_outputProjectSortColumn == 0) ? arrow : "");
+			colLastEdited2.Text = "Last edited" + ((_outputProjectSortColumn == 1) ? arrow : "");
 		}
 
 		/// <summary>Full folder path of the project selected in the Outputs-tab list, or "" when none is selected.</summary>
 		private string SelectedOutputProjectFolder()
 		{
-			string name = this.SelectedProjectName(this.lstAllProjects3);
-			return (name.Length == 0) ? "" : ProjectStore.FolderPathFor(this._settings.ProjectRoot, name);
+			string name = SelectedProjectName(lstAllProjects3);
+			return (name.Length == 0) ? "" : ProjectStore.FolderPathFor(_settings.ProjectRoot, name);
 		}
 
 		/// <summary>Selecting a project reloads the three file lists for it.</summary>
 		private void lstAllProjects3_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			this.RefreshOutputFileLists();
+			RefreshOutputFileLists();
 		}
 
 		/// <summary>
@@ -94,15 +94,15 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void RefreshOutputFileLists()
 		{
-			string projectFolder = this.SelectedOutputProjectFolder();
-			this.FillFileList(this.lstScenes, projectFolder, ProjectStore.SceneImageFolderName, Form1.SceneImageExtensions, this._sceneSortColumn, this._sceneSortAscending);
-			this.FillFileList(this.lstImages, projectFolder, ProjectStore.OutputFramesFolderName, Form1.OutputImageExtensions, this._imageSortColumn, this._imageSortAscending);
-			this.FillFileList(this.lstVideo, projectFolder, ProjectStore.OutputVideoFolderName, Form1.OutputVideoExtensions, this._videoSortColumn, this._videoSortAscending);
-			this.UpdateFileListSortHeaders(this.colSceneName, "Scene file name", this.colSceneCreated, "Created on", this._sceneSortColumn, this._sceneSortAscending);
-			this.UpdateFileListSortHeaders(this.colImageName, "Image file name", this.colCreatedOn, "Created on", this._imageSortColumn, this._imageSortAscending);
-			this.UpdateFileListSortHeaders(this.colVideoName, "Video file name", this.colCreatedOn2, "Created on", this._videoSortColumn, this._videoSortAscending);
-			this.ClearOutputPreview();
-			this.UpdateCopyToClipboardButton();
+			string projectFolder = SelectedOutputProjectFolder();
+			FillFileList(lstScenes, projectFolder, ProjectStore.SceneImageFolderName, Form1.SceneImageExtensions, _sceneSortColumn, _sceneSortAscending);
+			FillFileList(lstImages, projectFolder, ProjectStore.OutputFramesFolderName, Form1.OutputImageExtensions, _imageSortColumn, _imageSortAscending);
+			FillFileList(lstVideo, projectFolder, ProjectStore.OutputVideoFolderName, Form1.OutputVideoExtensions, _videoSortColumn, _videoSortAscending);
+			UpdateFileListSortHeaders(colSceneName, "Scene file name", colSceneCreated, "Created on", _sceneSortColumn, _sceneSortAscending);
+			UpdateFileListSortHeaders(colImageName, "Image file name", colCreatedOn, "Created on", _imageSortColumn, _imageSortAscending);
+			UpdateFileListSortHeaders(colVideoName, "Video file name", colCreatedOn2, "Created on", _videoSortColumn, _videoSortAscending);
+			ClearOutputPreview();
+			UpdateCopyToClipboardButton();
 		}
 
 		/// <summary>
@@ -202,49 +202,49 @@ namespace _2D_wave_sim_V01
 		/// <summary>Reloads and re-sorts the scene-image list, keeping the selected files selected; used after a header click.</summary>
 		private void RefillSceneList()
 		{
-			List<string> selected = this.SelectedFilePaths(this.lstScenes);
-			this.FillFileList(this.lstScenes, this.SelectedOutputProjectFolder(), ProjectStore.SceneImageFolderName, Form1.SceneImageExtensions, this._sceneSortColumn, this._sceneSortAscending);
-			this.UpdateFileListSortHeaders(this.colSceneName, "Scene file name", this.colSceneCreated, "Created on", this._sceneSortColumn, this._sceneSortAscending);
-			this.ReselectFiles(this.lstScenes, selected);
+			List<string> selected = SelectedFilePaths(lstScenes);
+			FillFileList(lstScenes, SelectedOutputProjectFolder(), ProjectStore.SceneImageFolderName, Form1.SceneImageExtensions, _sceneSortColumn, _sceneSortAscending);
+			UpdateFileListSortHeaders(colSceneName, "Scene file name", colSceneCreated, "Created on", _sceneSortColumn, _sceneSortAscending);
+			ReselectFiles(lstScenes, selected);
 		}
 
 		/// <summary>Reloads and re-sorts the output-frame list, keeping the selected files selected; used after a header click.</summary>
 		private void RefillImageList()
 		{
-			List<string> selected = this.SelectedFilePaths(this.lstImages);
-			this.FillFileList(this.lstImages, this.SelectedOutputProjectFolder(), ProjectStore.OutputFramesFolderName, Form1.OutputImageExtensions, this._imageSortColumn, this._imageSortAscending);
-			this.UpdateFileListSortHeaders(this.colImageName, "Image file name", this.colCreatedOn, "Created on", this._imageSortColumn, this._imageSortAscending);
-			this.ReselectFiles(this.lstImages, selected);
+			List<string> selected = SelectedFilePaths(lstImages);
+			FillFileList(lstImages, SelectedOutputProjectFolder(), ProjectStore.OutputFramesFolderName, Form1.OutputImageExtensions, _imageSortColumn, _imageSortAscending);
+			UpdateFileListSortHeaders(colImageName, "Image file name", colCreatedOn, "Created on", _imageSortColumn, _imageSortAscending);
+			ReselectFiles(lstImages, selected);
 		}
 
 		/// <summary>Reloads and re-sorts the video list, keeping the selected files selected; used after a header click.</summary>
 		private void RefillVideoList()
 		{
-			List<string> selected = this.SelectedFilePaths(this.lstVideo);
-			this.FillFileList(this.lstVideo, this.SelectedOutputProjectFolder(), ProjectStore.OutputVideoFolderName, Form1.OutputVideoExtensions, this._videoSortColumn, this._videoSortAscending);
-			this.UpdateFileListSortHeaders(this.colVideoName, "Video file name", this.colCreatedOn2, "Created on", this._videoSortColumn, this._videoSortAscending);
-			this.ReselectFiles(this.lstVideo, selected);
+			List<string> selected = SelectedFilePaths(lstVideo);
+			FillFileList(lstVideo, SelectedOutputProjectFolder(), ProjectStore.OutputVideoFolderName, Form1.OutputVideoExtensions, _videoSortColumn, _videoSortAscending);
+			UpdateFileListSortHeaders(colVideoName, "Video file name", colCreatedOn2, "Created on", _videoSortColumn, _videoSortAscending);
+			ReselectFiles(lstVideo, selected);
 		}
 
 		/// <summary>Clicking a header sorts the scene-image list by that column (toggling direction on a repeat click).</summary>
 		private void lstScenes_ColumnClick(object sender, ColumnClickEventArgs e)
 		{
-			Form1.ToggleFileSort(ref this._sceneSortColumn, ref this._sceneSortAscending, e.Column);
-			this.RefillSceneList();
+			Form1.ToggleFileSort(ref _sceneSortColumn, ref _sceneSortAscending, e.Column);
+			RefillSceneList();
 		}
 
 		/// <summary>Clicking a header sorts the output-frame list by that column (toggling direction on a repeat click).</summary>
 		private void lstImages_ColumnClick(object sender, ColumnClickEventArgs e)
 		{
-			Form1.ToggleFileSort(ref this._imageSortColumn, ref this._imageSortAscending, e.Column);
-			this.RefillImageList();
+			Form1.ToggleFileSort(ref _imageSortColumn, ref _imageSortAscending, e.Column);
+			RefillImageList();
 		}
 
 		/// <summary>Clicking a header sorts the video list by that column (toggling direction on a repeat click).</summary>
 		private void lstVideo_ColumnClick(object sender, ColumnClickEventArgs e)
 		{
-			Form1.ToggleFileSort(ref this._videoSortColumn, ref this._videoSortAscending, e.Column);
-			this.RefillVideoList();
+			Form1.ToggleFileSort(ref _videoSortColumn, ref _videoSortAscending, e.Column);
+			RefillVideoList();
 		}
 
 		/// <summary>Applies a header click to a sort column/direction pair: the same column flips the direction, a different column becomes the sort column in ascending order.</summary>
@@ -262,55 +262,58 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Clears the selection of the two file lists other than <paramref name="active"/>. Sets
+		/// Clears the selection of the two file lists other than <paramref name="active"/> (the one the user
+		/// just clicked in), so only one of the three ever shows a selection at a time - otherwise it is unclear
+		/// which list's item <c>pnlPreview</c> is actually showing. The Projects list (<c>lstAllProjects3</c>) is
+		/// not one of these three and keeps its own selection regardless. Sets
 		/// <c>_clearingFileListSelection</c> while doing so, so that their
 		/// <c>SelectedIndexChanged</c> handlers ignore the change and do not clear the preview.
 		/// </summary>
 		private void ClearOtherFileListSelections(ListView active)
 		{
-			this._clearingFileListSelection = true;
+			_clearingFileListSelection = true;
 			try
 			{
-				if (active != this.lstScenes)
+				if (active != lstScenes)
 				{
-					this.lstScenes.SelectedItems.Clear();
+					lstScenes.SelectedItems.Clear();
 				}
-				if (active != this.lstImages)
+				if (active != lstImages)
 				{
-					this.lstImages.SelectedItems.Clear();
+					lstImages.SelectedItems.Clear();
 				}
-				if (active != this.lstVideo)
+				if (active != lstVideo)
 				{
-					this.lstVideo.SelectedItems.Clear();
+					lstVideo.SelectedItems.Clear();
 				}
 			}
 			finally
 			{
-				this._clearingFileListSelection = false;
+				_clearingFileListSelection = false;
 			}
 		}
 
 		/// <summary>Selecting a scene image makes it the only selection across the three lists and shows it in the preview; ignored while another list is clearing selections.</summary>
 		private void lstScenes_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			if (this._clearingFileListSelection)
+			if (_clearingFileListSelection)
 			{
 				return;
 			}
-			this.ClearOtherFileListSelections(this.lstScenes);
-			this.ShowOutputPreview(this.lstScenes);
+			ClearOtherFileListSelections(lstScenes);
+			ShowOutputPreview(lstScenes);
 		}
 
 		/// <summary>Selecting output frames makes them the only selection across the three lists, previews the first one and updates the copy button; ignored while another list is clearing selections.</summary>
 		private void lstImages_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			if (this._clearingFileListSelection)
+			if (_clearingFileListSelection)
 			{
 				return;
 			}
-			this.ClearOtherFileListSelections(this.lstImages);
-			this.ShowOutputPreview(this.lstImages);
-			this.UpdateCopyToClipboardButton();
+			ClearOtherFileListSelections(lstImages);
+			ShowOutputPreview(lstImages);
+			UpdateCopyToClipboardButton();
 		}
 
 		/// <summary>
@@ -327,52 +330,56 @@ namespace _2D_wave_sim_V01
 			string path = list.SelectedItems[0].Tag as string;
 			if (string.IsNullOrEmpty(path) || !File.Exists(path))
 			{
-				this.ClearOutputPreview();
+				ClearOutputPreview();
 				return;
 			}
 			try
 			{
-				this.SetOutputPreviewImage(Form1.LoadImageCopy(path), false);
+				SetOutputPreviewImage(Form1.LoadImageCopy(path), false);
 			}
 			catch (Exception)
 			{
-				this.ClearOutputPreview();
+				ClearOutputPreview();
 			}
 		}
 
 		/// <summary>
 		/// Selecting exactly one video makes it the only selection across the three lists and shows
-		/// the shell thumbnail for it, requested at the preview box's current size (at least 64x64
-		/// pixels). Any other selection count, a missing file or a shell failure clears the preview.
+		/// a thumbnail-sized preview of it, via the operating system's own shell thumbnail cache
+		/// (<see cref="GetShellThumbnail"/>, further down) - there is no dependency-free way to decode/draw
+		/// an actual video frame with just System.Drawing/System.Windows.Forms. The thumbnail is requested
+		/// at the preview box's current size (at least 64x64 pixels). Selecting zero or more than one video
+		/// (<c>lstVideo</c> allows multi-select) clears the preview instead, since a single thumbnail cannot
+		/// stand in for several files; a missing file or a shell failure clears it too.
 		/// Ignored while another list is clearing selections.
 		/// </summary>
 		private void lstVideo_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			if (this._clearingFileListSelection)
+			if (_clearingFileListSelection)
 			{
 				return;
 			}
-			this.ClearOtherFileListSelections(this.lstVideo);
-			if (this.lstVideo.SelectedItems.Count != 1)
+			ClearOtherFileListSelections(lstVideo);
+			if (lstVideo.SelectedItems.Count != 1)
 			{
-				this.ClearOutputPreview();
+				ClearOutputPreview();
 				return;
 			}
-			string path = this.lstVideo.SelectedItems[0].Tag as string;
+			string path = lstVideo.SelectedItems[0].Tag as string;
 			if (string.IsNullOrEmpty(path) || !File.Exists(path))
 			{
-				this.ClearOutputPreview();
+				ClearOutputPreview();
 				return;
 			}
 			try
 			{
-				int width = Math.Max(64, this._outputPreviewPic.ClientSize.Width);
-				int height = Math.Max(64, this._outputPreviewPic.ClientSize.Height);
-				this.SetOutputPreviewImage(Form1.GetShellThumbnail(path, width, height), true);
+				int width = Math.Max(64, _outputPreviewPic.ClientSize.Width);
+				int height = Math.Max(64, _outputPreviewPic.ClientSize.Height);
+				SetOutputPreviewImage(Form1.GetShellThumbnail(path, width, height), true);
 			}
 			catch (Exception)
 			{
-				this.ClearOutputPreview();
+				ClearOutputPreview();
 			}
 		}
 
@@ -383,22 +390,22 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void SetOutputPreviewImage(Image image, bool isVideo = false)
 		{
-			Image previous = this._outputPreviewPic.Image;
-			this._outputPreviewPic.Image = image;
+			Image previous = _outputPreviewPic.Image;
+			_outputPreviewPic.Image = image;
 			if (previous != null)
 			{
 				previous.Dispose();
 			}
-			this._outputPreviewIsVideo = isVideo;
-			this.UpdateShareWithEditorsButton();
+			_outputPreviewIsVideo = isVideo;
+			UpdateShareWithEditorsButton();
 		}
 
 		/// <summary>Removes and disposes the preview image; safe to call before <see cref="InitializeOutputsTab"/> has created the preview box.</summary>
 		private void ClearOutputPreview()
 		{
-			if (this._outputPreviewPic != null)
+			if (_outputPreviewPic != null)
 			{
-				this.SetOutputPreviewImage(null, false);
+				SetOutputPreviewImage(null, false);
 			}
 		}
 
@@ -410,15 +417,15 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void btnDeleteScene_Click(object sender, EventArgs e)
 		{
-			if (this.lstScenes.SelectedItems.Count == 0)
+			if (lstScenes.SelectedItems.Count == 0)
 			{
 				MessageBox.Show(this, "Select a scene image in the list first.", "Delete scene", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			List<string> paths = this.SelectedFilePaths(this.lstScenes);
+			List<string> paths = SelectedFilePaths(lstScenes);
 
-			bool listShowsOpenProject = this._project != null && string.Equals(this._project.FolderPath, this.SelectedOutputProjectFolder(), StringComparison.OrdinalIgnoreCase);
-			string currentImagePath = (listShowsOpenProject && this._scene.UseImage) ? SceneSettings.ToFullPath(this._project.FolderPath, this._scene.ImageFile) : "";
+			bool listShowsOpenProject = _project != null && string.Equals(_project.FolderPath, SelectedOutputProjectFolder(), StringComparison.OrdinalIgnoreCase);
+			string currentImagePath = (listShowsOpenProject && _scene.UseImage) ? SceneSettings.ToFullPath(_project.FolderPath, _scene.ImageFile) : "";
 			bool deletesCurrentImage = currentImagePath.Length > 0 && paths.Exists(p => string.Equals(p, currentImagePath, StringComparison.OrdinalIgnoreCase));
 
 			string question = (paths.Count == 1)
@@ -447,10 +454,10 @@ namespace _2D_wave_sim_V01
 			}
 			if (deletesCurrentImage)
 			{
-				this.radUserDefinedScene.Checked = true;
+				radUserDefinedScene.Checked = true;
 			}
-			this.RefreshOutputFileLists();
-			this.ShowDeleteErrorsIfAny(errors, "Delete scene");
+			RefreshOutputFileLists();
+			ShowDeleteErrorsIfAny(errors, "Delete scene");
 		}
 
 		/// <summary>
@@ -460,17 +467,17 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void btnLoadExternal_Click(object sender, EventArgs e)
 		{
-			this.btnLOadSceneImage_Click(sender, e);
-			if (this._project != null && string.Equals(this._project.FolderPath, this.SelectedOutputProjectFolder(), StringComparison.OrdinalIgnoreCase))
+			btnLOadSceneImage_Click(sender, e);
+			if (_project != null && string.Equals(_project.FolderPath, SelectedOutputProjectFolder(), StringComparison.OrdinalIgnoreCase))
 			{
-				this.RefreshOutputFileLists();
+				RefreshOutputFileLists();
 			}
 		}
 
 		/// <summary>Deletes the selected output frames (see <see cref="DeleteSelectedImages"/>).</summary>
 		private void btnDeleteImages_Click(object sender, EventArgs e)
 		{
-			this.DeleteSelectedImages();
+			DeleteSelectedImages();
 		}
 
 		/// <summary>Pressing Delete in the output-frame list deletes the selected frames.</summary>
@@ -479,28 +486,28 @@ namespace _2D_wave_sim_V01
 			if (e.KeyCode == Keys.Delete)
 			{
 				e.Handled = true;
-				this.DeleteSelectedImages();
+				DeleteSelectedImages();
 			}
 		}
 
 		/// <summary>Permanently deletes the selected output frame files after confirmation; files that could not be deleted are reported together at the end.</summary>
 		private void DeleteSelectedImages()
 		{
-			if (this.lstImages.SelectedItems.Count == 0)
+			if (lstImages.SelectedItems.Count == 0)
 			{
 				MessageBox.Show(this, "Select one or more images in the list first.", "Delete images", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			int count = this.lstImages.SelectedItems.Count;
+			int count = lstImages.SelectedItems.Count;
 			string question = (count == 1)
-				? "Permanently delete '" + this.lstImages.SelectedItems[0].Text + "'?"
+				? "Permanently delete '" + lstImages.SelectedItems[0].Text + "'?"
 				: "Permanently delete these " + count.ToString(CultureInfo.InvariantCulture) + " images?";
 			if (MessageBox.Show(this, question, "Delete images", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation) != DialogResult.Yes)
 			{
 				return;
 			}
 			List<string> errors = new List<string>();
-			foreach (ListViewItem item in this.lstImages.SelectedItems)
+			foreach (ListViewItem item in lstImages.SelectedItems)
 			{
 				string path = (string)item.Tag;
 				try
@@ -512,18 +519,18 @@ namespace _2D_wave_sim_V01
 					errors.Add(item.Text + ": " + ex.Message);
 				}
 			}
-			this.RefreshOutputFileLists();
-			this.ShowDeleteErrorsIfAny(errors, "Delete images");
+			RefreshOutputFileLists();
+			ShowDeleteErrorsIfAny(errors, "Delete images");
 		}
 
 		/// <summary>Copies the single selected output frame to the clipboard as a bitmap (the clipboard takes its own copy, so the loaded bitmap is disposed immediately).</summary>
 		private void btnCopyToClipboard_Click(object sender, EventArgs e)
 		{
-			if (this.lstImages.SelectedItems.Count != 1)
+			if (lstImages.SelectedItems.Count != 1)
 			{
 				return;
 			}
-			string path = this.lstImages.SelectedItems[0].Tag as string;
+			string path = lstImages.SelectedItems[0].Tag as string;
 			if (string.IsNullOrEmpty(path) || !File.Exists(path))
 			{
 				return;
@@ -534,7 +541,7 @@ namespace _2D_wave_sim_V01
 				{
 					Clipboard.SetImage(bitmap);
 				}
-				this.ToolStripStatusLabel1.Text = "Copied '" + Path.GetFileName(path) + "' to the clipboard.";
+				ToolStripStatusLabel1.Text = "Copied '" + Path.GetFileName(path) + "' to the clipboard.";
 			}
 			catch (Exception ex)
 			{
@@ -545,13 +552,13 @@ namespace _2D_wave_sim_V01
 		/// <summary>Enables "Copy to clipboard" only when exactly one output frame is selected.</summary>
 		private void UpdateCopyToClipboardButton()
 		{
-			this.btnCopyToClipboard.Enabled = this.lstImages.SelectedItems.Count == 1;
+			btnCopyToClipboard.Enabled = lstImages.SelectedItems.Count == 1;
 		}
 
 		/// <summary>Opens the selected project's output_frames folder in Explorer (icon view; the folder is created if missing).</summary>
 		private void btnOpenImageFolder2_Click(object sender, EventArgs e)
 		{
-			string folder = this.SelectedOutputProjectFolder();
+			string folder = SelectedOutputProjectFolder();
 			if (folder.Length == 0)
 			{
 				MessageBox.Show(this, "Select a project in the list first.", "Open image folder", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
@@ -559,7 +566,7 @@ namespace _2D_wave_sim_V01
 			}
 			try
 			{
-				this.OpenFolderInExplorer(Path.Combine(folder, ProjectStore.OutputFramesFolderName), 1);
+				OpenFolderInExplorer(Path.Combine(folder, ProjectStore.OutputFramesFolderName), FVM_ICON);
 			}
 			catch (Exception ex)
 			{
@@ -570,7 +577,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>Deletes the selected videos (see <see cref="DeleteSelectedVideos"/>).</summary>
 		private void btnDeleteVideos_Click(object sender, EventArgs e)
 		{
-			this.DeleteSelectedVideos();
+			DeleteSelectedVideos();
 		}
 
 		/// <summary>Pressing Delete in the video list deletes the selected videos.</summary>
@@ -579,28 +586,28 @@ namespace _2D_wave_sim_V01
 			if (e.KeyCode == Keys.Delete)
 			{
 				e.Handled = true;
-				this.DeleteSelectedVideos();
+				DeleteSelectedVideos();
 			}
 		}
 
 		/// <summary>Permanently deletes the selected video files after confirmation; files that could not be deleted are reported together at the end.</summary>
 		private void DeleteSelectedVideos()
 		{
-			if (this.lstVideo.SelectedItems.Count == 0)
+			if (lstVideo.SelectedItems.Count == 0)
 			{
 				MessageBox.Show(this, "Select one or more videos in the list first.", "Delete videos", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			int count = this.lstVideo.SelectedItems.Count;
+			int count = lstVideo.SelectedItems.Count;
 			string question = (count == 1)
-				? "Permanently delete '" + this.lstVideo.SelectedItems[0].Text + "'?"
+				? "Permanently delete '" + lstVideo.SelectedItems[0].Text + "'?"
 				: "Permanently delete these " + count.ToString(CultureInfo.InvariantCulture) + " videos?";
 			if (MessageBox.Show(this, question, "Delete videos", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation) != DialogResult.Yes)
 			{
 				return;
 			}
 			List<string> errors = new List<string>();
-			foreach (ListViewItem item in this.lstVideo.SelectedItems)
+			foreach (ListViewItem item in lstVideo.SelectedItems)
 			{
 				string path = (string)item.Tag;
 				try
@@ -612,27 +619,27 @@ namespace _2D_wave_sim_V01
 					errors.Add(item.Text + ": " + ex.Message);
 				}
 			}
-			this.RefreshOutputFileLists();
-			this.ShowDeleteErrorsIfAny(errors, "Delete videos");
+			RefreshOutputFileLists();
+			ShowDeleteErrorsIfAny(errors, "Delete videos");
 		}
 
 		/// <summary>Opens the first selected video in the system's default player.</summary>
 		private void btnViewVIdeoInPlayer2_Click(object sender, EventArgs e)
 		{
-			if (this.lstVideo.SelectedItems.Count == 0)
+			if (lstVideo.SelectedItems.Count == 0)
 			{
 				MessageBox.Show(this, "Select a video in the list first.", "View in player", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			this.OpenVideo((string)this.lstVideo.SelectedItems[0].Tag);
+			OpenVideo((string)lstVideo.SelectedItems[0].Tag);
 		}
 
 		/// <summary>Double-clicking a video opens it in the system's default player.</summary>
 		private void lstVideo_DoubleClick(object sender, EventArgs e)
 		{
-			if (this.lstVideo.SelectedItems.Count > 0)
+			if (lstVideo.SelectedItems.Count > 0)
 			{
-				this.OpenVideo((string)this.lstVideo.SelectedItems[0].Tag);
+				OpenVideo((string)lstVideo.SelectedItems[0].Tag);
 			}
 		}
 
@@ -644,15 +651,15 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void btnRenameVideo_Click(object sender, EventArgs e)
 		{
-			if (this.lstVideo.SelectedItems.Count != 1)
+			if (lstVideo.SelectedItems.Count != 1)
 			{
 				MessageBox.Show(this, "Select a single video in the list first.", "Rename video", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			string oldPath = (string)this.lstVideo.SelectedItems[0].Tag;
+			string oldPath = (string)lstVideo.SelectedItems[0].Tag;
 			string fileName = Path.GetFileName(oldPath);
 			string newName = fileName;
-			if (!this.PromptForText("Rename video", "New name for '" + fileName + "':", fileName, ref newName))
+			if (!PromptForText("Rename video", "New name for '" + fileName + "':", fileName, ref newName))
 			{
 				return;
 			}
@@ -675,7 +682,7 @@ namespace _2D_wave_sim_V01
 			try
 			{
 				File.Move(oldPath, newPath);
-				this.RefreshOutputFileLists();
+				RefreshOutputFileLists();
 			}
 			catch (Exception ex)
 			{
@@ -686,7 +693,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>Opens the selected project's output_video folder in Explorer (details view; the folder is created if missing).</summary>
 		private void btnOpenVIdeoFolder2_Click(object sender, EventArgs e)
 		{
-			string folder = this.SelectedOutputProjectFolder();
+			string folder = SelectedOutputProjectFolder();
 			if (folder.Length == 0)
 			{
 				MessageBox.Show(this, "Select a project in the list first.", "Open video folder", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
@@ -694,7 +701,7 @@ namespace _2D_wave_sim_V01
 			}
 			try
 			{
-				this.OpenFolderInExplorer(Path.Combine(folder, ProjectStore.OutputVideoFolderName), 4);
+				OpenFolderInExplorer(Path.Combine(folder, ProjectStore.OutputVideoFolderName), FVM_DETAILS);
 			}
 			catch (Exception ex)
 			{
@@ -705,13 +712,13 @@ namespace _2D_wave_sim_V01
 		/// <summary>Copies the previewed still image into the Sources and Probes tab preview boxes.</summary>
 		private void btnShareWithEditors_Click(object sender, EventArgs e)
 		{
-			this.CopyPreviewToTabs(this._outputPreviewPic);
+			CopyPreviewToTabs(_outputPreviewPic);
 		}
 
 		/// <summary>Enables "Share with editors" only while the preview shows a still image (not a video thumbnail).</summary>
 		private void UpdateShareWithEditorsButton()
 		{
-			this.btnShareWithEditors.Enabled = !this._outputPreviewIsVideo && this._outputPreviewPic != null && this._outputPreviewPic.Image != null;
+			btnShareWithEditors.Enabled = !_outputPreviewIsVideo && _outputPreviewPic != null && _outputPreviewPic.Image != null;
 		}
 
 		/// <summary>Shows one message box listing <paramref name="errors"/> (one per line) under <paramref name="title"/>; does nothing for an empty list.</summary>
@@ -722,6 +729,15 @@ namespace _2D_wave_sim_V01
 				MessageBox.Show(this, "Some files could not be deleted:\r\n\r\n" + string.Join("\r\n", errors), title, MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
 			}
 		}
+
+		// ---- the video preview thumbnail, via the Windows shell (no video codec of our own)
+		//
+		// Windows shell thumbnail interop (IShellItemImageFactory, declared with NativeSize and ThumbnailOptions in
+		// Form1.cs) - plain P/Invoke/COM interop against shell32.dll and gdi32.dll, no NuGet package or project
+		// reference needed, but genuine COM interop nonetheless, which could not be exercised on an actual Windows
+		// machine while writing it. GetShellThumbnail is written so a wrong detail here surfaces as "no thumbnail
+		// for this file" (via the try/catch in lstVideo_SelectedIndexChanged) rather than a crash - if the preview
+		// comes out consistently missing for videos, this is the place to revisit.
 
 		/// <summary>
 		/// shell32: creates the shell item for a file system path and returns the interface

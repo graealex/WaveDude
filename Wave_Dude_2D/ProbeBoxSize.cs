@@ -9,14 +9,14 @@ namespace _2D_wave_sim_V01
 	public enum ProbeBoxSize
 	{
 		/// <summary>200 x 100 canvas pixels.</summary>
-		Tiny,
+		Tiny = 0,
 		/// <summary>300 x 150 canvas pixels.</summary>
-		Small,
+		Small = 1,
 		/// <summary>400 x 200 canvas pixels (default).</summary>
-		Medium,
+		Medium = 2,
 		/// <summary>500 x 250 canvas pixels.</summary>
-		Large,
+		Large = 3,
 		/// <summary>700 x 350 canvas pixels.</summary>
-		ExtraLarge
+		ExtraLarge = 4
 	}
 }

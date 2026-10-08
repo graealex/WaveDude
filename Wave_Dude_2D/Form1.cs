@@ -27,47 +27,47 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public Form1()
 		{
-			base.Load += this.Form1_Load;
-			base.FormClosed += this.Form1_FormClosed;
-			base.FormClosing += this.Form1_FormClosing;
-			this._schemes = new List<ColorScheme>();
-			this._selectedStop = -1;
-			this._thumbs = new ImageList();
-			this._projectSortColumn = 1;
-			this._projectSortAscending = false;
-			this._outputProjectSortColumn = 1;
-			this._outputProjectSortAscending = false;
-			this._schemeSortColumn = 2;
-			this._schemeSortAscending = true;
-			this._sceneSortColumn = 1;
-			this._sceneSortAscending = false;
-			this._imageSortColumn = 1;
-			this._imageSortAscending = false;
-			this._videoSortColumn = 1;
-			this._videoSortAscending = false;
-			this._thumbBitmaps = new List<Bitmap>();
-			this._settings = new AppSettings();
-			this._rootBlinkTimer = new global::System.Windows.Forms.Timer
+			base.Load += Form1_Load;
+			base.FormClosed += Form1_FormClosed;
+			base.FormClosing += Form1_FormClosing;
+			_schemes = new List<ColorScheme>();
+			_selectedStop = -1;
+			_thumbs = new ImageList();
+			_projectSortColumn = 1;
+			_projectSortAscending = false;
+			_outputProjectSortColumn = 1;
+			_outputProjectSortAscending = false;
+			_schemeSortColumn = 2;
+			_schemeSortAscending = true;
+			_sceneSortColumn = 1;
+			_sceneSortAscending = false;
+			_imageSortColumn = 1;
+			_imageSortAscending = false;
+			_videoSortColumn = 1;
+			_videoSortAscending = false;
+			_thumbBitmaps = new List<Bitmap>();
+			_settings = new AppSettings();
+			_rootBlinkTimer = new global::System.Windows.Forms.Timer
 			{
 				Interval = 700
 			};
-			this._rootBlinkTimer.Tick += this.RootBlinkTimer_Tick;
-			this._scene = new SceneSettings();
-			this._sceneTip = new ToolTip();
-			this._simulation = new SimulationSettings();
-			this._simStatus = "";
-			this._fieldVideoFile = "";
-			this._intensityVideoFile = "";
-			this._runInfo = "";
-			this._progressText = "";
-			this._probes = Form1.NewProbeList();
-			this._probeTraces = new List<ProbeTrace>();
-			this._sources = new List<SourceSettings>();
-			this._currentSourceIndex = -1;
-			this._editing = new SourceSettings();
-			this._pickSourceButtonText = "Pick";
-			this._sourceRandom = new Random();
-			this.InitializeComponent();
+			_rootBlinkTimer.Tick += RootBlinkTimer_Tick;
+			_scene = new SceneSettings();
+			_sceneTip = new ToolTip();
+			_simulation = new SimulationSettings();
+			_simStatus = "";
+			_fieldVideoFile = "";
+			_intensityVideoFile = "";
+			_runInfo = "";
+			_progressText = "";
+			_probes = Form1.NewProbeList();
+			_probeTraces = new List<ProbeTrace>();
+			_sources = new List<SourceSettings>();
+			_currentSourceIndex = -1;
+			_editing = new SourceSettings();
+			_pickSourceButtonText = "Pick";
+			_sourceRandom = new Random();
+			InitializeComponent();
 		}
 
 		/// <summary>
@@ -81,64 +81,84 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void Form1_Load(object sender, EventArgs e)
 		{
-			this._stopButtons = new Button[] { this.btnColor1, this.btnCOlor2, this.btnColor3, this.btnColor4, this.btnColor5, this.btnColor6, this.btnColor7, this.btnColor8, this.btnColor9 };
-			Debug.Assert(this._stopButtons.Length == 9, "The number of Color buttons must equal ColorScheme.StopCount.");
-			foreach (Button button in this._stopButtons)
+			// one button per stop, in scale order (Color 1 = first entry ... last button = last entry)
+			_stopButtons = new Button[] { btnColor1, btnCOlor2, btnColor3, btnColor4, btnColor5, btnColor6, btnColor7, btnColor8, btnColor9 };
+			Debug.Assert(_stopButtons.Length == ColorScheme.StopCount, "The number of Color buttons must equal ColorScheme.StopCount.");
+			foreach (Button button in _stopButtons)
 			{
 				button.UseVisualStyleBackColor = false;
 				button.FlatStyle = FlatStyle.Flat;
 				button.FlatAppearance.BorderSize = 1;
 				button.FlatAppearance.BorderColor = Color.Black;
 			}
-			this._thumbs.ImageSize = new Size(120, 16);
-			this._thumbs.ColorDepth = ColorDepth.Depth32Bit;
-			this.ListView1.View = View.Details;
-			this.ListView1.FullRowSelect = true;
-			this.ListView1.MultiSelect = false;
-			this.ListView1.HideSelection = false;
-			this.ListView1.HeaderStyle = ColumnHeaderStyle.Clickable;
-			this.ListView1.SmallImageList = this._thumbs;
-			this.ListView1.Columns.Clear();
-			this.ListView1.Columns.Add("Scheme", 250);
-			this.ListView1.Columns.Add("Kind", 55);
-			this.ListView1.Columns.Add("Type", 62);
-			this.UpdateSchemeListSortHeaders();
-			this.pnlScheme.BorderStyle = BorderStyle.FixedSingle;
-			this.Panel2.BorderStyle = BorderStyle.FixedSingle;
-			this._picker = new ColorPickerControl();
-			this._picker.Dock = DockStyle.Fill;
-			this.Panel2.Controls.Add(this._picker);
-			this._picker.ColorChanged += this.Picker_ColorChanged;
-			this.txtCurrentColorScheme.ReadOnly = true;
-			this.tabMainFunctions.DrawMode = TabDrawMode.OwnerDrawFixed;
-			this.UpdateProjectListSortHeaders();
-			this.txtSchemeFolder.Text = ColorSchemeStore.FindDefaultFolder();
-			if (Directory.Exists(this.txtSchemeFolder.Text))
+			// scheme list: thumbnail + name, grouped by category
+			_thumbs.ImageSize = new Size(ThumbWidth, ThumbHeight);
+			_thumbs.ColorDepth = ColorDepth.Depth32Bit;
+			ListView1.View = View.Details;
+			ListView1.FullRowSelect = true;
+			ListView1.MultiSelect = false;
+			ListView1.HideSelection = false;
+			ListView1.HeaderStyle = ColumnHeaderStyle.Clickable;
+			ListView1.SmallImageList = _thumbs;
+			ListView1.Columns.Clear();
+			ListView1.Columns.Add("Scheme", 250);
+			ListView1.Columns.Add("Kind", 55);
+			ListView1.Columns.Add("Type", 62);
+			UpdateSchemeListSortHeaders();
+			pnlScheme.BorderStyle = BorderStyle.FixedSingle;
+			Panel2.BorderStyle = BorderStyle.FixedSingle;
+			_picker = new ColorPickerControl();
+			_picker.Dock = DockStyle.Fill;
+			Panel2.Controls.Add(_picker);
+			_picker.ColorChanged += Picker_ColorChanged;
+			txtCurrentColorScheme.ReadOnly = true;
+			// tabMainFunctions: owner-drawn only so a disabled tab's own label can be shown in a lighter gray
+			// (WinForms does not do this by itself - a disabled TabPage still draws its label at full strength) -
+			// see tabMainFunctions_DrawItem.
+			tabMainFunctions.DrawMode = TabDrawMode.OwnerDrawFixed;
+			// lstAllProjects (Configuration tab project list): sortable by clicking colProjectName/colLastEdit, see
+			// lstAllProjects_ColumnClick. Show the initial sort direction in the header the same way a click would.
+			UpdateProjectListSortHeaders();
+			// the program's own scheme folder (ColorSchemeList in the project, or next to the exe when deployed)
+			txtSchemeFolder.Text = ColorSchemeStore.FindDefaultFolder();
+			if (Directory.Exists(txtSchemeFolder.Text))
 			{
-				this.LoadSchemeList();
+				LoadSchemeList();
 			}
-			this.RefreshEditorState();
-			this.lblInfo.ForeColor = Color.Blue;
-			this.lblInfo.Cursor = Cursors.Hand;
-			this.InitializeSceneControls();
-			this.InitializeSimulationControls();
-			this.InitializeProbeControls();
-			this.InitializeSourceControls();
-			// The designer places btnPickRoot inside grpProjects, but UpdateProjectAccess disables
-			// that group while no root is chosen - which is exactly when the button is needed.
-			// Move it to the tab page at the same screen position so it stays enabled.
-			Point location = this.grpProjects.Location;
-			location.Offset(this.btnPickRoot.Location);
-			this.grpProjects.Controls.Remove(this.btnPickRoot);
-			this.tabConfiguration.Controls.Add(this.btnPickRoot);
-			this.btnPickRoot.Location = location;
-			this.btnPickRoot.BringToFront();
-			this.InitializeProject();
-			this.InitializeOutputsTab();
-			this.HookNumericUpDownEnterKey(this);
+			RefreshEditorState();
+			// lblInfo (Settings tab): a clickable "hyperlink" style label - see lblInfo_Click for what it shows
+			lblInfo.ForeColor = Color.Blue;
+			lblInfo.Cursor = Cursors.Hand;
+			InitializeSceneControls();
+			InitializeSimulationControls();
+			InitializeProbeControls();
+			InitializeSourceControls();
+			// btnPickRoot must stay clickable even when no project root is known yet (that is the one situation it
+			// exists for), but the Designer put it inside grpProjects, and WinForms disables an enabled child along
+			// with a disabled parent - grpProjects.Enabled = false (UpdateProjectAccess, no root) would silently
+			// swallow its clicks right when they matter most. Move it onto tabConfiguration itself, in the same
+			// screen position, so it is never caught by that.
+			Point rootButtonSpot = grpProjects.Location;
+			rootButtonSpot.Offset(btnPickRoot.Location);
+			grpProjects.Controls.Remove(btnPickRoot);
+			tabConfiguration.Controls.Add(btnPickRoot);
+			btnPickRoot.Location = rootButtonSpot;
+			btnPickRoot.BringToFront();
+			InitializeProject();
+			InitializeOutputsTab();
+			// Enter in a NumericUpDown's edit box otherwise just beeps (Windows beeps on an unhandled Enter
+			// keystroke) and leaves the typed value sitting there uncommitted - HookNumericUpDownEnterKey wires
+			// every NumericUpDown on the form, wherever it lives, to NumericUpDown_KeyDown instead.
+			HookNumericUpDownEnterKey(this);
 		}
 
-		/// <summary>Recursively attaches <see cref="NumericUpDown_KeyDown"/> to every <see cref="NumericUpDown"/> below <paramref name="root"/>.</summary>
+		/// <summary>
+		/// Recursively attaches <see cref="NumericUpDown_KeyDown"/> to every <see cref="NumericUpDown"/> below
+		/// <paramref name="root"/> (recursing into GroupBox/TabPage/Panel/... containers), so Enter commits the
+		/// typed value and moves on instead of beeping. Called once, from <see cref="Form1_Load"/>, on the whole
+		/// form - a plain loop over Controls rather than a fixed list, so it also covers any NumericUpDown added
+		/// later without needing to come back and wire it up by hand.
+		/// </summary>
 		private void HookNumericUpDownEnterKey(Control root)
 		{
 			foreach (Control control in root.Controls)
@@ -146,16 +166,21 @@ namespace _2D_wave_sim_V01
 				NumericUpDown numericUpDown = control as NumericUpDown;
 				if (numericUpDown != null)
 				{
-					numericUpDown.KeyDown += this.NumericUpDown_KeyDown;
+					numericUpDown.KeyDown += NumericUpDown_KeyDown;
 				}
 				if (control.HasChildren)
 				{
-					this.HookNumericUpDownEnterKey(control);
+					HookNumericUpDownEnterKey(control);
 				}
 			}
 		}
 
-		/// <summary>Enter in a spinner commits its value by moving focus to the next control (and suppresses the beep).</summary>
+		/// <summary>
+		/// Enter in a NumericUpDown: stops the beep (<c>e.SuppressKeyPress</c> - Enter is not a character its edit
+		/// box accepts, which is what Windows was beeping about) and moves focus on to the next control, the same
+		/// as Tab would - which also commits whatever was typed, since a NumericUpDown parses/clamps its text on
+		/// losing focus regardless of how focus was lost.
+		/// </summary>
 		private void NumericUpDown_KeyDown(object sender, KeyEventArgs e)
 		{
 			if (e.KeyCode != Keys.Return)
@@ -174,15 +199,15 @@ namespace _2D_wave_sim_V01
 		/// <summary>Disposes every bitmap the form owns: preview frames, scheme thumbnails, the scene image, the empty-canvas placeholder and the output preview.</summary>
 		private void Form1_FormClosed(object sender, FormClosedEventArgs e)
 		{
-			this.ClearPreviews();
-			foreach (Bitmap bitmap in this._thumbBitmaps)
+			ClearPreviews();
+			foreach (Bitmap bitmap in _thumbBitmaps)
 			{
 				bitmap.Dispose();
 			}
-			this._thumbBitmaps.Clear();
-			this.ReplaceSceneImage(null);
-			this.DisposeEmptyPreview();
-			this.ClearOutputPreview();
+			_thumbBitmaps.Clear();
+			ReplaceSceneImage(null);
+			DisposeEmptyPreview();
+			ClearOutputPreview();
 		}
 
 		/// <summary>
@@ -192,22 +217,23 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void Form1_FormClosing(object sender, FormClosingEventArgs e)
 		{
-			if (!this.ConfirmSaveProject())
+			if (!ConfirmSaveProject())
 			{
 				e.Cancel = true;
 				return;
 			}
-			if (this._runner != null)
+			if (_runner != null)
 			{
 				if (MessageBox.Show(this, "A simulation is running. Stop it and close the program?", "Simulation", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
 				{
 					e.Cancel = true;
 					return;
 				}
-				this._runner.Cancel();
-				this._runner.WaitForExit(15000);
+				// the runner closes the video files before it ends
+				_runner.Cancel();
+				_runner.WaitForExit(15000);
 			}
-			if (this._dirty)
+			if (_dirty)
 			{
 				if (MessageBox.Show(this, "The current color scheme has unsaved changes. Close anyway?", "Unsaved changes", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation) != DialogResult.Yes)
 				{
@@ -217,52 +243,72 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Enables the project list and output tab only when a project root is chosen (and blinks
-		/// <c>btnPickRoot</c> while none is), and the editing tabs, buttons and groups only when
-		/// a project is open. Repaints the tab headers so disabled tabs grey out.
+		/// Enables/disables everything that depends on a project root being chosen and/or an actual, named
+		/// project being the current one. <c>grpProjects</c> and the Outputs tab (its own project list, not
+		/// necessarily the one that is open) only need a root. The scene/simulation groups, the
+		/// Sources/Probes/Viewer tabs, most of "Quick navigate to" (all but <c>btnGotoConfiguration</c>, which
+		/// jumps to the always-available Configuration tab), "Simulation Control", "Share with source / probe"
+		/// and Save all need a real project. The Configuration tab (where the root and the project list
+		/// themselves live) and the color scheme tab manage the application's own settings, not a project's,
+		/// so they are never restricted. Disabling a TabPage here is not enough by itself to keep the user out
+		/// of it - see <see cref="tabMainFunctions_Selecting"/>, which refuses to switch to a disabled tab at
+		/// all instead of just showing its (disabled) contents. Blinks <c>btnPickRoot</c> while no root is chosen.
 		/// </summary>
 		private void UpdateProjectAccess()
 		{
-			bool hasRoot = this._settings.ProjectRoot.Length > 0;
-			bool hasProject = this._project != null;
-			this.grpProjects.Enabled = hasRoot;
-			this.tabOutput.Enabled = hasRoot;
+			bool hasRoot = _settings.ProjectRoot.Length > 0;
+			bool hasProject = _project != null;
+			grpProjects.Enabled = hasRoot;
+			tabOutput.Enabled = hasRoot;
+			// btnPickRoot (moved onto tabConfiguration itself in Form1_Load, so grpProjects.Enabled above cannot
+			// disable it) blinks light blue, slowly, for exactly the situation it exists for: no project root known
+			// yet - a fresh install on another computer, before AppSettings.ProjectRoot is set and everything else
+			// on screen is still disabled.
 			if (hasRoot)
 			{
-				this._rootBlinkTimer.Stop();
-				this._rootBlinkOn = false;
-				this.btnPickRoot.UseVisualStyleBackColor = true;
+				_rootBlinkTimer.Stop();
+				_rootBlinkOn = false;
+				btnPickRoot.UseVisualStyleBackColor = true;
 			}
 			else
 			{
-				this._rootBlinkTimer.Start();
+				_rootBlinkTimer.Start();
 			}
-			this.grpSceneProperties.Enabled = hasProject;
-			this.grpSimulationSettings.Enabled = hasProject;
-			this.tabSourceList.Enabled = hasProject;
-			this.tabProbeList.Enabled = hasProject;
-			this.tabViewer.Enabled = hasProject;
-			this.btnGotoPreview.Enabled = hasProject;
-			this.btnGotoProbes.Enabled = hasProject;
-			this.btnGotoSources.Enabled = hasProject;
-			this.grpSimulationControlButtons.Enabled = hasProject;
-			this.grpShareImage.Enabled = hasProject;
-			this.btnSaveConfiguration.Enabled = hasProject;
-			this.btnSaveConfiguration2.Enabled = hasProject;
-			this.btnSaveAs.Enabled = hasProject;
-			this.btnDescription.Enabled = hasProject;
-			this.tabMainFunctions.Invalidate();
+			grpSceneProperties.Enabled = hasProject;
+			grpSimulationSettings.Enabled = hasProject;
+			tabSourceList.Enabled = hasProject;
+			tabProbeList.Enabled = hasProject;
+			tabViewer.Enabled = hasProject;
+			// grpNavigateTabs itself stays enabled: btnGotoConfiguration jumps to the always-available Configuration
+			// tab, so only the other three "quick navigate" buttons need a real project.
+			btnGotoPreview.Enabled = hasProject;
+			btnGotoProbes.Enabled = hasProject;
+			btnGotoSources.Enabled = hasProject;
+			grpSimulationControlButtons.Enabled = hasProject;
+			grpShareImage.Enabled = hasProject;
+			btnSaveConfiguration.Enabled = hasProject;
+			btnSaveConfiguration2.Enabled = hasProject;
+			btnSaveAs.Enabled = hasProject;
+			btnDescription.Enabled = hasProject;
+			// Changing a TabPage's Enabled does not by itself repaint the tab strip, so a label's color
+			// (tabMainFunctions_DrawItem) would otherwise stay stuck at its old, disabled gray until something
+			// unrelated forced a redraw (resizing the window, switching tabs, ...) - force it here instead.
+			tabMainFunctions.Invalidate();
 		}
 
 		/// <summary>Every 700 ms while no root is chosen: toggles <c>btnPickRoot</c> between light blue and the normal button colour.</summary>
 		private void RootBlinkTimer_Tick(object sender, EventArgs e)
 		{
-			this._rootBlinkOn = !this._rootBlinkOn;
-			this.btnPickRoot.UseVisualStyleBackColor = false;
-			this.btnPickRoot.BackColor = (this._rootBlinkOn ? Color.LightBlue : SystemColors.Control);
+			_rootBlinkOn = !_rootBlinkOn;
+			btnPickRoot.UseVisualStyleBackColor = false;
+			btnPickRoot.BackColor = (_rootBlinkOn ? Color.LightBlue : SystemColors.Control);
 		}
 
-		/// <summary>Refuses to switch to a tab that <see cref="UpdateProjectAccess"/> disabled and tells the user to open a project first.</summary>
+		/// <summary>
+		/// Refuses to switch to a tab that <see cref="UpdateProjectAccess"/> disabled and tells the user to open a
+		/// project first. A disabled TabPage still lets itself be clicked into and shows its (disabled) contents
+		/// unless refused here - WinForms' TabControl has no built-in notion of a locked tab.
+		/// </summary>
 		private void tabMainFunctions_Selecting(object sender, TabControlCancelEventArgs e)
 		{
 			if (!e.TabPage.Enabled)
@@ -272,45 +318,58 @@ namespace _2D_wave_sim_V01
 			}
 		}
 
-		/// <summary>Owner-draws a tab header: window colour for the selected tab, control colour otherwise, silver text when the page is disabled.</summary>
+		/// <summary>
+		/// Owner-draws a tab header: window colour for the selected tab, control colour otherwise, silver text when
+		/// the page is disabled. Needed only so a disabled tab's label can be shown in a lighter gray than an
+		/// enabled one's (<see cref="Form1_Load"/> sets <c>tabMainFunctions.DrawMode</c> to OwnerDrawFixed for this).
+		/// </summary>
 		private void tabMainFunctions_DrawItem(object sender, DrawItemEventArgs e)
 		{
-			TabPage tabPage = this.tabMainFunctions.TabPages[e.Index];
-			Rectangle tabRect = this.tabMainFunctions.GetTabRect(e.Index);
-			Color backColor = ((e.Index == this.tabMainFunctions.SelectedIndex) ? SystemColors.Window : SystemColors.Control);
+			TabPage tabPage = tabMainFunctions.TabPages[e.Index];
+			Rectangle tabRect = tabMainFunctions.GetTabRect(e.Index);
+			// the selected tab a shade lighter than the rest, so which one is open is still visible without the
+			// native visual style this drawing replaces
+			Color backColor = ((e.Index == tabMainFunctions.SelectedIndex) ? SystemColors.Window : SystemColors.Control);
 			using (SolidBrush brush = new SolidBrush(backColor))
 			{
 				e.Graphics.FillRectangle(brush, tabRect);
 			}
 			Color textColor = (tabPage.Enabled ? SystemColors.ControlText : Color.Silver);
 			TextFormatFlags flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter;
-			TextRenderer.DrawText(e.Graphics, tabPage.Text, this.tabMainFunctions.Font, tabRect, textColor, flags);
+			TextRenderer.DrawText(e.Graphics, tabPage.Text, tabMainFunctions.Font, tabRect, textColor, flags);
 		}
 
 		/// <summary>
-		/// Replaces the placeholder <see cref="_settings"/> with the values read from disk, shows
-		/// the stored project root, and refreshes access state, title and project list. No
-		/// project is opened automatically.
+		/// Startup: replaces the placeholder <see cref="_settings"/> with the values read from disk, shows
+		/// the stored project root, and refreshes access state, title and project list. Nothing from any
+		/// previous project is filled into the form: only the chosen project root folder
+		/// (<see cref="AppSettings.ProjectRoot"/>) is restored, if one was already chosen on an earlier run -
+		/// everything that needs a root or a real project stays disabled until then (<see cref="UpdateProjectAccess"/>).
 		/// </summary>
 		private void InitializeProject()
 		{
-			this._settings = AppSettings.Load();
-			this.txtRootFolder.Text = this._settings.ProjectRoot;
-			this.txtProjectName.Text = "";
-			this.UpdateProjectAccess();
-			this.UpdateTitle();
-			this.RefreshProjectList();
+			_settings = AppSettings.Load();
+			txtRootFolder.Text = _settings.ProjectRoot;
+			txtProjectName.Text = "";
+			UpdateProjectAccess();
+			UpdateTitle();
+			RefreshProjectList();
 		}
 
-		/// <summary>File &gt; Open: asks for an existing project folder, offers to save the current project, then opens the chosen one.</summary>
+		/// <summary>
+		/// File &gt; Open: asks for an existing project folder (browse directly to the main folder of a project,
+		/// without going through the project list), offers to save the current project, then opens the chosen one.
+		/// Browsing for the project ROOT folder instead is <c>btnBrowseRoot</c> / File &gt; Choose project root /
+		/// double-clicking <c>txtRootFolder</c> - see <see cref="ChooseProjectRootToolStripMenuItem_Click"/>.
+		/// </summary>
 		private void OpenProject_Click(object sender, EventArgs e)
 		{
 			try
 			{
-				string folder = this.BrowseForFolder("Choose the main folder of the project (the folder that contains configuration.json)", this.txtRootFolder.Text.Trim(), false);
-				if (folder.Length > 0 && this.ConfirmSaveProject())
+				string folder = BrowseForFolder("Choose the main folder of the project (the folder that contains configuration.json)", txtRootFolder.Text.Trim(), false);
+				if (folder.Length > 0 && ConfirmSaveProject())
 				{
-					this.SetCurrentProject(ProjectStore.Open(folder));
+					SetCurrentProject(ProjectStore.Open(folder));
 				}
 			}
 			catch (Exception ex)
@@ -322,20 +381,26 @@ namespace _2D_wave_sim_V01
 		/// <summary>File &gt; Save and the "Save changes to project" button: saves the open project (see <see cref="SaveProject"/>).</summary>
 		private void SaveProject_Click(object sender, EventArgs e)
 		{
-			this.SaveProject();
+			SaveProject();
 		}
 
-		/// <summary>"Save as": asks for a new project name and saves the current settings as that project in the current root folder.</summary>
+		/// <summary>
+		/// "Save as": a simple name prompt (<see cref="PromptForText"/>, the same small dialog <c>btnRenameProject</c>
+		/// uses), not a file dialog - the new project always goes into the current root folder (<c>txtRootFolder</c>),
+		/// never somewhere else, and there is no file extension to worry about (a project is just a folder, see
+		/// <see cref="ProjectStore"/>). Saving under a name that already exists in the root is not refused up front:
+		/// <see cref="SaveProjectTo"/> itself asks to overwrite in that case, same as plain Save would for an existing project.
+		/// </summary>
 		private void SaveAs_Click(object sender, EventArgs e)
 		{
-			string root = this.txtRootFolder.Text.Trim();
+			string root = txtRootFolder.Text.Trim();
 			if (root.Length == 0)
 			{
 				MessageBox.Show(this, "Enter a root folder first (double-click the box to browse).", "Save project as", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			string projectName = this.txtProjectName.Text.Trim();
-			if (!this.PromptForText("Save project as", "New project name (saved in the current root folder):", projectName, ref projectName))
+			string projectName = txtProjectName.Text.Trim();
+			if (!PromptForText("Save project as", "New project name (saved in the current root folder):", projectName, ref projectName))
 			{
 				return;
 			}
@@ -346,23 +411,29 @@ namespace _2D_wave_sim_V01
 				MessageBox.Show(this, error, "Save project as", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			this.SaveProjectTo(root, projectName);
+			SaveProjectTo(root, projectName);
 		}
 
-		/// <summary>Opens <see cref="frmDescription"/> for the open project and, on OK, writes the new description to disk at once (without touching <see cref="_projectDirty"/>).</summary>
+		/// <summary>
+		/// Opens <see cref="frmDescription"/> so the user can add/edit a free-form description of the open project,
+		/// stored in the project's own configuration.json (<see cref="ProjectConfig.Description"/>) - written to disk
+		/// at once on OK (without touching <see cref="_projectDirty"/>), the same as <c>btnRenameProject</c>'s rename
+		/// takes effect right away rather than waiting for "Save project". Only enabled while a real (saved) project
+		/// is open (<see cref="UpdateProjectAccess"/>) - a new, unsaved project has no configuration.json yet to hold it.
+		/// </summary>
 		private void btnDescription_Click(object sender, EventArgs e)
 		{
-			if (this._project == null)
+			if (_project == null)
 			{
 				return;
 			}
 			using (frmDescription dialog = new frmDescription())
 			{
-				dialog.DescriptionText = this._project.Config.Description;
+				dialog.DescriptionText = _project.Config.Description;
 				if (dialog.ShowDialog(this) == DialogResult.OK)
 				{
-					this._project.Config.Description = dialog.DescriptionText;
-					this._project.Save();
+					_project.Config.Description = dialog.DescriptionText;
+					_project.Save();
 				}
 			}
 		}
@@ -392,23 +463,26 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// File &gt; Choose project root (also the Browse/Pick root buttons and a double-click on the
-		/// root text box): asks for a folder, stores it in the user settings immediately and
-		/// refreshes the project list. The open project, if any, is left as it is.
+		/// File &gt; Choose project root, the <c>btnBrowseRoot</c> button, <c>btnPickRoot</c> (the blinking button that
+		/// is always reachable even with no root yet - see <see cref="Form1_Load"/>/<see cref="UpdateProjectAccess"/>)
+		/// and a double-click on the (read-only) root text box: all four let the user pick the folder that contains
+		/// the project folders (<c>txtRootFolder</c> just displays it - <see cref="AppSettings.ProjectRoot"/> is the
+		/// real, persisted value, restored again on the next start). Once a root is chosen, <c>grpProjects</c> and
+		/// the Outputs tab become usable and the project list is (re)populated. The open project, if any, is left as it is.
 		/// </summary>
 		private void ChooseProjectRootToolStripMenuItem_Click(object sender, EventArgs e)
 		{
-			string startFolder = ((this._settings.ProjectRoot.Length > 0) ? this._settings.ProjectRoot : this.txtRootFolder.Text.Trim());
-			string folder = this.BrowseForFolder("Choose the root folder that contains your project folders", startFolder, true);
+			string startFolder = ((_settings.ProjectRoot.Length > 0) ? _settings.ProjectRoot : txtRootFolder.Text.Trim());
+			string folder = BrowseForFolder("Choose the root folder that contains your project folders", startFolder, true);
 			if (folder.Length == 0)
 			{
 				return;
 			}
-			this._settings.ProjectRoot = folder;
-			this._settings.Save();
-			this.txtRootFolder.Text = folder;
-			this.UpdateProjectAccess();
-			this.RefreshProjectList();
+			_settings.ProjectRoot = folder;
+			_settings.Save();
+			txtRootFolder.Text = folder;
+			UpdateProjectAccess();
+			RefreshProjectList();
 		}
 
 		/// <summary>Clicking the "(Info)" label shows the explanation of 4th-order processing, dispersion and the c-value.</summary>
@@ -420,21 +494,22 @@ namespace _2D_wave_sim_V01
 		/// <summary>
 		/// File &gt; Set c-value: prompts for the wave speed (pixels per step), stores it in
 		/// <see cref="SimulationSettings.WaveSpeedC"/>, marks the project changed if it differs,
-		/// and refreshes the wavelength read-out on the Sources tab.
+		/// and refreshes the wavelength read-out on the Sources tab. c is only used to estimate a
+		/// source's wavelength (<c>lblLambdaIs</c> on the Sources tab).
 		/// </summary>
 		private void SetCValueToolStripMenuItem_Click(object sender, EventArgs e)
 		{
 			double cValue = 0.0;
-			if (!this.PromptForCValue(this._simulation.WaveSpeedC, ref cValue))
+			if (!PromptForCValue(_simulation.WaveSpeedC, ref cValue))
 			{
 				return;
 			}
-			if (cValue != this._simulation.WaveSpeedC)
+			if (cValue != _simulation.WaveSpeedC)
 			{
-				this._simulation.WaveSpeedC = cValue;
-				this.MarkProjectChanged();
+				_simulation.WaveSpeedC = cValue;
+				MarkProjectChanged();
 			}
-			this.UpdateLambdaLabel();
+			UpdateLambdaLabel();
 		}
 
 		/// <summary>
@@ -543,22 +618,22 @@ namespace _2D_wave_sim_V01
 		/// <returns>True when the project was written; false when validation failed, the user cancelled or saving failed.</returns>
 		private bool SaveProject()
 		{
-			string root = this.txtRootFolder.Text.Trim();
-			string projectName = this.txtProjectName.Text.Trim();
+			string root = txtRootFolder.Text.Trim();
+			string projectName = txtProjectName.Text.Trim();
 			if (root.Length == 0)
 			{
 				MessageBox.Show(this, "Enter a root folder first (double-click the box to browse).", "Save project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
-				this.txtRootFolder.Focus();
+				txtRootFolder.Focus();
 				return false;
 			}
 			string error = ProjectStore.ValidateName(projectName);
 			if (error.Length > 0)
 			{
 				MessageBox.Show(this, error, "Save project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
-				this.txtProjectName.Focus();
+				txtProjectName.Focus();
 				return false;
 			}
-			return this.SaveProjectTo(root, projectName);
+			return SaveProjectTo(root, projectName);
 		}
 
 		/// <summary>
@@ -576,7 +651,7 @@ namespace _2D_wave_sim_V01
 			{
 				string rootFolder = ProjectStore.NormalizeFolder(root);
 				string projectFolder = Path.Combine(rootFolder, projectName);
-				Project previous = this._project;
+				Project previous = _project;
 				Project target;
 				if (previous != null && string.Equals(projectFolder, previous.FolderPath, StringComparison.OrdinalIgnoreCase))
 				{
@@ -601,13 +676,13 @@ namespace _2D_wave_sim_V01
 					}
 					target = ProjectStore.Create(rootFolder, projectName);
 				}
-				this.PrepareSceneImageFor(target, previous);
-				this._scene.ToConfig(target.Config);
-				this._simulation.ToConfig(target.Config);
-				ProbeSettings.ListToConfig(this._probes, target.Config);
-				SourceSettings.ListToConfig(this._sources, target.Config);
+				PrepareSceneImageFor(target, previous);
+				_scene.ToConfig(target.Config);
+				_simulation.ToConfig(target.Config);
+				ProbeSettings.ListToConfig(_probes, target.Config);
+				SourceSettings.ListToConfig(_sources, target.Config);
 				target.Save();
-				this.SetCurrentProject(target);
+				SetCurrentProject(target);
 				return true;
 			}
 			catch (Exception ex)
@@ -622,22 +697,24 @@ namespace _2D_wave_sim_V01
 		/// into <paramref name="target"/>'s scene-image folder (unless it already lies inside the
 		/// target) and rewrites <see cref="SceneSettings.ImageFile"/> as a path stored relative to
 		/// the target. No-op when there is no scene image or the target is the previous project.
+		/// This is the same copy that <see cref="btnLOadSceneImage_Click"/> already does when a project
+		/// exists; this one catches an image that was picked before the (new) project was ever saved.
 		/// </summary>
 		/// <param name="target">The project about to be saved.</param>
 		/// <param name="previous">The project the image path is currently relative to; null for an unsaved project.</param>
 		private void PrepareSceneImageFor(Project target, Project previous)
 		{
-			if (this._scene.ImageFile.Length == 0 || object.ReferenceEquals(target, previous))
+			if (_scene.ImageFile.Length == 0 || object.ReferenceEquals(target, previous))
 			{
 				return;
 			}
 			string previousFolder = ((previous == null) ? "" : previous.FolderPath);
-			string imagePath = SceneSettings.ToFullPath(previousFolder, this._scene.ImageFile);
+			string imagePath = SceneSettings.ToFullPath(previousFolder, _scene.ImageFile);
 			if (File.Exists(imagePath) && !Form1.IsInsideFolder(imagePath, target.FolderPath))
 			{
 				imagePath = Form1.CopyIntoSceneImageFolder(target, imagePath);
 			}
-			this._scene.ImageFile = SceneSettings.ToStoredPath(target.FolderPath, imagePath);
+			_scene.ImageFile = SceneSettings.ToStoredPath(target.FolderPath, imagePath);
 		}
 
 		/// <summary>Case-insensitive test whether <paramref name="fullPath"/> lies below <paramref name="folder"/> (both resolved to full paths); false for an empty folder.</summary>
@@ -685,44 +762,56 @@ namespace _2D_wave_sim_V01
 		/// <returns>True when the caller may proceed (nothing to save, saved successfully, or "No"); false on Cancel or a failed save.</returns>
 		private bool ConfirmSaveProject()
 		{
-			if (this._project == null || !this._projectDirty)
+			// Nothing to save when no named project exists yet (a project only exists once it has been loaded from
+			// the list or created and named through btnNewProject's dialog) - there is no such thing as an
+			// "unsaved new project" to ask about any more.
+			if (_project == null || !_projectDirty)
 			{
 				return true;
 			}
-			DialogResult answer = MessageBox.Show(this, "There are unsaved changes in the project '" + this._project.Name + "'. Save them first?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+			DialogResult answer = MessageBox.Show(this, "There are unsaved changes in the project '" + _project.Name + "'. Save them first?", "Unsaved changes", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
 			if (answer == DialogResult.Yes)
 			{
-				return this.SaveProject();
+				return SaveProject();
 			}
 			return answer == DialogResult.No;
 		}
 
 		/// <summary>
-		/// Resets the editor to a fresh, unsaved project: new scene and simulation settings
+		/// Resets the in-memory project state to blank defaults: new scene and simulation settings
 		/// (keeping the damping-edge and object-source check boxes and the steps/decay spinners as
 		/// they are), no scene image, default probes, no sources, no video files, not dirty.
+		/// Does not touch <c>grpSceneProperties</c>/<c>grpSimulationSettings</c>/<c>grpProjects.Enabled</c> - a
+		/// caller that goes on to make a real, named project current (<see cref="SetCurrentProject"/>) re-enables
+		/// them there; a caller that ends up with no project at all (e.g. deleting the one that was open) should
+		/// instead disable them, since - per the startup design - there is no such thing as an editable "new
+		/// project" that does not exist on disk yet.
 		/// </summary>
 		private void StartNewProject()
 		{
-			this._project = null;
-			this._scene = new SceneSettings();
-			this._scene.DampingEdgeEnabled = this.chkDampingEdge.Checked;
-			this._scene.UseObjectSources = this.chkUseObjectSources.Checked;
-			this.ReplaceSceneImage(null);
-			this.txtProjectName.Text = "";
-			this.ShowSceneInControls();
-			this._simulation = new SimulationSettings();
-			this._simulation.Steps = Convert.ToInt32(this.numSimulationSteps.Value);
-			this._simulation.TimeDecayFactor = Convert.ToDouble(this.numTimeDecayFactor.Value);
-			this.ShowSimulationInControls();
-			this.ResetProbes();
-			this.ResetSources();
-			this._fieldVideoFile = "";
-			this._intensityVideoFile = "";
-			this.UpdateVideoButtons();
-			this._projectDirty = false;
-			this.UpdateTitle();
-			this.txtProjectName.Focus();
+			_project = null;
+			_scene = new SceneSettings();
+			// chkDampingEdge and chkUseObjectSources have no software-chosen default of their own (see their
+			// docs in SceneSettings) - a new project starts at whatever the controls' own Designer values are
+			_scene.DampingEdgeEnabled = chkDampingEdge.Checked;
+			_scene.UseObjectSources = chkUseObjectSources.Checked;
+			ReplaceSceneImage(null);
+			txtProjectName.Text = "";
+			ShowSceneInControls();
+			_simulation = new SimulationSettings();
+			// numSimulationSteps and numTimeDecayFactor have no software-chosen default of their own (see their
+			// docs in SimulationSettings) - a new project starts at whatever the controls' own Designer values are
+			_simulation.Steps = Convert.ToInt32(numSimulationSteps.Value);
+			_simulation.TimeDecayFactor = Convert.ToDouble(numTimeDecayFactor.Value);
+			ShowSimulationInControls();
+			ResetProbes();
+			ResetSources();
+			_fieldVideoFile = "";
+			_intensityVideoFile = "";
+			UpdateVideoButtons();
+			_projectDirty = false;
+			UpdateTitle();
+			txtProjectName.Focus();
 		}
 
 		/// <summary>
@@ -730,30 +819,39 @@ namespace _2D_wave_sim_V01
 		/// them in the user settings, clears the Sources/Probes background pictures when the
 		/// folder differs from the previous project, loads scene, simulation, probes and sources
 		/// from its configuration, clears the dirty flag and refreshes the project list.
+		/// Also called by <see cref="SaveProjectTo"/> for a plain "Save project" of the project that is already
+		/// open (target and the previous <see cref="_project"/> are then the same folder) - the preview-clearing
+		/// must only run when the project is actually changing, or every "Save configuration" would blank the
+		/// Sources/Probes tab's picture (see <see cref="ClearPreviewImage"/>) even though nothing about that
+		/// picture is out of date.
 		/// </summary>
 		private void SetCurrentProject(Project opened)
 		{
-			bool projectChanged = this._project == null || !string.Equals(this._project.FolderPath, opened.FolderPath, StringComparison.OrdinalIgnoreCase);
-			this._project = opened;
-			this.txtRootFolder.Text = opened.RootFolder;
-			this.txtProjectName.Text = opened.Name;
-			this.UpdateProjectAccess();
-			this._settings.LastRootFolder = opened.RootFolder;
-			this._settings.LastProjectName = opened.Name;
-			this._settings.Save();
+			bool projectChanged = _project == null || !string.Equals(_project.FolderPath, opened.FolderPath, StringComparison.OrdinalIgnoreCase);
+			_project = opened;
+			txtRootFolder.Text = opened.RootFolder;
+			txtProjectName.Text = opened.Name;
+			UpdateProjectAccess();
+			_settings.LastRootFolder = opened.RootFolder;
+			_settings.LastProjectName = opened.Name;
+			_settings.Save();
 			if (projectChanged)
 			{
-				this.ClearPreviewImage(this._picSource);
-				this.ClearPreviewImage(this._picProbe);
+				// a preview picture (Sources/Probes tab) loaded for the previous project has no relevance to this one -
+				// clear it so the tab shows this project's own scene image (or a blank placeholder) the next time it is
+				// visited, rather than a leftover picture from whatever was open before (AutoLoadSceneImageIfEmpty only
+				// fills a picture that is empty, so a stale one left behind would otherwise never be replaced)
+				ClearPreviewImage(_picSource);
+				ClearPreviewImage(_picProbe);
 			}
-			this.LoadSceneFromProject();
-			this._simulation = SimulationSettings.FromConfig(this._project.Config);
-			this.ShowSimulationInControls();
-			this.LoadProbesFromProject();
-			this.LoadSourcesFromProject();
-			this._projectDirty = false;
-			this.UpdateTitle();
-			this.RefreshProjectList();
+			LoadSceneFromProject();
+			_simulation = SimulationSettings.FromConfig(_project.Config);
+			ShowSimulationInControls();
+			LoadProbesFromProject();
+			LoadSourcesFromProject();
+			_projectDirty = false;
+			UpdateTitle();
+			RefreshProjectList();
 		}
 
 		/// <summary>Removes and disposes the image of <paramref name="pic"/>; tolerates a null box or no image.</summary>
@@ -775,25 +873,30 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void MarkProjectChanged()
 		{
-			if (this._loadingScene || this._loadingSim || this._loadingProbe || this._loadingSource)
+			if (_loadingScene || _loadingSim || _loadingProbe || _loadingSource)
 			{
 				return;
 			}
-			this._projectDirty = true;
-			this.UpdateTitle();
+			_projectDirty = true;
+			UpdateTitle();
 		}
 
 		/// <summary>Sets the window title to "2D wave simulation - name", with " *" when dirty and the run status appended while a simulation runs.</summary>
 		private void UpdateTitle()
 		{
-			string projectName = ((this._project == null) ? "(new project)" : this._project.Name);
-			this.Text = "2D wave simulation - " + projectName + (this._projectDirty ? " *" : "") + ((this._simStatus.Length > 0) ? ("   |   " + this._simStatus) : "");
+			string projectLabel = ((_project == null) ? "(new project)" : _project.Name);
+			Text = "2D wave simulation - " + projectLabel + (_projectDirty ? " *" : "") + ((_simStatus.Length > 0) ? ("   |   " + _simStatus) : "");
 		}
 
 		/// <summary>
-		/// Shows a hand-built modal dialog with a path text box, a "Browse..." button (a
-		/// <see cref="FolderBrowserDialog"/> rooted at My Computer) and OK/Cancel. OK is refused
-		/// for an empty path, and for a non-existent one unless <paramref name="allowNewFolder"/>.
+		/// Lets the user choose a folder: type or paste a full path directly into the box, or click "Browse..."
+		/// for the usual Windows tree picker (a <see cref="FolderBrowserDialog"/>) - rooted at "This PC" rather
+		/// than the Desktop, so every drive (C:\, D:\, a network drive, anywhere) is one click away instead of
+		/// buried under Desktop. This replaces a plain <see cref="FolderBrowserDialog"/> call, which on this
+		/// machine shows no address bar to type a path into and makes other drives awkward to reach from its
+		/// Desktop-rooted tree. OK is refused for an empty path, and for a non-existent one unless
+		/// <paramref name="allowNewFolder"/> (a new, not-yet-created one is then fine - the caller decides
+		/// whether/how to create it).
 		/// </summary>
 		/// <param name="description">Text shown above the path box and in the folder browser.</param>
 		/// <param name="startFolder">Initial contents of the path box.</param>
@@ -828,6 +931,8 @@ namespace _2D_wave_sim_V01
 					{
 						folderDialog.Description = description;
 						folderDialog.ShowNewFolderButton = allowNewFolder;
+						// MyComputer (not the default Desktop) so every drive is a top-level node, reachable in
+						// one click instead of nested under Desktop/This PC
 						folderDialog.RootFolder = Environment.SpecialFolder.MyComputer;
 						if (Directory.Exists(txt.Text.Trim()))
 						{
@@ -893,7 +998,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>The scheme selected in <c>ListView1</c>, shown read-only in the editor and preview bar; null when nothing is selected.</summary>
 		private ColorScheme _previewScheme;
 
-		/// <summary>Index (0..8) of the colour stop of <see cref="_current"/> that the picker is editing; -1 when none.</summary>
+		/// <summary>Index (0 to <see cref="ColorScheme.StopCount"/> - 1) of the colour stop of <see cref="_current"/> that the picker is editing; -1 when none.</summary>
 		private int _selectedStop;
 
 		/// <summary>Re-entrancy guard: set while <see cref="RefreshEditorState"/> programmatically checks the scheme-type radio buttons.</summary>
@@ -905,7 +1010,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>The colour picker embedded in <c>Panel2</c> (created in <see cref="Form1_Load"/>).</summary>
 		private ColorPickerControl _picker;
 
-		/// <summary>Image list of the 120 x 16 scheme thumbnails shown in <c>ListView1</c>; the bitmaps themselves are owned by <see cref="_thumbBitmaps"/>.</summary>
+		/// <summary>Image list of the <see cref="ThumbWidth"/> x <see cref="ThumbHeight"/> scheme thumbnails shown in <c>ListView1</c>; the bitmaps themselves are owned by <see cref="_thumbBitmaps"/>.</summary>
 		private readonly ImageList _thumbs;
 
 		// ----- Project lists (Form1.Projects.cs / Form1.Output.cs) -----
@@ -952,16 +1057,27 @@ namespace _2D_wave_sim_V01
 		/// <summary>Sort direction of the exported-video file list; default descending (newest first).</summary>
 		private bool _videoSortAscending;
 
-		/// <summary>Owner of the thumbnail bitmaps added to <see cref="_thumbs"/>; disposed on every reload and on closing.</summary>
+		/// <summary>
+		/// Owner of the thumbnail bitmaps added to <see cref="_thumbs"/>; disposed on every reload and on closing.
+		/// The ImageList keeps using the bitmaps that were added to it (it re-creates its native image list from
+		/// them, e.g. after Clear or when the ListView on a hidden tab is created). They must therefore stay
+		/// alive until the list is rebuilt or the form is closed, and must not be disposed right after Add.
+		/// </summary>
 		private readonly List<Bitmap> _thumbBitmaps;
 
-		/// <summary>Nominal scheme thumbnail width in pixels. Not referenced at present: the Colors part uses the literal 120.</summary>
+		/// <summary>Scheme thumbnail width in pixels (<see cref="_thumbs"/> image size and <see cref="MakeThumbnail"/>).</summary>
 		private const int ThumbWidth = 120;
 
-		/// <summary>Nominal scheme thumbnail height in pixels. Not referenced at present: the Colors part uses the literal 16.</summary>
+		/// <summary>Scheme thumbnail height in pixels (<see cref="_thumbs"/> image size and <see cref="MakeThumbnail"/>).</summary>
 		private const int ThumbHeight = 16;
 
 		// ----- Project state -----
+		//
+		// A project is a folder inside the root folder; the folder name is the project name (txtProjectName).
+		// The main folder of a project holds configuration.json and the standard subfolders (see ProjectStore).
+		//
+		// The settings on the tabs are kept in memory and only written to configuration.json by "Save project"
+		// and "Save as". _project is null for a new project that has not been saved yet.
 
 		/// <summary>The open project; null while editing a new project that has never been saved.</summary>
 		private Project _project;
@@ -975,7 +1091,12 @@ namespace _2D_wave_sim_V01
 		/// <summary>Current phase of the <c>btnPickRoot</c> blink (true = highlighted).</summary>
 		private bool _rootBlinkOn;
 
-		/// <summary>700 ms timer that blinks <c>btnPickRoot</c> while no project root has been chosen; started/stopped by <see cref="UpdateProjectAccess"/>.</summary>
+		/// <summary>
+		/// 700 ms timer that blinks <c>btnPickRoot</c> light blue, slowly, while no project root is known yet - e.g.
+		/// right after installing on a different computer, when <see cref="AppSettings.ProjectRoot"/> is still empty
+		/// and nothing on the Sources/Probes/Viewer tabs works yet. <see cref="UpdateProjectAccess"/> starts/stops
+		/// this alongside the rest of the "has a root" state; <see cref="RootBlinkTimer_Tick"/> does the actual blinking.
+		/// </summary>
 		private readonly global::System.Windows.Forms.Timer _rootBlinkTimer;
 
 		// ----- Manage output tab (Form1.Output.cs) -----
@@ -1065,7 +1186,12 @@ namespace _2D_wave_sim_V01
 		/// <summary>Sobel edge image of <see cref="_sceneImage"/> at canvas size (owned; see <see cref="ComputeGlowingEdges"/>); null when there is no scene image. Added on top of previews and exports as the "glowing edges" overlay.</summary>
 		private Bitmap _glowEdgesImage;
 
-		/// <summary><see cref="_glowEdgesImage"/> resized to <see cref="_glowOverlayCacheSize"/> (owned); null until first requested, rebuilt when the preview size changes.</summary>
+		/// <summary>
+		/// <see cref="_glowEdgesImage"/> resized to <see cref="_glowOverlayCacheSize"/>, whatever size a preview frame
+		/// last asked for (<see cref="GetGlowOverlayResized"/>; owned). Rebuilding this by resampling the full
+		/// scene-image-sized picture on every single visualized step of a run would be wasteful, so it is cached
+		/// until either the target size or <see cref="_glowEdgesImage"/> itself changes. Null until first requested.
+		/// </summary>
 		private Bitmap _glowOverlayCache;
 
 		/// <summary>Pixel size of <see cref="_glowOverlayCache"/>.</summary>
@@ -1077,13 +1203,16 @@ namespace _2D_wave_sim_V01
 		/// <summary>Background picture box on the Probes tab (filling <c>pnlProbeImage</c>). Receives copies of the scene, field or intensity picture via the share buttons; probe markers and graph boxes are painted on top and clicks pick probe positions.</summary>
 		private PictureBox _picProbe;
 
-		/// <summary>Set once any simulation has finished. Not read anywhere at present.</summary>
+		/// <summary>Set once any simulation has finished (originally meant to turn the stop button into a restart button). Not read anywhere at present.</summary>
 		private bool _hasRun;
 
-		/// <summary>Explorer <c>CurrentViewMode</c> value for the icons view (FOLDERVIEWMODE). Not referenced at present: callers of <see cref="OpenFolderInExplorer"/> pass the literal 1.</summary>
+		// Windows Explorer's own view-mode numbers (the classic Shell "FOLDERVIEWMODE" enum), used by
+		// OpenFolderInExplorer and its callers.
+
+		/// <summary>Explorer <c>CurrentViewMode</c> value for the "Large icons" view (FOLDERVIEWMODE <c>FVM_ICON</c>).</summary>
 		private const int FVM_ICON = 1;
 
-		/// <summary>Explorer <c>CurrentViewMode</c> value for the details view (FOLDERVIEWMODE). Not referenced at present: callers of <see cref="OpenFolderInExplorer"/> pass the literal 4.</summary>
+		/// <summary>Explorer <c>CurrentViewMode</c> value for the "Details" view (FOLDERVIEWMODE <c>FVM_DETAILS</c>).</summary>
 		private const int FVM_DETAILS = 4;
 
 		// ----- Probes (Form1.Probes.cs) -----
@@ -1147,7 +1276,11 @@ namespace _2D_wave_sim_V01
 		/// <summary>Random generator used when composite sources generate randomised elements.</summary>
 		private readonly Random _sourceRandom;
 
-		/// <summary>Normal back colour of <c>btnSaveSource</c>; the button turns orange while the editor has unsaved edits.</summary>
+		/// <summary>
+		/// <c>btnSaveSource</c>'s own Designer back colour, captured once at startup so <see cref="ClearSourceDirty"/>
+		/// can restore exactly that (rather than a hardcoded colour) once the pending changes are saved; the button
+		/// turns orange while the editor has unsaved edits.
+		/// </summary>
 		private Color _sourceSaveButtonDefaultBackColor;
 
 		/// <summary>One row of the project list views (stored in the item's <c>Tag</c>).</summary>
@@ -1155,8 +1288,8 @@ namespace _2D_wave_sim_V01
 		{
 			public ProjectListEntry(string name, DateTime lastModified)
 			{
-				this.Name = name;
-				this.LastModified = lastModified;
+				Name = name;
+				LastModified = lastModified;
 			}
 
 			/// <summary>Project (folder) name.</summary>
@@ -1167,6 +1300,7 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>Win32 <c>SIZE</c> structure passed to <see cref="IShellItemImageFactory.GetImage"/>.</summary>
+		[StructLayout(LayoutKind.Sequential)]
 		private struct NativeSize
 		{
 			/// <summary>Width in pixels.</summary>
@@ -1207,29 +1341,29 @@ namespace _2D_wave_sim_V01
 		{
 			public ProbeControlSet(int index, string title, CheckBox chkOn, ComboBox cmbPlaceOn, ComboBox cmbMeasurement, ComboBox cmbProbeType, ComboBox cmbBoxSize, NumericUpDown numAPosX, NumericUpDown numAPosY, NumericUpDown numBPosX, NumericUpDown numBPosY, Button butPick, RadioButton radRunning, RadioButton radFull, CheckBox chkAutoX, CheckBox chkAutoY, TextBox txtMinY, TextBox txtMaxY, CheckBox chkStartAfter, TextBox txtStartAfter, NumericUpDown numRunningWindow, Control[] bOnlyControls)
 			{
-				this.Index = index;
-				this.Title = title;
-				this.ChkOn = chkOn;
-				this.CmbPlaceOn = cmbPlaceOn;
-				this.CmbMeasurement = cmbMeasurement;
-				this.CmbProbeType = cmbProbeType;
-				this.CmbBoxSize = cmbBoxSize;
-				this.NumAPosX = numAPosX;
-				this.NumAPosY = numAPosY;
-				this.NumBPosX = numBPosX;
-				this.NumBPosY = numBPosY;
-				this.ButPick = butPick;
-				this.RadRunning = radRunning;
-				this.RadFull = radFull;
-				this.ChkAutoX = chkAutoX;
-				this.ChkAutoY = chkAutoY;
-				this.TxtMinY = txtMinY;
-				this.TxtMaxY = txtMaxY;
-				this.ChkStartAfter = chkStartAfter;
-				this.TxtStartAfter = txtStartAfter;
-				this.NumRunningWindow = numRunningWindow;
-				this.BOnlyControls = bOnlyControls;
-				this.PickButtonText = butPick.Text;
+				Index = index;
+				Title = title;
+				ChkOn = chkOn;
+				CmbPlaceOn = cmbPlaceOn;
+				CmbMeasurement = cmbMeasurement;
+				CmbProbeType = cmbProbeType;
+				CmbBoxSize = cmbBoxSize;
+				NumAPosX = numAPosX;
+				NumAPosY = numAPosY;
+				NumBPosX = numBPosX;
+				NumBPosY = numBPosY;
+				ButPick = butPick;
+				RadRunning = radRunning;
+				RadFull = radFull;
+				ChkAutoX = chkAutoX;
+				ChkAutoY = chkAutoY;
+				TxtMinY = txtMinY;
+				TxtMaxY = txtMaxY;
+				ChkStartAfter = chkStartAfter;
+				TxtStartAfter = txtStartAfter;
+				NumRunningWindow = numRunningWindow;
+				BOnlyControls = bOnlyControls;
+				PickButtonText = butPick.Text;
 			}
 
 			/// <summary>Probe index (0 or 1), also the index into <see cref="_probes"/>.</summary>

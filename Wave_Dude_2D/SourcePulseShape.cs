@@ -9,8 +9,8 @@ namespace _2D_wave_sim_V01
 	public enum SourcePulseShape
 	{
 		/// <summary>Gaussian bell centred in the on-window; its sigma is one sixth of the on-width, so the burst is essentially zero at both edges.</summary>
-		Gaussian,
+		Gaussian = 0,
 		/// <summary>Flat-topped burst with smoothed rising and falling edges that spans the whole on-width.</summary>
-		SmoothedSquare
+		SmoothedSquare = 1
 	}
 }

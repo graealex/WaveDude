@@ -16,6 +16,7 @@ namespace _2D_wave_sim_V01
 	/// "More..." button that opens the standard <see cref="ColorDialog"/>. The layout is fixed for a
 	/// 423 x 411 client area. <see cref="ColorChanged"/> is raised for user edits only, not when
 	/// <see cref="SelectedColor"/> is assigned from code. UI thread only.
+	/// It is built completely in code, so it has no designer file (hence <c>DesignerCategory("Code")</c>).
 	/// </summary>
 	[DesignerCategory("Code")]
 	public class ColorPickerControl : UserControl
@@ -32,37 +33,37 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public ColorPickerControl()
 		{
-			this._svRect = new Rectangle(10, 10, 300, 300);
-			this._hueRect = new Rectangle(326, 10, 28, 300);
-			this._newRect = new Rectangle(10, 324, 150, 36);
-			this._oldRect = new Rectangle(160, 324, 150, 36);
-			this._lblHex = new Label();
-			this._txtHex = new TextBox();
-			this._lblRgb = new Label();
-			this._btnDialog = new Button();
-			this._color = Color.Red;
-			this._original = Color.Gray;
-			this._svHue = -1.0;
+			_svRect = new Rectangle(10, 10, 300, 300);
+			_hueRect = new Rectangle(326, 10, 28, 300);
+			_newRect = new Rectangle(10, 324, 150, 36);
+			_oldRect = new Rectangle(160, 324, 150, 36);
+			_lblHex = new Label();
+			_txtHex = new TextBox();
+			_lblRgb = new Label();
+			_btnDialog = new Button();
+			_color = Color.Red;
+			_original = Color.Gray;
+			_svHue = -1.0;
 			base.SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
 			base.Size = new Size(423, 411);
-			this._lblHex.Text = "Hex";
-			this._lblHex.AutoSize = true;
-			this._lblHex.Location = new Point(10, 377);
-			this._txtHex.Location = new Point(48, 373);
-			this._txtHex.Width = 90;
-			this._txtHex.MaxLength = 7;
-			this._lblRgb.AutoSize = true;
-			this._lblRgb.Location = new Point(152, 377);
-			this._btnDialog.Text = "More...";
-			this._btnDialog.Location = new Point(326, 324);
-			this._btnDialog.Size = new Size(90, 36);
-			base.Controls.Add(this._lblHex);
-			base.Controls.Add(this._txtHex);
-			base.Controls.Add(this._lblRgb);
-			base.Controls.Add(this._btnDialog);
-			this._txtHex.TextChanged += this.HexTextChanged;
-			this._btnDialog.Click += this.DialogButtonClick;
-			this.ApplyColor(Color.Red, false, false);
+			_lblHex.Text = "Hex";
+			_lblHex.AutoSize = true;
+			_lblHex.Location = new Point(10, 377);
+			_txtHex.Location = new Point(48, 373);
+			_txtHex.Width = 90;
+			_txtHex.MaxLength = 7;
+			_lblRgb.AutoSize = true;
+			_lblRgb.Location = new Point(152, 377);
+			_btnDialog.Text = "More...";
+			_btnDialog.Location = new Point(326, 324);
+			_btnDialog.Size = new Size(90, 36);
+			base.Controls.Add(_lblHex);
+			base.Controls.Add(_txtHex);
+			base.Controls.Add(_lblRgb);
+			base.Controls.Add(_btnDialog);
+			_txtHex.TextChanged += HexTextChanged;
+			_btnDialog.Click += DialogButtonClick;
+			ApplyColor(Color.Red, false, false);
 		}
 
 		/// <summary>
@@ -71,26 +72,17 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public Color SelectedColor
 		{
-			get
-			{
-				return this._color;
-			}
-			set
-			{
-				this.ApplyColor(value, false, false);
-			}
+			get => _color;
+			set => ApplyColor(value, false, false);
 		}
 
 		/// <summary>The reference colour shown in the "Old" swatch and restored when it is clicked; alpha is discarded.</summary>
 		public Color OriginalColor
 		{
-			get
-			{
-				return this._original;
-			}
+			get => _original;
 			set
 			{
-				this._original = Color.FromArgb(value.R, value.G, value.B);
+				_original = Color.FromArgb(value.R, value.G, value.B);
 				base.Invalidate();
 			}
 		}
@@ -105,22 +97,22 @@ namespace _2D_wave_sim_V01
 		/// <param name="fromHexBox">Leave the hex box untouched because the user is typing in it.</param>
 		private void ApplyColor(Color c, bool raiseChanged, bool fromHexBox)
 		{
-			this._color = Color.FromArgb(c.R, c.G, c.B);
+			_color = Color.FromArgb(c.R, c.G, c.B);
 			double hue = 0.0;
 			double saturation = 0.0;
 			double value = 0.0;
-			ColorPickerControl.RgbToHsv(this._color, ref hue, ref saturation, ref value);
+			ColorPickerControl.RgbToHsv(_color, ref hue, ref saturation, ref value);
 			if (saturation > 0.0 && value > 0.0)
 			{
-				this._h = hue;
+				_h = hue;
 			}
-			this._s = saturation;
-			this._v = value;
-			this.UpdateTexts(fromHexBox);
+			_s = saturation;
+			_v = value;
+			UpdateTexts(fromHexBox);
 			base.Invalidate();
 			if (raiseChanged)
 			{
-				EventHandler colorChangedEvent = this.ColorChanged;
+				EventHandler colorChangedEvent = ColorChanged;
 				if (colorChangedEvent != null)
 				{
 					colorChangedEvent(this, EventArgs.Empty);
@@ -131,10 +123,10 @@ namespace _2D_wave_sim_V01
 		/// <summary>Recomputes the colour from <see cref="_h"/>/<see cref="_s"/>/<see cref="_v"/> after a drag, updates the texts, repaints and raises <see cref="ColorChanged"/>.</summary>
 		private void SyncFromHsv()
 		{
-			this._color = ColorPickerControl.HsvToColor(this._h, this._s, this._v);
-			this.UpdateTexts(false);
+			_color = ColorPickerControl.HsvToColor(_h, _s, _v);
+			UpdateTexts(false);
 			base.Invalidate();
-			EventHandler colorChangedEvent = this.ColorChanged;
+			EventHandler colorChangedEvent = ColorChanged;
 			if (colorChangedEvent != null)
 			{
 				colorChangedEvent(this, EventArgs.Empty);
@@ -147,29 +139,29 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void UpdateTexts(bool skipHexBox)
 		{
-			this._updatingText = true;
+			_updatingText = true;
 			try
 			{
 				if (!skipHexBox)
 				{
-					this._txtHex.Text = "#" + this._color.R.ToString("X2", CultureInfo.InvariantCulture) + this._color.G.ToString("X2", CultureInfo.InvariantCulture) + this._color.B.ToString("X2", CultureInfo.InvariantCulture);
+					_txtHex.Text = "#" + _color.R.ToString("X2", CultureInfo.InvariantCulture) + _color.G.ToString("X2", CultureInfo.InvariantCulture) + _color.B.ToString("X2", CultureInfo.InvariantCulture);
 				}
-				this._lblRgb.Text = string.Format(CultureInfo.InvariantCulture, "R {0}   G {1}   B {2}", this._color.R, this._color.G, this._color.B);
+				_lblRgb.Text = string.Format(CultureInfo.InvariantCulture, "R {0}   G {1}   B {2}", _color.R, _color.G, _color.B);
 			}
 			finally
 			{
-				this._updatingText = false;
+				_updatingText = false;
 			}
 		}
 
 		/// <summary>Typing a complete 6-digit hex colour (optional leading '#') applies it and raises <see cref="ColorChanged"/>; incomplete or invalid text is ignored.</summary>
 		private void HexTextChanged(object sender, EventArgs e)
 		{
-			if (this._updatingText)
+			if (_updatingText)
 			{
 				return;
 			}
-			string hex = this._txtHex.Text.Trim().TrimStart('#');
+			string hex = _txtHex.Text.Trim().TrimStart('#');
 			if (hex.Length != 6)
 			{
 				return;
@@ -177,7 +169,7 @@ namespace _2D_wave_sim_V01
 			int rgb;
 			if (int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out rgb))
 			{
-				this.ApplyColor(Color.FromArgb((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255), true, true);
+				ApplyColor(Color.FromArgb((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255), true, true);
 			}
 		}
 
@@ -187,10 +179,10 @@ namespace _2D_wave_sim_V01
 			using (ColorDialog colorDialog = new ColorDialog())
 			{
 				colorDialog.FullOpen = true;
-				colorDialog.Color = this._color;
+				colorDialog.Color = _color;
 				if (colorDialog.ShowDialog(this) == DialogResult.OK)
 				{
-					this.ApplyColor(colorDialog.Color, true, false);
+					ApplyColor(colorDialog.Color, true, false);
 				}
 			}
 		}
@@ -207,19 +199,19 @@ namespace _2D_wave_sim_V01
 			{
 				return;
 			}
-			if (this._svRect.Contains(e.Location))
+			if (_svRect.Contains(e.Location))
 			{
-				this._drag = 1;
-				this.UpdateFromMouse(e.Location);
+				_drag = 1;
+				UpdateFromMouse(e.Location);
 			}
-			else if (this._hueRect.Contains(e.Location))
+			else if (_hueRect.Contains(e.Location))
 			{
-				this._drag = 2;
-				this.UpdateFromMouse(e.Location);
+				_drag = 2;
+				UpdateFromMouse(e.Location);
 			}
-			else if (this._oldRect.Contains(e.Location))
+			else if (_oldRect.Contains(e.Location))
 			{
-				this.ApplyColor(this._original, true, false);
+				ApplyColor(_original, true, false);
 			}
 		}
 
@@ -227,9 +219,9 @@ namespace _2D_wave_sim_V01
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
-			if (this._drag != 0)
+			if (_drag != 0)
 			{
-				this.UpdateFromMouse(e.Location);
+				UpdateFromMouse(e.Location);
 			}
 		}
 
@@ -237,7 +229,7 @@ namespace _2D_wave_sim_V01
 		protected override void OnMouseUp(MouseEventArgs e)
 		{
 			base.OnMouseUp(e);
-			this._drag = 0;
+			_drag = 0;
 		}
 
 		/// <summary>
@@ -247,20 +239,20 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void UpdateFromMouse(Point p)
 		{
-			if (this._drag == 1)
+			if (_drag == 1)
 			{
-				this._s = ColorPickerControl.Clamp01((p.X - this._svRect.X) / (double)(this._svRect.Width - 1));
-				this._v = 1.0 - ColorPickerControl.Clamp01((p.Y - this._svRect.Y) / (double)(this._svRect.Height - 1));
+				_s = ColorPickerControl.Clamp01((p.X - _svRect.X) / (double)(_svRect.Width - 1));
+				_v = 1.0 - ColorPickerControl.Clamp01((p.Y - _svRect.Y) / (double)(_svRect.Height - 1));
 			}
-			else if (this._drag == 2)
+			else if (_drag == 2)
 			{
-				this._h = ColorPickerControl.Clamp01((p.Y - this._hueRect.Y) / (double)(this._hueRect.Height - 1)) * 360.0;
+				_h = ColorPickerControl.Clamp01((p.Y - _hueRect.Y) / (double)(_hueRect.Height - 1)) * 360.0;
 			}
 			else
 			{
 				return;
 			}
-			this.SyncFromHsv();
+			SyncFromHsv();
 		}
 
 		/// <summary>
@@ -272,42 +264,55 @@ namespace _2D_wave_sim_V01
 		{
 			base.OnPaint(e);
 			Graphics g = e.Graphics;
-			g.Clear(this.BackColor);
-			this.EnsureSvBitmap();
+			g.Clear(BackColor);
+
+			// saturation / brightness square
+			EnsureSvBitmap();
 			g.InterpolationMode = InterpolationMode.HighQualityBilinear;
 			g.PixelOffsetMode = PixelOffsetMode.Half;
-			g.DrawImage(this._svBitmap, this._svRect);
-			g.DrawRectangle(Pens.Black, this._svRect.X - 1, this._svRect.Y - 1, this._svRect.Width + 1, this._svRect.Height + 1);
-			this.EnsureHueBitmap();
+			g.DrawImage(_svBitmap, _svRect);
+			g.DrawRectangle(Pens.Black, _svRect.X - 1, _svRect.Y - 1, _svRect.Width + 1, _svRect.Height + 1);
+
+			// hue bar
+			EnsureHueBitmap();
 			g.InterpolationMode = InterpolationMode.NearestNeighbor;
-			g.DrawImage(this._hueBitmap, this._hueRect);
-			g.DrawRectangle(Pens.Black, this._hueRect.X - 1, this._hueRect.Y - 1, this._hueRect.Width + 1, this._hueRect.Height + 1);
+			g.DrawImage(_hueBitmap, _hueRect);
+			g.DrawRectangle(Pens.Black, _hueRect.X - 1, _hueRect.Y - 1, _hueRect.Width + 1, _hueRect.Height + 1);
+
 			g.SmoothingMode = SmoothingMode.AntiAlias;
-			float svX = (float)(this._svRect.X + this._s * (this._svRect.Width - 1));
-			float svY = (float)(this._svRect.Y + (1.0 - this._v) * (this._svRect.Height - 1));
+
+			// marker in the square
+			float svX = (float)(_svRect.X + _s * (_svRect.Width - 1));
+			float svY = (float)(_svRect.Y + (1.0 - _v) * (_svRect.Height - 1));
 			g.DrawEllipse(Pens.Black, svX - 7f, svY - 7f, 14f, 14f);
 			g.DrawEllipse(Pens.White, svX - 6f, svY - 6f, 12f, 12f);
-			float hueY = (float)(this._hueRect.Y + this._h / 360.0 * (this._hueRect.Height - 1));
-			g.DrawRectangle(Pens.Black, this._hueRect.X - 3, hueY - 3f, this._hueRect.Width + 5, 6f);
-			g.DrawRectangle(Pens.White, this._hueRect.X - 2, hueY - 2f, this._hueRect.Width + 3, 4f);
+
+			// marker on the hue bar
+			float hueY = (float)(_hueRect.Y + _h / 360.0 * (_hueRect.Height - 1));
+			g.DrawRectangle(Pens.Black, _hueRect.X - 3, hueY - 3f, _hueRect.Width + 5, 6f);
+			g.DrawRectangle(Pens.White, _hueRect.X - 2, hueY - 2f, _hueRect.Width + 3, 4f);
+
 			g.SmoothingMode = SmoothingMode.Default;
-			using (SolidBrush newBrush = new SolidBrush(this._color))
+
+			// swatches
+			using (SolidBrush newBrush = new SolidBrush(_color))
 			{
-				g.FillRectangle(newBrush, this._newRect);
+				g.FillRectangle(newBrush, _newRect);
 			}
-			using (SolidBrush oldBrush = new SolidBrush(this._original))
+			using (SolidBrush oldBrush = new SolidBrush(_original))
 			{
-				g.FillRectangle(oldBrush, this._oldRect);
+				g.FillRectangle(oldBrush, _oldRect);
 			}
-			g.DrawRectangle(Pens.Black, this._newRect.X, this._newRect.Y, this._newRect.Width - 1, this._newRect.Height - 1);
-			g.DrawRectangle(Pens.Black, this._oldRect.X, this._oldRect.Y, this._oldRect.Width - 1, this._oldRect.Height - 1);
-			TextRenderer.DrawText(g, "New", this.Font, this._newRect, ColorPickerControl.ContrastColor(this._color), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-			TextRenderer.DrawText(g, "Old (click to restore)", this.Font, this._oldRect, ColorPickerControl.ContrastColor(this._original), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+			g.DrawRectangle(Pens.Black, _newRect.X, _newRect.Y, _newRect.Width - 1, _newRect.Height - 1);
+			g.DrawRectangle(Pens.Black, _oldRect.X, _oldRect.Y, _oldRect.Width - 1, _oldRect.Height - 1);
+			TextRenderer.DrawText(g, "New", Font, _newRect, ColorPickerControl.ContrastColor(_color), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+			TextRenderer.DrawText(g, "Old (click to restore)", Font, _oldRect, ColorPickerControl.ContrastColor(_original), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
 			if (!base.Enabled)
 			{
-				using (SolidBrush overlayBrush = new SolidBrush(Color.FromArgb(150, this.BackColor)))
+				using (SolidBrush veil = new SolidBrush(Color.FromArgb(150, BackColor)))
 				{
-					g.FillRectangle(overlayBrush, base.ClientRectangle);
+					g.FillRectangle(veil, base.ClientRectangle);
 				}
 			}
 		}
@@ -326,15 +331,15 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void EnsureSvBitmap()
 		{
-			if (this._svBitmap != null && Math.Abs(this._svHue - this._h) < 0.0001)
+			if (_svBitmap != null && Math.Abs(_svHue - _h) < 0.0001)
 			{
 				return;
 			}
-			if (this._svBitmap == null)
+			if (_svBitmap == null)
 			{
-				this._svBitmap = new Bitmap(SvResolution, SvResolution, PixelFormat.Format32bppArgb);
+				_svBitmap = new Bitmap(SvResolution, SvResolution, PixelFormat.Format32bppArgb);
 			}
-			Color pure = ColorPickerControl.HsvToColor(this._h, 1.0, 1.0);
+			Color pure = ColorPickerControl.HsvToColor(_h, 1.0, 1.0);
 			double pureR = pure.R / 255.0;
 			double pureG = pure.G / 255.0;
 			double pureB = pure.B / 255.0;
@@ -351,29 +356,29 @@ namespace _2D_wave_sim_V01
 					pixels[y * SvResolution + x] = Color.FromArgb(255, r, g, b).ToArgb();
 				}
 			}
-			BitmapData bitmapData = this._svBitmap.LockBits(new Rectangle(0, 0, SvResolution, SvResolution), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+			BitmapData bitmapData = _svBitmap.LockBits(new Rectangle(0, 0, SvResolution, SvResolution), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 			try
 			{
 				Marshal.Copy(pixels, 0, bitmapData.Scan0, pixels.Length);
 			}
 			finally
 			{
-				this._svBitmap.UnlockBits(bitmapData);
+				_svBitmap.UnlockBits(bitmapData);
 			}
-			this._svHue = this._h;
+			_svHue = _h;
 		}
 
 		/// <summary>Creates the 1-pixel-wide hue gradient bitmap (hue 0 at the top, 360 at the bottom) on first use; it never changes afterwards.</summary>
 		private void EnsureHueBitmap()
 		{
-			if (this._hueBitmap != null)
+			if (_hueBitmap != null)
 			{
 				return;
 			}
-			this._hueBitmap = new Bitmap(1, this._hueRect.Height, PixelFormat.Format32bppArgb);
-			for (int i = 0; i < this._hueRect.Height; i++)
+			_hueBitmap = new Bitmap(1, _hueRect.Height, PixelFormat.Format32bppArgb);
+			for (int y = 0; y < _hueRect.Height; y++)
 			{
-				this._hueBitmap.SetPixel(0, i, ColorPickerControl.HsvToColor(i / (double)(this._hueRect.Height - 1) * 360.0, 1.0, 1.0));
+				_hueBitmap.SetPixel(0, y, ColorPickerControl.HsvToColor(y / (double)(_hueRect.Height - 1) * 360.0, 1.0, 1.0));
 			}
 		}
 
@@ -382,13 +387,13 @@ namespace _2D_wave_sim_V01
 		{
 			if (disposing)
 			{
-				if (this._svBitmap != null)
+				if (_svBitmap != null)
 				{
-					this._svBitmap.Dispose();
+					_svBitmap.Dispose();
 				}
-				if (this._hueBitmap != null)
+				if (_hueBitmap != null)
 				{
-					this._hueBitmap.Dispose();
+					_hueBitmap.Dispose();
 				}
 			}
 			base.Dispose(disposing);

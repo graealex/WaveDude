@@ -7,7 +7,10 @@ namespace _2D_wave_sim_V01
 	/// Hand-written COM import of Media Foundation's <c>IMFSample</c> (IID C40A00F2-...), one time-stamped video frame
 	/// handed to the sink writer by <see cref="MfVideoWriter.AddPixels"/>. <c>IMFSample</c> derives from <c>IMFAttributes</c>,
 	/// so the first 30 slots (<c>A01</c>..<c>A30</c>) are placeholders for the inherited attribute methods, followed by the
-	/// sample's own methods. Vtable order is frozen; all methods return an HRESULT.
+	/// sample's own methods. They are repeated here rather than taken from <see cref="IMFAttributesNative"/> because .NET
+	/// does not inherit base-interface methods in COM interfaces: a derived <c>ComImport</c> interface's own methods are
+	/// numbered from the slot after <c>IUnknown</c>, not after the base interface's methods. Vtable order is frozen;
+	/// all methods return an HRESULT.
 	/// </summary>
 	[Guid("C40A00F2-B93A-4D80-AE8C-5A1C634F58E4")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

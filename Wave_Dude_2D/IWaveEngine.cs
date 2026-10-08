@@ -9,9 +9,9 @@ namespace _2D_wave_sim_V01
 	/// Only <see cref="PrepareFrame"/> and the data properties are also used from the UI thread, and only while the
 	/// runner is paused (see <see cref="SimulationRunner.RenderCurrentFrame"/>).
 	/// </summary>
-	internal interface IWaveEngine : IDisposable
+	internal interface IWaveEngine
 	{
-		/// <summary>Short name for the status bar and result: "CPU (n threads)" or "GPU: device name (OpenCL)".</summary>
+		/// <summary>Where the simulation runs, for the status bar and result: for example "CPU (8 threads)" or "GPU: NVIDIA GeForce MX130 (OpenCL)".</summary>
 		string Description { get; }
 
 		/// <summary>Scene width in cells (= canvas pixels), without padding.</summary>
@@ -20,25 +20,30 @@ namespace _2D_wave_sim_V01
 		/// <summary>Scene height in cells (= canvas pixels), without padding.</summary>
 		int Height { get; }
 
-		/// <summary>Row pitch of <see cref="FieldData"/> and <see cref="IntensityData"/>: <see cref="Width"/> + 2.</summary>
+		/// <summary>Row pitch of <see cref="FieldData"/> and <see cref="IntensityData"/>: <see cref="Width"/> + 2. Pixel (x, y) is at (y + 1) * Stride + x + 1.</summary>
 		int Stride { get; }
 
 		/// <summary>
-		/// Current field amplitude, <see cref="Stride"/> * (<see cref="Height"/> + 2) floats. Valid for reading after
-		/// <see cref="PrepareFrame"/>; the CPU engine exposes its live buffer (a different array instance after every
-		/// sub-step, so re-read the property per frame), the GPU engine a host copy.
+		/// The field of the last completed step, <see cref="Stride"/> * (<see cref="Height"/> + 2) floats. Valid for
+		/// reading after <see cref="PrepareFrame"/>(true, ...); the CPU engine exposes its live buffer (a different
+		/// array instance after every sub-step, so re-read the property per frame), the GPU engine a host copy.
+		/// Do not change.
 		/// </summary>
 		float[] FieldData { get; }
 
-		/// <summary>Accumulated intensity, same layout as <see cref="FieldData"/>; null when intensity tracking was not requested.</summary>
+		/// <summary>
+		/// The averaged intensity, same layout as <see cref="FieldData"/>, valid after <see cref="PrepareFrame"/>(..., true);
+		/// null when intensity tracking was not requested. Do not change.
+		/// </summary>
 		float[] IntensityData { get; }
 
-		/// <summary>Advances the simulation by one time step (internally several sub-steps with the 4th-order Laplacian).</summary>
+		/// <summary>One time step: apply the sources, update the field (internally several sub-steps with the 4th-order Laplacian), update the intensity.</summary>
 		void AdvanceOneStep();
 
 		/// <summary>
-		/// Makes the requested buffers reflect the current state so the renderer can read them: a no-op on the CPU,
-		/// a device-to-host copy on the GPU. Call before touching <see cref="FieldData"/> / <see cref="IntensityData"/>.
+		/// Makes the requested buffers reflect the current state so the renderer can read them: a no-op on the CPU;
+		/// on the GPU the data is copied from the graphics memory, so only ask for what is going to be drawn. Call
+		/// before touching <see cref="FieldData"/> / <see cref="IntensityData"/>.
 		/// </summary>
 		void PrepareFrame(bool needField, bool needIntensity);
 
@@ -49,17 +54,23 @@ namespace _2D_wave_sim_V01
 		/// <exception cref="InvalidOperationException">A probe needs the intensity but it is not tracked, or the GPU probe kernel cannot be built.</exception>
 		void SetProbes(ProbeSampler sampler);
 
-		/// <summary>Records one sample per series probe for the current step and accumulates integrating profiles; call after each <see cref="AdvanceOneStep"/>.</summary>
+		/// <summary>
+		/// Measures the probes in the state after the last <see cref="AdvanceOneStep"/>: one value per step for every
+		/// point probe, and the running totals of the line probes that integrate the intensity.
+		/// </summary>
 		void SampleProbes();
 
 		/// <summary>
-		/// Returns and clears the series samples gathered since the last call, one array per probe (empty for profile probes).
+		/// Returns and clears the values measured for the point probes since the last call, one array per probe (empty for line probes).
 		/// </summary>
 		/// <returns>Empty outer array when no probes are installed.</returns>
 		float[][] TakeProbeSamples();
 
-		/// <summary>Reads the current values along each profile probe, one array per profile probe.</summary>
-		/// <returns>Null entries for non-profile probes; empty outer array when no probes are installed.</returns>
+		/// <summary>
+		/// The values along the line of every line probe in the current state: the field, the intensity, or the
+		/// intensity totals of the steps so far. On the GPU this waits for the card, so do not call it every step.
+		/// </summary>
+		/// <returns>Null entries for point probes; empty outer array when no probes are installed.</returns>
 		float[][] ReadProbeProfiles();
 	}
 }

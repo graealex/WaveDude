@@ -6,29 +6,38 @@ using System.IO;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// The "scene" section of a project: where the canvas comes from (an image or a blank user-sized canvas),
-	/// the damping border and the source options. Edited by <c>Form1</c> on the UI thread and persisted through
-	/// <see cref="ProjectConfig"/>; the runner turns it into a <see cref="SceneData"/> when a run starts.
+	/// The "scene" section of a project (Configuration tab): where the canvas comes from (an image or a blank
+	/// user-sized canvas), the damping border and the source options. Edited by <c>Form1</c> on the UI thread and
+	/// persisted through <see cref="ProjectConfig"/>; the runner turns it into a <see cref="SceneData"/> when a run
+	/// starts. The size of a scene image is not stored: it is read from the image itself. There is no scene-level
+	/// "use probes" switch: each probe has its own "On" checkbox (<see cref="ProbeSettings.Active"/>) instead.
 	/// </summary>
 	public sealed class SceneSettings
 	{
-		/// <summary>Creates settings with the defaults: a blank 1920 × 1080 canvas, 64 px damping edge, no sources.</summary>
+		/// <summary>
+		/// Creates settings with the defaults of the Python example: a blank 1920 × 1080 canvas, 64 px damping
+		/// edge, no sources. <see cref="DampingEdgeEnabled"/> and <see cref="UseObjectSources"/> deliberately have
+		/// no software-chosen default of their own and stay false here, the same as
+		/// <see cref="SimulationSettings.Steps"/> / <see cref="SimulationSettings.TimeDecayFactor"/>: a new project
+		/// starts at whatever the Designer Checked value of <c>chkDampingEdge</c> / <c>chkUseObjectSources</c> is,
+		/// which <c>StartNewProject</c> (Form1) reads right after creating this instance.
+		/// </summary>
 		public SceneSettings()
 		{
-			this.UseImage = false;
-			this.ImageFile = "";
-			this.UserWidth = DefaultWidth;
-			this.UserHeight = DefaultHeight;
-			this.DampingEdgeSize = DefaultDampingEdgeSize;
-			this.UseSources = false;
-			this.ImageSourceScale = DefaultImageSourceScale;
-			this.BackgroundRefractiveIndex = DefaultBackgroundRefractiveIndex;
+			UseImage = false;
+			ImageFile = "";
+			UserWidth = DefaultWidth;
+			UserHeight = DefaultHeight;
+			DampingEdgeSize = DefaultDampingEdgeSize;
+			UseSources = false;
+			ImageSourceScale = DefaultImageSourceScale;
+			BackgroundRefractiveIndex = DefaultBackgroundRefractiveIndex;
 		}
 
 		/// <summary>True to build the canvas from <see cref="ImageFile"/>; false for a blank <see cref="UserWidth"/> × <see cref="UserHeight"/> canvas.</summary>
 		public bool UseImage { get; set; }
 
-		/// <summary>Scene image path as stored in the project (relative to the project folder when inside it; see <see cref="ToStoredPath"/>), or "".</summary>
+		/// <summary>Scene image path as stored in the project: relative to the project folder when inside it (forward slashes; see <see cref="ToStoredPath"/>), otherwise a full path; "" when none.</summary>
 		public string ImageFile { get; set; }
 
 		/// <summary>Width in canvas pixels of a user-defined canvas.</summary>
@@ -37,7 +46,13 @@ namespace _2D_wave_sim_V01
 		/// <summary>Height in canvas pixels of a user-defined canvas.</summary>
 		public int UserHeight { get; set; }
 
-		/// <summary>Whether a damping frame is applied around the canvas edge.</summary>
+		/// <summary>
+		/// Whether a damping frame is applied around the canvas edge. No software-chosen default of its own, the
+		/// same as <see cref="SimulationSettings.Steps"/> / <see cref="SimulationSettings.TimeDecayFactor"/>: a new
+		/// project starts at whatever <c>chkDampingEdge</c>'s own Designer Checked value is (see
+		/// <c>StartNewProject</c>, Form1). The false used by <see cref="FromConfig"/> is only the fallback for an
+		/// existing project saved before this setting existed.
+		/// </summary>
 		public bool DampingEdgeEnabled { get; set; }
 
 		/// <summary>Thickness of the damping frame in canvas pixels.</summary>
@@ -46,18 +61,25 @@ namespace _2D_wave_sim_V01
 		/// <summary>Whether green pixels of the scene image act as wave sources.</summary>
 		public bool UseSources { get; set; }
 
-		/// <summary>Peak amplitude of the image sources (passed to the engine as the source amplitude).</summary>
+		/// <summary>Peak amplitude of the image sources (passed to the engine as the source amplitude; <c>source_amplitude</c> of <c>StaticImageScene</c> in the Python code).</summary>
 		public double ImageSourceScale { get; set; }
 
-		/// <summary>Whether the interactive object sources of the project are used in the run.</summary>
+		/// <summary>
+		/// Whether the object sources of the source list are used in the run. No software-chosen default of its
+		/// own, the same as <see cref="DampingEdgeEnabled"/>: a new project starts at whatever
+		/// <c>chkUseObjectSources</c>' own Designer Checked value is (see <c>StartNewProject</c>, Form1); the false
+		/// used by <see cref="FromConfig"/> is only the fallback for a project saved before this setting existed.
+		/// </summary>
 		public bool UseObjectSources { get; set; }
 
-		/// <summary>Refractive index of a user-defined canvas (c = 1/n cells per step); 1.0 to 2.55.</summary>
+		/// <summary>Refractive index of a user-defined canvas's background (c = 1/n cells per step), 1.0 to 2.55 (a red channel value of 100 to 255, as in a scene image, which has its own value per pixel from its red channel).</summary>
 		public double BackgroundRefractiveIndex { get; set; }
 
 		/// <summary>
 		/// Reads the "scene" section of <paramref name="config"/>. Missing keys and out-of-range values fall back to
-		/// the defaults; a missing section yields a default instance.
+		/// the defaults; a missing section yields a default instance. The false fallbacks for
+		/// <c>damping_edge_enabled</c> and <c>use_object_sources</c> are deliberate: they keep a project saved before
+		/// those keys existed at its previous behaviour (see <see cref="DampingEdgeEnabled"/>).
 		/// </summary>
 		public static SceneSettings FromConfig(ProjectConfig config)
 		{
@@ -84,16 +106,16 @@ namespace _2D_wave_sim_V01
 		public void ToConfig(ProjectConfig config)
 		{
 			Dictionary<string, object> section = config.GetSection(SectionName);
-			section["mode"] = (this.UseImage ? ModeImage : ModeUserDefined);
-			section["image_file"] = this.ImageFile;
-			section["user_width"] = this.UserWidth;
-			section["user_height"] = this.UserHeight;
-			section["damping_edge_enabled"] = this.DampingEdgeEnabled;
-			section["damping_edge_size_px"] = this.DampingEdgeSize;
-			section["use_sources"] = this.UseSources;
-			section["image_source_scale"] = this.ImageSourceScale;
-			section["use_object_sources"] = this.UseObjectSources;
-			section["background_refractive_index"] = this.BackgroundRefractiveIndex;
+			section["mode"] = (UseImage ? ModeImage : ModeUserDefined);
+			section["image_file"] = ImageFile;
+			section["user_width"] = UserWidth;
+			section["user_height"] = UserHeight;
+			section["damping_edge_enabled"] = DampingEdgeEnabled;
+			section["damping_edge_size_px"] = DampingEdgeSize;
+			section["use_sources"] = UseSources;
+			section["image_source_scale"] = ImageSourceScale;
+			section["use_object_sources"] = UseObjectSources;
+			section["background_refractive_index"] = BackgroundRefractiveIndex;
 		}
 
 		/// <summary>
@@ -179,6 +201,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
 				{
+					// use the fallback
 				}
 			}
 			return fallback;
@@ -203,6 +226,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
 				{
+					// use the fallback
 				}
 			}
 			return fallback;
@@ -216,6 +240,8 @@ namespace _2D_wave_sim_V01
 
 		/// <summary>Value of the "mode" key for a blank user-sized canvas.</summary>
 		public const string ModeUserDefined = "user_defined";
+
+		// the defaults are those of the Python example (1920 x 1080 canvas, 64 px damping edge)
 
 		/// <summary>Default <see cref="UserWidth"/> in canvas pixels.</summary>
 		public const int DefaultWidth = 1920;
@@ -241,7 +267,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>Largest accepted <see cref="ImageSourceScale"/>.</summary>
 		public const double MaxImageSourceScale = 1000.0;
 
-		/// <summary>Default <see cref="BackgroundRefractiveIndex"/>.</summary>
+		/// <summary>Default <see cref="BackgroundRefractiveIndex"/> of a user-defined (image-less) scene's background; the range is 1.0 to 2.55 (a red channel value of 100 to 255, as in a scene image).</summary>
 		public const double DefaultBackgroundRefractiveIndex = 1.0;
 
 		/// <summary>Smallest accepted <see cref="BackgroundRefractiveIndex"/>.</summary>

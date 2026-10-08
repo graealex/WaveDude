@@ -7,9 +7,15 @@ using System.Windows.Forms;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// Projects tab: the sortable list of every project folder found under the configured project
-	/// root (<see cref="AppSettings.ProjectRoot"/>) and the new/load/delete/rename commands that act
-	/// on the selected entry. The list-building helpers here (<see cref="BuildProjectEntries"/>,
+	/// Projects tab: <c>lstAllProjects</c>, the sortable list of every project folder found directly inside
+	/// the configured project root (File &gt; Choose project root, <see cref="AppSettings.ProjectRoot"/>) -
+	/// a quick way to switch projects without browsing to their folder every time - and the
+	/// new/load/delete/rename commands that act on the selected entry. Two columns, <c>colProjectName</c>
+	/// and <c>colLastEdit</c> ("last edited" = the last write time of that project's configuration.json).
+	/// Clicking either header sorts by it (<see cref="lstAllProjects_ColumnClick"/>), toggling direction on
+	/// a repeat click of the same header - the usual Explorer/Excel convention. Each row's <c>Tag</c> holds
+	/// a <see cref="ProjectListEntry"/> so the raw name and date stay available without re-parsing the
+	/// displayed text. The list-building helpers here (<see cref="BuildProjectEntries"/>,
 	/// <see cref="SortProjectEntries"/>, <see cref="PopulateProjectListView"/>,
 	/// <see cref="SelectedProjectName"/>, <see cref="SelectProjectInList"/>) are shared with the
 	/// second project list on the Outputs tab (<c>Form1.Output.cs</c>). Everything here runs on
@@ -26,9 +32,9 @@ namespace _2D_wave_sim_V01
 		private List<Form1.ProjectListEntry> BuildProjectEntries()
 		{
 			List<Form1.ProjectListEntry> entries = new List<Form1.ProjectListEntry>();
-			foreach (string name in ProjectStore.ListProjects(this._settings.ProjectRoot))
+			foreach (string name in ProjectStore.ListProjects(_settings.ProjectRoot))
 			{
-				string folder = ProjectStore.FolderPathFor(this._settings.ProjectRoot, name);
+				string folder = ProjectStore.FolderPathFor(_settings.ProjectRoot, name);
 				string configPath = Path.Combine(folder, ProjectConfig.FileName);
 				DateTime lastModified = File.Exists(configPath) ? File.GetLastWriteTime(configPath) : Directory.GetLastWriteTime(folder);
 				entries.Add(new Form1.ProjectListEntry(name, lastModified));
@@ -121,67 +127,70 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void RefreshProjectList()
 		{
-			string selectedName = this.SelectedProjectName(this.lstAllProjects);
-			List<Form1.ProjectListEntry> entries = this.BuildProjectEntries();
-			this.SortProjectEntries(entries, this._projectSortColumn, this._projectSortAscending);
-			this.PopulateProjectListView(this.lstAllProjects, entries);
-			this.UpdateProjectListSortHeaders();
-			this.SelectProjectInList(this.lstAllProjects, selectedName);
-			this.UpdateProjectListButtons();
+			string selectedName = SelectedProjectName(lstAllProjects);
+			List<Form1.ProjectListEntry> entries = BuildProjectEntries();
+			SortProjectEntries(entries, _projectSortColumn, _projectSortAscending);
+			PopulateProjectListView(lstAllProjects, entries);
+			UpdateProjectListSortHeaders();
+			SelectProjectInList(lstAllProjects, selectedName);
+			UpdateProjectListButtons();
 		}
 
 		/// <summary>Clicking a column header sorts the project list by it; clicking the current sort column again flips the direction.</summary>
 		private void lstAllProjects_ColumnClick(object sender, ColumnClickEventArgs e)
 		{
-			if (e.Column == this._projectSortColumn)
+			if (e.Column == _projectSortColumn)
 			{
-				this._projectSortAscending = !this._projectSortAscending;
+				_projectSortAscending = !_projectSortAscending;
 			}
 			else
 			{
-				this._projectSortColumn = e.Column;
-				this._projectSortAscending = true;
+				_projectSortColumn = e.Column;
+				_projectSortAscending = true;
 			}
-			this.RefreshProjectList();
+			RefreshProjectList();
 		}
 
 		/// <summary>Appends " ^" (ascending) or " v" (descending) to the header text of the column the project list is sorted by.</summary>
 		private void UpdateProjectListSortHeaders()
 		{
-			string arrow = this._projectSortAscending ? " ^" : " v";
-			this.colProjectName.Text = "Project name" + ((this._projectSortColumn == 0) ? arrow : "");
-			this.colLastEdit.Text = "Last edited" + ((this._projectSortColumn == 1) ? arrow : "");
+			string arrow = _projectSortAscending ? " ^" : " v";
+			colProjectName.Text = "Project name" + ((_projectSortColumn == 0) ? arrow : "");
+			colLastEdit.Text = "Last edited" + ((_projectSortColumn == 1) ? arrow : "");
 		}
 
 		/// <summary>Enables "New" only when a project root is configured, and Load/Delete/Rename only when a project is selected.</summary>
 		private void UpdateProjectListButtons()
 		{
-			bool hasSelection = this.lstAllProjects.SelectedItems.Count > 0;
-			this.btnNewProject.Enabled = this._settings != null && this._settings.ProjectRoot.Length > 0;
-			this.btnLoadProject.Enabled = hasSelection;
-			this.btnDeleteProject.Enabled = hasSelection;
-			this.btnRenameProject.Enabled = hasSelection;
+			bool hasSelection = lstAllProjects.SelectedItems.Count > 0;
+			btnNewProject.Enabled = _settings != null && _settings.ProjectRoot.Length > 0;
+			btnLoadProject.Enabled = hasSelection;
+			btnDeleteProject.Enabled = hasSelection;
+			btnRenameProject.Enabled = hasSelection;
 		}
 
 		/// <summary>
 		/// Creates a new project (wired to both the "New project" button and File &gt; New): offers
 		/// to save the open project, then asks for a name until it is valid and unused or the prompt
-		/// is cancelled. On success the editor is reset to defaults, those defaults are written into
-		/// the new project's configuration.json, and the project becomes the current one.
+		/// is cancelled (never overwrites an existing project: a name already used there is refused and
+		/// the dialog reopens). On success the editor is reset to defaults, those defaults are written into
+		/// the new project's configuration.json, and the project becomes the current one. There is no such
+		/// thing as a "new project" until it has actually been named and created here, so File &gt; New no
+		/// longer leaves an unnamed, un-saved project open for editing.
 		/// </summary>
 		private void btnNewProject2_Click(object sender, EventArgs e)
 		{
-			if (this._settings.ProjectRoot.Length == 0)
+			if (_settings.ProjectRoot.Length == 0)
 			{
 				MessageBox.Show(this, "Choose a project root folder first (File > Choose project root).", "New project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			if (!this.ConfirmSaveProject())
+			if (!ConfirmSaveProject())
 			{
 				return;
 			}
 			string name = "";
-			while (this.PromptForText("New project", "Name for the new project:", name, ref name))
+			while (PromptForText("New project", "Name for the new project:", name, ref name))
 			{
 				name = name.Trim();
 				string error = ProjectStore.ValidateName(name);
@@ -190,22 +199,28 @@ namespace _2D_wave_sim_V01
 					MessageBox.Show(this, error, "New project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 					continue;
 				}
-				if (ProjectStore.IsProjectFolder(ProjectStore.FolderPathFor(this._settings.ProjectRoot, name)))
+				if (ProjectStore.IsProjectFolder(ProjectStore.FolderPathFor(_settings.ProjectRoot, name)))
 				{
 					MessageBox.Show(this, "A project named '" + name + "' already exists in this root folder. Choose a different name.", "New project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 					continue;
 				}
 				try
 				{
-					Project project = ProjectStore.Create(this._settings.ProjectRoot, name);
-					this.StartNewProject();
-					this._scene.ToConfig(project.Config);
-					this._simulation.ToConfig(project.Config);
-					ProbeSettings.ListToConfig(this._probes, project.Config);
-					SourceSettings.ListToConfig(this._sources, project.Config);
+					Project project = ProjectStore.Create(_settings.ProjectRoot, name);
+					StartNewProject();
+					// Write the just-computed defaults (StartNewProject read numSimulationSteps/numTimeDecayFactor
+					// etc. from their Designer values) into the new project's configuration.json before
+					// SetCurrentProject reads it back - otherwise, since a freshly created project has no "steps" or
+					// "time_decay_factor" key yet, FromConfig would fall back to its own hardcoded legacy-compatibility
+					// defaults (for an older project saved before these settings existed) instead, silently discarding
+					// the Designer values StartNewProject just set.
+					_scene.ToConfig(project.Config);
+					_simulation.ToConfig(project.Config);
+					ProbeSettings.ListToConfig(_probes, project.Config);
+					SourceSettings.ListToConfig(_sources, project.Config);
 					project.Save();
-					this.SetCurrentProject(project);
-					this.ToolStripStatusLabel1.Text = "Project '" + name + "' created.";
+					SetCurrentProject(project);
+					ToolStripStatusLabel1.Text = "Project '" + name + "' created.";
 					break;
 				}
 				catch (Exception ex)
@@ -218,20 +233,20 @@ namespace _2D_wave_sim_V01
 		/// <summary>Changing the selection updates which project buttons are enabled.</summary>
 		private void lstAllProjects_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			this.UpdateProjectListButtons();
+			UpdateProjectListButtons();
 		}
 
 		/// <summary>Double-clicking a project loads it, exactly like the Load button.</summary>
 		private void lstAllProjects_DoubleClick(object sender, EventArgs e)
 		{
-			this.btnLoadProject_Click(sender, e);
+			btnLoadProject_Click(sender, e);
 		}
 
 		/// <summary>Full folder path of the project selected in the Projects-tab list, or "" when none is selected.</summary>
 		private string SelectedProjectFolder()
 		{
-			string name = this.SelectedProjectName(this.lstAllProjects);
-			return (name.Length == 0) ? "" : ProjectStore.FolderPathFor(this._settings.ProjectRoot, name);
+			string name = SelectedProjectName(lstAllProjects);
+			return (name.Length == 0) ? "" : ProjectStore.FolderPathFor(_settings.ProjectRoot, name);
 		}
 
 		/// <summary>
@@ -241,22 +256,22 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private bool IsOpenProjectRunning(string folder)
 		{
-			return this._project != null && this._runner != null && string.Equals(this._project.FolderPath, folder, StringComparison.OrdinalIgnoreCase);
+			return _project != null && _runner != null && string.Equals(_project.FolderPath, folder, StringComparison.OrdinalIgnoreCase);
 		}
 
 		/// <summary>Loads the selected project into the editor after offering to save unsaved changes; read errors are shown in a message box.</summary>
 		private void btnLoadProject_Click(object sender, EventArgs e)
 		{
-			string folder = this.SelectedProjectFolder();
+			string folder = SelectedProjectFolder();
 			if (folder.Length == 0)
 			{
 				return;
 			}
 			try
 			{
-				if (this.ConfirmSaveProject())
+				if (ConfirmSaveProject())
 				{
-					this.SetCurrentProject(ProjectStore.Open(folder));
+					SetCurrentProject(ProjectStore.Open(folder));
 				}
 			}
 			catch (Exception ex)
@@ -273,18 +288,20 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void btnDeleteProject_Click(object sender, EventArgs e)
 		{
-			string name = this.SelectedProjectName(this.lstAllProjects);
-			string folder = this.SelectedProjectFolder();
+			string name = SelectedProjectName(lstAllProjects);
+			string folder = SelectedProjectFolder();
 			if (folder.Length == 0)
 			{
 				return;
 			}
-			if (this.IsOpenProjectRunning(folder))
+			if (IsOpenProjectRunning(folder))
 			{
 				MessageBox.Show(this, "A simulation is running for this project. Stop it first.", "Delete project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
 			string question = "Permanently delete the project '" + name + "' and everything in its folder?\r\n\r\n" + folder;
+			// the assets folder is where the user keeps their own third-party files (e.g. a Photoshop source file) -
+			// point this out explicitly, since deleting the project deletes those too, and they have no other copy here
 			int assetCount = Form1.CountFilesIn(Path.Combine(folder, ProjectStore.AssetsFolderName));
 			if (assetCount > 0)
 			{
@@ -294,7 +311,7 @@ namespace _2D_wave_sim_V01
 			{
 				return;
 			}
-			bool deletesOpenProject = this._project != null && string.Equals(this._project.FolderPath, folder, StringComparison.OrdinalIgnoreCase);
+			bool deletesOpenProject = _project != null && string.Equals(_project.FolderPath, folder, StringComparison.OrdinalIgnoreCase);
 			try
 			{
 				ProjectStore.Delete(folder);
@@ -302,16 +319,16 @@ namespace _2D_wave_sim_V01
 			catch (Exception ex)
 			{
 				MessageBox.Show(this, "The project could not be deleted:\r\n\r\n" + ex.Message, "Delete project", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
-				this.RefreshProjectList();
+				RefreshProjectList();
 				return;
 			}
 			if (deletesOpenProject)
 			{
-				this.StartNewProject();
-				this.UpdateProjectAccess();
+				StartNewProject();
+				UpdateProjectAccess();
 			}
-			this.RefreshProjectList();
-			this.ToolStripStatusLabel1.Text = "Project '" + name + "' deleted.";
+			RefreshProjectList();
+			ToolStripStatusLabel1.Text = "Project '" + name + "' deleted.";
 		}
 
 		/// <summary>Number of files anywhere below <paramref name="folderPath"/>; 0 when the folder is missing or unreadable.</summary>
@@ -337,25 +354,26 @@ namespace _2D_wave_sim_V01
 		/// unchanged name is a no-op.
 		/// </summary>
 		/// <remarks>
-		/// When the renamed project is the open one it is re-opened from the new folder so that all
-		/// project-relative paths stay valid. That re-reads configuration.json, so unsaved edits to
-		/// the open project are discarded without asking.
+		/// When the renamed project is the open one it is re-opened from the new folder so the editor and the
+		/// title bar stay in sync and all project-relative paths stay valid (a project's name is always just
+		/// its folder name - see <see cref="Project.Name"/>). That re-reads configuration.json, so unsaved
+		/// edits to the open project are discarded without asking.
 		/// </remarks>
 		private void btnRenameProject_Click(object sender, EventArgs e)
 		{
-			string oldName = this.SelectedProjectName(this.lstAllProjects);
-			string folder = this.SelectedProjectFolder();
+			string oldName = SelectedProjectName(lstAllProjects);
+			string folder = SelectedProjectFolder();
 			if (folder.Length == 0)
 			{
 				return;
 			}
-			if (this.IsOpenProjectRunning(folder))
+			if (IsOpenProjectRunning(folder))
 			{
 				MessageBox.Show(this, "A simulation is running for this project. Stop it first.", "Rename project", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
 			string newName = oldName;
-			if (!this.PromptForText("Rename project", "New name for '" + oldName + "':", oldName, ref newName))
+			if (!PromptForText("Rename project", "New name for '" + oldName + "':", oldName, ref newName))
 			{
 				return;
 			}
@@ -364,17 +382,17 @@ namespace _2D_wave_sim_V01
 			{
 				return;
 			}
-			bool renamesOpenProject = this._project != null && string.Equals(this._project.FolderPath, folder, StringComparison.OrdinalIgnoreCase);
+			bool renamesOpenProject = _project != null && string.Equals(_project.FolderPath, folder, StringComparison.OrdinalIgnoreCase);
 			try
 			{
 				string newFolder = ProjectStore.Rename(folder, newName);
 				if (renamesOpenProject)
 				{
-					this.SetCurrentProject(ProjectStore.Open(newFolder));
+					SetCurrentProject(ProjectStore.Open(newFolder));
 				}
-				this.RefreshProjectList();
-				this.SelectProjectInList(this.lstAllProjects, newName);
-				this.ToolStripStatusLabel1.Text = "Project '" + oldName + "' renamed to '" + newName + "'.";
+				RefreshProjectList();
+				SelectProjectInList(lstAllProjects, newName);
+				ToolStripStatusLabel1.Text = "Project '" + oldName + "' renamed to '" + newName + "'.";
 			}
 			catch (Exception ex)
 			{

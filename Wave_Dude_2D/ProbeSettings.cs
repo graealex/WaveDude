@@ -17,25 +17,25 @@ namespace _2D_wave_sim_V01
 		/// <summary>Creates an inactive point probe on the field at (100,100) with a medium graph box at (450,20) and auto scaling on both axes.</summary>
 		public ProbeSettings()
 		{
-			this.PlaceOn = ProbePlaceOn.Field;
-			this.Measurement = ProbeMeasurement.Amplitude;
-			this.Kind = ProbeKind.Point;
-			this.PosAX = 100;
-			this.PosAY = 100;
-			this.PosBX = 300;
-			this.PosBY = 100;
-			this.BoxSize = ProbeBoxSize.Medium;
-			this.BoxX = 450;
-			this.BoxY = 20;
-			this.Active = false;
-			this.ScaleMode = ProbeScaleMode.Running;
-			this.AutoScaleX = true;
-			this.AutoScaleY = true;
-			this.YMin = -1.0;
-			this.YMax = 1.0;
-			this.RunningWindow = ProbeSettings.DefaultRunningWindow;
-			this.UseStartAfterStep = false;
-			this.StartAfterStep = 0;
+			PlaceOn = ProbePlaceOn.Field;
+			Measurement = ProbeMeasurement.Amplitude;
+			Kind = ProbeKind.Point;
+			PosAX = 100;
+			PosAY = 100;
+			PosBX = 300;
+			PosBY = 100;
+			BoxSize = ProbeBoxSize.Medium;
+			BoxX = 450;
+			BoxY = 20;
+			Active = false;
+			ScaleMode = ProbeScaleMode.Running;
+			AutoScaleX = true;
+			AutoScaleY = true;
+			YMin = -1.0;
+			YMax = 1.0;
+			RunningWindow = ProbeSettings.DefaultRunningWindow;
+			UseStartAfterStep = false;
+			StartAfterStep = 0;
 		}
 
 		/// <summary>Gets or sets the output (field or intensity) the probe samples and is drawn on.</summary>
@@ -68,7 +68,14 @@ namespace _2D_wave_sim_V01
 		/// <summary>Gets or sets the top edge of the graph box in canvas pixels (clamped by the painter like <see cref="BoxX"/>).</summary>
 		public int BoxY { get; set; }
 
-		/// <summary>Gets or sets whether the probe is sampled and drawn at all.</summary>
+		/// <summary>
+		/// Gets or sets whether the probe is switched on: when false it is not sampled or shown in a simulation,
+		/// but its settings are kept ("On" checkbox). Off by default (the constructor's default, used for both
+		/// probes of a new project - see <c>NewProbeList</c> in <c>Form1.Probes.cs</c>). A probe loaded from a
+		/// project saved before <c>active</c> was written for it still comes back on (<see cref="FromDictionary"/>'s
+		/// own separate, hard-coded fallback), so that project keeps its exact previous behaviour instead of
+		/// silently picking up the new-project default.
+		/// </summary>
 		public bool Active { get; set; }
 
 		/// <summary>Gets or sets how the step axis of a point probe's time series is chosen; ignored for line probes.</summary>
@@ -89,10 +96,15 @@ namespace _2D_wave_sim_V01
 		/// <summary>Gets or sets the width of the sliding step window for <see cref="ProbeScaleMode.Running"/>, in simulation steps (10 .. <see cref="MaxRunningWindow"/>).</summary>
 		public int RunningWindow { get; set; }
 
-		/// <summary>Gets or sets whether sampling/accumulation and the graph are gated until <see cref="StartAfterStep"/> is reached.</summary>
+		/// <summary>
+		/// Gets or sets whether the graph shows no data from before step <see cref="StartAfterStep"/> (0 = from the
+		/// start). Sampling itself is not gated: the probe keeps being sampled, a point probe's graph is trimmed to
+		/// start there and a line probe's stays blank until then (see <see cref="ProbeGraphPainter.DrawGraph"/>),
+		/// and the running total of an integrated probe is kept at zero before it (<see cref="ProbeCollector.Collect"/>).
+		/// </summary>
 		public bool UseStartAfterStep { get; set; }
 
-		/// <summary>Gets or sets the simulation step (0-based, never negative) at which recording starts when <see cref="UseStartAfterStep"/> is set.</summary>
+		/// <summary>Gets or sets the simulation step (0-based, never negative) at which recording starts when <see cref="UseStartAfterStep"/> is set (0 = from the start).</summary>
 		public int StartAfterStep { get; set; }
 
 		/// <summary>Returns an independent copy. All members are value types, so the memberwise clone is a full copy.</summary>
@@ -109,60 +121,61 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void CopyDisplayFrom(ProbeSettings other)
 		{
-			this.Active = other.Active;
-			this.BoxSize = other.BoxSize;
-			this.BoxX = other.BoxX;
-			this.BoxY = other.BoxY;
-			this.ScaleMode = other.ScaleMode;
-			this.AutoScaleX = other.AutoScaleX;
-			this.AutoScaleY = other.AutoScaleY;
-			this.YMin = other.YMin;
-			this.YMax = other.YMax;
-			this.RunningWindow = other.RunningWindow;
-			this.UseStartAfterStep = other.UseStartAfterStep;
-			this.StartAfterStep = other.StartAfterStep;
+			Active = other.Active;
+			BoxSize = other.BoxSize;
+			BoxX = other.BoxX;
+			BoxY = other.BoxY;
+			ScaleMode = other.ScaleMode;
+			AutoScaleX = other.AutoScaleX;
+			AutoScaleY = other.AutoScaleY;
+			YMin = other.YMin;
+			YMax = other.YMax;
+			RunningWindow = other.RunningWindow;
+			UseStartAfterStep = other.UseStartAfterStep;
+			StartAfterStep = other.StartAfterStep;
 		}
 
 		/// <summary>
 		/// Forces the settings into a consistent state: the field only allows
 		/// <see cref="ProbeMeasurement.Amplitude"/>, the intensity output never does (amplitude is
-		/// turned into <see cref="ProbeMeasurement.Intensity"/>); an empty or inverted Y range becomes
+		/// turned into <see cref="ProbeMeasurement.Intensity"/>); an empty, inverted or NaN Y range becomes
 		/// -1..1; <see cref="RunningWindow"/> is clamped to 10..<see cref="MaxRunningWindow"/> and
 		/// <see cref="StartAfterStep"/> to zero or more.
 		/// </summary>
 		public void Normalize()
 		{
-			if (this.PlaceOn == ProbePlaceOn.Field)
+			if (PlaceOn == ProbePlaceOn.Field)
 			{
-				this.Measurement = ProbeMeasurement.Amplitude;
+				Measurement = ProbeMeasurement.Amplitude;
 			}
-			else if (this.Measurement == ProbeMeasurement.Amplitude)
+			else if (Measurement == ProbeMeasurement.Amplitude)
 			{
-				this.Measurement = ProbeMeasurement.Intensity;
+				Measurement = ProbeMeasurement.Intensity;
 			}
-			if (this.YMax <= this.YMin)
+			// written this way round so a NaN limit also falls back
+			if (!(YMax > YMin))
 			{
-				this.YMin = -1.0;
-				this.YMax = 1.0;
+				YMin = -1.0;
+				YMax = 1.0;
 			}
-			if (this.RunningWindow < 10)
+			if (RunningWindow < 10)
 			{
-				this.RunningWindow = 10;
+				RunningWindow = 10;
 			}
-			if (this.RunningWindow > ProbeSettings.MaxRunningWindow)
+			if (RunningWindow > ProbeSettings.MaxRunningWindow)
 			{
-				this.RunningWindow = ProbeSettings.MaxRunningWindow;
+				RunningWindow = ProbeSettings.MaxRunningWindow;
 			}
-			if (this.StartAfterStep < 0)
+			if (StartAfterStep < 0)
 			{
-				this.StartAfterStep = 0;
+				StartAfterStep = 0;
 			}
 		}
 
 		/// <summary>The UI label of <see cref="Measurement"/> ("Amplitude", "Intensity" or "Integrated intensity").</summary>
 		public string MeasurementText()
 		{
-			switch (this.Measurement)
+			switch (Measurement)
 			{
 			case ProbeMeasurement.Amplitude:
 				return "Amplitude";
@@ -173,11 +186,11 @@ namespace _2D_wave_sim_V01
 			}
 		}
 
-		/// <summary>Title shown in the graph box, e.g. "Probe 1 - Amplitude".</summary>
+		/// <summary>Title shown in the graph box, e.g. "Probe 1 - Amplitude". The number is also drawn at the probe in the picture.</summary>
 		/// <param name="index">0-based probe index; the title shows it 1-based.</param>
 		public string Title(int index)
 		{
-			return "Probe " + (index + 1).ToString(CultureInfo.InvariantCulture) + " - " + this.MeasurementText();
+			return "Probe " + (index + 1).ToString(CultureInfo.InvariantCulture) + " - " + MeasurementText();
 		}
 
 		/// <summary>
@@ -238,9 +251,9 @@ namespace _2D_wave_sim_V01
 		private Dictionary<string, object> ToDictionary()
 		{
 			Dictionary<string, object> values = new Dictionary<string, object>();
-			values["active"] = this.Active;
-			values["place_on"] = ((this.PlaceOn == ProbePlaceOn.Field) ? "field" : "intensity");
-			switch (this.Measurement)
+			values["active"] = Active;
+			values["place_on"] = ((PlaceOn == ProbePlaceOn.Field) ? "field" : "intensity");
+			switch (Measurement)
 			{
 			case ProbeMeasurement.Amplitude:
 				values["measurement"] = "amplitude";
@@ -252,12 +265,12 @@ namespace _2D_wave_sim_V01
 				values["measurement"] = "intensity";
 				break;
 			}
-			values["probe_type"] = ((this.Kind == ProbeKind.Line) ? "line" : "point");
-			values["ax"] = this.PosAX;
-			values["ay"] = this.PosAY;
-			values["bx"] = this.PosBX;
-			values["by"] = this.PosBY;
-			switch (this.BoxSize)
+			values["probe_type"] = ((Kind == ProbeKind.Line) ? "line" : "point");
+			values["ax"] = PosAX;
+			values["ay"] = PosAY;
+			values["bx"] = PosBX;
+			values["by"] = PosBY;
+			switch (BoxSize)
 			{
 			case ProbeBoxSize.Tiny:
 				values["box_size"] = "tiny";
@@ -275,16 +288,16 @@ namespace _2D_wave_sim_V01
 				values["box_size"] = "medium";
 				break;
 			}
-			values["box_x"] = this.BoxX;
-			values["box_y"] = this.BoxY;
-			values["scale_mode"] = ((this.ScaleMode == ProbeScaleMode.Full) ? "full" : "running");
-			values["auto_scale_x"] = this.AutoScaleX;
-			values["auto_scale_y"] = this.AutoScaleY;
-			values["y_min"] = this.YMin;
-			values["y_max"] = this.YMax;
-			values["running_window"] = this.RunningWindow;
-			values["use_start_after_step"] = this.UseStartAfterStep;
-			values["start_after_step"] = this.StartAfterStep;
+			values["box_x"] = BoxX;
+			values["box_y"] = BoxY;
+			values["scale_mode"] = ((ScaleMode == ProbeScaleMode.Full) ? "full" : "running");
+			values["auto_scale_x"] = AutoScaleX;
+			values["auto_scale_y"] = AutoScaleY;
+			values["y_min"] = YMin;
+			values["y_max"] = YMax;
+			values["running_window"] = RunningWindow;
+			values["use_start_after_step"] = UseStartAfterStep;
+			values["start_after_step"] = StartAfterStep;
 			return values;
 		}
 
@@ -385,6 +398,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
 				{
+					// use the fallback
 				}
 			}
 			return fallback;
@@ -406,6 +420,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
 				{
+					// use the fallback
 				}
 			}
 			return fallback;

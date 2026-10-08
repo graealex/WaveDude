@@ -8,7 +8,8 @@ namespace _2D_wave_sim_V01
 	/// <summary>
 	/// <see cref="IFrameSink"/> that JPEG-encodes each frame with the GDI+ encoder and appends it to a Motion-JPEG
 	/// AVI through <see cref="AviMjpegWriter"/>. Fallback used by <see cref="SimulationRunner"/> when MP4 is not
-	/// requested or Media Foundation is unavailable. Used from the worker thread only.
+	/// requested or Media Foundation is unavailable: needs no codec on this computer, but Windows' own players do not
+	/// play it; VLC does. Used from the worker thread only.
 	/// </summary>
 	internal sealed class AviFrameSink : IFrameSink
 	{
@@ -20,22 +21,16 @@ namespace _2D_wave_sim_V01
 		/// <param name="quality">JPEG quality 1..100 passed to the GDI+ encoder.</param>
 		public AviFrameSink(string filePath, int width, int height, int framesPerSecond, int quality)
 		{
-			this._buffer = new MemoryStream();
-			this._jpegQuality = Math.Max(1, Math.Min(100, quality));
-			this._path = filePath;
-			this._width = width;
-			this._height = height;
-			this._writer = new AviMjpegWriter(filePath, width, height, framesPerSecond);
+			_buffer = new MemoryStream();
+			_jpegQuality = Math.Max(1, Math.Min(100, quality));
+			_path = filePath;
+			_width = width;
+			_height = height;
+			_writer = new AviMjpegWriter(filePath, width, height, framesPerSecond);
 		}
 
 		/// <summary>The AVI path given to the constructor.</summary>
-		public string FilePath
-		{
-			get
-			{
-				return this._path;
-			}
-		}
+		public string FilePath => _path;
 
 		/// <summary>
 		/// Wraps the ARGB buffer in a temporary bitmap, JPEG-encodes it into the reusable <see cref="_buffer"/>
@@ -43,29 +38,29 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void AddPixels(int[] pixels)
 		{
-			using (Bitmap bitmap = FrameRenderer.ToBitmap(pixels, this._width, this._height))
+			using (Bitmap bitmap = FrameRenderer.ToBitmap(pixels, _width, _height))
 			{
-				this._buffer.SetLength(0L);
+				_buffer.SetLength(0L);
 				using (EncoderParameters encoderParameters = new EncoderParameters(1))
 				{
-					encoderParameters.Param[0] = new EncoderParameter(Encoder.Quality, this._jpegQuality);
-					bitmap.Save(this._buffer, AviFrameSink.JpegCodec, encoderParameters);
+					encoderParameters.Param[0] = new EncoderParameter(Encoder.Quality, _jpegQuality);
+					bitmap.Save(_buffer, AviFrameSink.JpegCodec, encoderParameters);
 				}
-				this._writer.AddFrame(this._buffer.GetBuffer(), (int)this._buffer.Length);
+				_writer.AddFrame(_buffer.GetBuffer(), (int)_buffer.Length);
 			}
 		}
 
 		/// <summary>Writes the AVI index and header patches and closes the file (idempotent).</summary>
 		public void Close()
 		{
-			this._writer.Close();
+			_writer.Close();
 		}
 
 		/// <summary>Closes the AVI (if not already) and releases the encode buffer.</summary>
 		public void Dispose()
 		{
-			this._writer.Close();
-			this._buffer.Dispose();
+			_writer.Close();
+			_buffer.Dispose();
 		}
 
 		/// <summary>Finds the GDI+ JPEG encoder; runs once in the static initializer.</summary>

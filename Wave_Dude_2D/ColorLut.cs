@@ -5,51 +5,55 @@ namespace _2D_wave_sim_V01
 {
 	/// <summary>
 	/// An immutable palette of <see cref="Size"/> opaque ARGB entries built from a
-	/// <see cref="ColorScheme"/> by <see cref="Build"/>, plus the static value-to-index
-	/// mappings used when colouring frames. Built on the UI thread when a simulation is
-	/// started; the <see cref="Argb"/> array is then handed to <see cref="SimulationRunner"/>
-	/// and read from <see cref="FrameRenderer"/>'s parallel loops without locking (it is
-	/// never modified after construction).
+	/// <see cref="ColorScheme"/> by <see cref="Build"/> plus the display options of the Python
+	/// function <c>get_colormap_lut</c> (invert, black level, make symmetric), and the static
+	/// value-to-index mappings used when colouring frames, which convert field and intensity
+	/// values to table indices exactly like <c>WaveVisualizer.render_field</c> /
+	/// <c>render_intensity</c>. Built on the UI thread when a simulation is started; the
+	/// <see cref="Argb"/> array is then handed to <see cref="SimulationRunner"/> and read from
+	/// <see cref="FrameRenderer"/>'s parallel loops without locking (it is never modified after
+	/// construction).
 	/// </summary>
+	/// <remarks>
+	/// The options belong to how a scheme is used in a simulation (field or intensity), not to
+	/// the scheme itself, so they are not saved in the scheme file; they live in
+	/// <see cref="SimulationSettings"/> and are applied here at run start.
+	/// </remarks>
 	public sealed class ColorLut
 	{
 		private ColorLut(int[] argb)
 		{
-			this._argb = argb;
+			_argb = argb;
 		}
 
 		/// <summary>
 		/// The palette as packed opaque ARGB ints (<see cref="Color.ToArgb"/> layout), indices
 		/// 0..<see cref="Size"/>-1. Returns the internal array, not a copy; callers must not modify it.
 		/// </summary>
-		public int[] Argb
-		{
-			get
-			{
-				return this._argb;
-			}
-		}
+		public int[] Argb => _argb;
 
 		/// <summary>Returns entry <paramref name="index"/> (0..<see cref="Size"/>-1) as a <see cref="Color"/>.</summary>
 		public Color ColorAt(int index)
 		{
-			return Color.FromArgb(this._argb[index]);
+			return Color.FromArgb(_argb[index]);
 		}
 
 		/// <summary>
 		/// Builds a palette from the <see cref="Size"/> entries of <paramref name="scheme"/>.
-		/// Transformations are applied in this order: <paramref name="reverse"/> (entry i is read
-		/// from entry <c>Size-1-i</c>), <paramref name="invert"/> (each channel becomes
-		/// <c>1 - channel</c>), <paramref name="makeSymmetric"/> (entry i is read from entry
-		/// <c>2 * min(i, Size-1-i)</c>, so the palette runs from entry 0 at both ends up to entry
-		/// 254 in the middle), then <paramref name="blackLevel"/> lifts every channel linearly so
-		/// that 0 becomes <paramref name="blackLevel"/> and 1 stays 1, clamped to 0..1. Alpha is always 255.
+		/// Transformations are applied in the same order as in Python: <paramref name="reverse"/>
+		/// (new, optional; entry i is read from entry <c>Size-1-i</c>), <paramref name="invert"/>
+		/// (each channel becomes <c>1 - channel</c>), <paramref name="makeSymmetric"/> (entry i is
+		/// read from entry <c>2 * min(i, Size-1-i)</c>, so the palette runs from entry 0 at both
+		/// ends up to entry 254 in the middle), then <paramref name="blackLevel"/> maps every
+		/// channel linearly as <c>c * (1 - b) + b</c>, so 0 becomes <paramref name="blackLevel"/>
+		/// and 1 stays 1. Values are limited to 0..1 and converted to 8 bit by truncation, like
+		/// the Python code. Alpha is always 255.
 		/// </summary>
 		/// <param name="scheme">Source colours; must have at least <see cref="Size"/> entries.</param>
-		/// <param name="invert">Invert every channel (negative image).</param>
-		/// <param name="blackLevel">Minimum channel level 0..1 after lifting (0 = unchanged).</param>
-		/// <param name="makeSymmetric">Mirror the palette around its centre index.</param>
-		/// <param name="reverse">Read the scheme back to front.</param>
+		/// <param name="invert">Replaces every colour by its complement (1 - colour), like the Python option.</param>
+		/// <param name="blackLevel">Lifts (positive) or lowers (negative) the darkest level; 0 = unchanged.</param>
+		/// <param name="makeSymmetric">Squeezes the whole scheme into each half and mirrors it around the centre.</param>
+		/// <param name="reverse">Reverses the order of the scheme (like matplotlib's <c>_r</c> maps).</param>
 		/// <exception cref="ArgumentNullException"><paramref name="scheme"/> is null.</exception>
 		public static ColorLut Build(ColorScheme scheme, bool invert = false, double blackLevel = 0.0, bool makeSymmetric = false, bool reverse = false)
 		{
@@ -78,6 +82,8 @@ namespace _2D_wave_sim_V01
 			int[] argb = new int[Size];
 			for (int i = 0; i < Size; i++)
 			{
+				// Python: entries 0..127 = src[0::2] and entries 127..254 = the same list mirrored,
+				// which is entry i = src[2 * min(i, 254 - i)]
 				int sourceIndex = i;
 				if (makeSymmetric)
 				{
@@ -108,9 +114,10 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Maps a signed field sample to a palette index: <c>value * brightness</c> is clamped to
-		/// -1..1 and mapped linearly to 0..254 with 0 at index 127. NaN gives 127. Called per
-		/// pixel from <see cref="FrameRenderer.RenderField"/> on worker threads.
+		/// Maps a signed field sample to a palette index, like <c>render_field</c>:
+		/// <c>clip(value * brightness, -1, 1) * 127 + 127</c>, so the result is 0..254 and a zero
+		/// field gives index 127 (the centre colour). NaN gives 127. Called per pixel from
+		/// <see cref="FrameRenderer.RenderField"/> on worker threads.
 		/// </summary>
 		/// <param name="value">Raw field amplitude from the engine.</param>
 		/// <param name="brightness">Gain applied before clamping.</param>
@@ -133,14 +140,14 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Maps a non-negative intensity to a palette index 0..254: <c>intensity ^ exponent</c>
-		/// (square root by default) times <paramref name="brightness"/>, clamped to 0..1 and
-		/// scaled to 254. NaN or non-positive intensity gives 0. Not currently called;
-		/// <see cref="FrameRenderer.RenderIntensity"/> inlines the equivalent square-root mapping.
+		/// Maps a non-negative intensity to a palette index 0..254, like <c>render_intensity</c>:
+		/// <c>clip(intensity ^ exponent * brightness, 0, 1) * 254</c>. NaN or non-positive
+		/// intensity gives 0. Not currently called; <see cref="FrameRenderer.RenderIntensity"/>
+		/// inlines the equivalent square-root mapping.
 		/// </summary>
 		/// <param name="intensity">Accumulated intensity from the engine.</param>
 		/// <param name="brightness">Gain applied after compression.</param>
-		/// <param name="exponent">Compression exponent; 0.5 = square root.</param>
+		/// <param name="exponent">Compression exponent; 0.5 (square root) is the Python default.</param>
 		public static int IntensityIndex(float intensity, float brightness, float exponent = 0.5f)
 		{
 			if (float.IsNaN(intensity) || intensity <= 0f)
@@ -159,8 +166,8 @@ namespace _2D_wave_sim_V01
 			return (int)(scaled * 254.0);
 		}
 
-		/// <summary>Number of entries in a palette (255, matching <see cref="ColorScheme.EntryCount"/>).</summary>
-		public const int Size = 255;
+		/// <summary>Number of entries in a palette: <see cref="ColorScheme.EntryCount"/> (255).</summary>
+		public const int Size = ColorScheme.EntryCount;
 
 		/// <summary>The packed opaque ARGB entries; never modified after construction.</summary>
 		private readonly int[] _argb;

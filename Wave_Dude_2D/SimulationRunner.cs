@@ -7,10 +7,11 @@ using System.Threading;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// Runs a <see cref="SimulationJob"/> on a dedicated background thread ("Wave simulation"),
-	/// writing video frames, collecting probe data and raising progress / preview events as it goes.
-	/// Created and started by <c>Form1</c> (one instance per run); the form keeps the reference in
-	/// <c>_runner</c> so stale callbacks from an older run can be ignored.
+	/// Runs a <see cref="SimulationJob"/> on a dedicated background thread ("Wave simulation"), as the loop
+	/// in <c>main_curr.py</c>: for every step update the scene (sources), update the field and the intensity;
+	/// every N steps render a frame for the previews and the videos, collecting probe data and raising
+	/// progress / preview events as it goes. Created and started by <c>Form1</c> (one instance per run);
+	/// the form keeps the reference in <c>_runner</c> so stale callbacks from an older run can be ignored.
 	/// </summary>
 	/// <remarks>
 	/// <para><b>Event contract.</b> Every event (<see cref="ProgressChanged"/>, <see cref="EngineReady"/>,
@@ -49,8 +50,9 @@ namespace _2D_wave_sim_V01
 		public event SimulationRunner.EngineReadyEventHandler EngineReady;
 
 		/// <summary>
-		/// Raised on the worker thread at most every 50 ms (and once at the end) with the probe samples
-		/// drained since the previous update. Only raised when the job has probes.
+		/// Raised on the worker thread at most every 50 ms (and once at the end) with the new probe measurements
+		/// drained since the previous update: the new values of the point probes and the last profile of the line
+		/// probes. The receiver owns the arrays. Only raised when the job has probes.
 		/// </summary>
 		public event SimulationRunner.ProbesUpdatedEventHandler ProbesUpdated;
 
@@ -71,43 +73,44 @@ namespace _2D_wave_sim_V01
 		/// <summary>Stores the job and creates the pause gate in the "running" (set) state.</summary>
 		public SimulationRunner(SimulationJob job)
 		{
-			this._gate = new ManualResetEventSlim(true);
-			this._job = job;
+			_gate = new ManualResetEventSlim(true);
+			_job = job;
 		}
 
 		/// <summary>Starts the background worker thread; returns immediately. Call once.</summary>
 		public void Start()
 		{
-			this._thread = new Thread(new ThreadStart(this.Run));
-			this._thread.IsBackground = true;
-			this._thread.Name = "Wave simulation";
-			this._thread.Start();
+			_thread = new Thread(new ThreadStart(Run));
+			_thread.IsBackground = true;
+			_thread.Name = "Wave simulation";
+			_thread.Start();
 		}
 
 		/// <summary>
-		/// Requests cancellation (thread-safe, callable from the UI thread). Also opens the pause gate so a
-		/// paused run can wake up and finish; the run then ends with <see cref="SimulationStatus.Cancelled"/>
-		/// and <see cref="Finished"/> is still raised.
+		/// Asks the run to stop after the current step (thread-safe, callable from the UI thread). Also opens
+		/// the pause gate so a paused run can wake up and finish; the run then ends with
+		/// <see cref="SimulationStatus.Cancelled"/>, the videos are closed properly and <see cref="Finished"/>
+		/// is still raised.
 		/// </summary>
 		public void Cancel()
 		{
-			Interlocked.Exchange(ref this._cancel, 1);
-			this._gate.Set();
+			Interlocked.Exchange(ref _cancel, 1);
+			_gate.Set(); // a paused run must wake up to stop
 		}
 
 		/// <summary>
-		/// Closes the gate so the worker blocks before its next step (it finishes the step in progress
-		/// first). While paused, <see cref="RenderCurrentFrame"/> may be used.
+		/// Holds the run before the next step: closes the gate so the worker blocks (it finishes the step in
+		/// progress first). The videos stay open. While paused, <see cref="RenderCurrentFrame"/> may be used.
 		/// </summary>
 		public void PauseRun()
 		{
-			this._gate.Reset();
+			_gate.Reset();
 		}
 
 		/// <summary>Opens the gate so a paused worker continues.</summary>
 		public void ResumeRun()
 		{
-			this._gate.Set();
+			_gate.Set();
 		}
 
 		/// <summary>
@@ -116,7 +119,7 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void PreviewShown()
 		{
-			Interlocked.Decrement(ref this._previewPending);
+			Interlocked.Decrement(ref _previewPending);
 		}
 
 		/// <summary>
@@ -125,14 +128,15 @@ namespace _2D_wave_sim_V01
 		/// <returns><c>true</c> if the thread ended (or was never started), <c>false</c> on timeout.</returns>
 		public bool WaitForExit(int milliseconds)
 		{
-			Thread thread = this._thread;
+			Thread thread = _thread;
 			return thread == null || thread.Join(milliseconds);
 		}
 
 		/// <summary>
-		/// Renders the current field or intensity frame at full engine resolution, with probe markers burned
-		/// in but without the glow overlay. Intended for the UI thread while the run is paused: it reads the
-		/// engine buffers directly, which is only safe because the worker is parked on the gate.
+		/// Renders the current field or intensity frame at full engine resolution on demand (for a still-image
+		/// export), with probe markers burned in but without the glow overlay. Intended for the UI thread, and
+		/// only while the run is paused: it reads the engine buffers directly, which is only safe because the
+		/// worker is then guaranteed to be parked on the gate and not touching the engine's arrays.
 		/// </summary>
 		/// <param name="isField"><c>true</c> for the wave field, <c>false</c> for the intensity.</param>
 		/// <param name="lut">ARGB palette with at least 255 entries, or null for greyscale.</param>
@@ -143,11 +147,11 @@ namespace _2D_wave_sim_V01
 		/// </returns>
 		public Bitmap RenderCurrentFrame(bool isField, int[] lut, float brightness)
 		{
-			if (this._gate.IsSet)
+			if (_gate.IsSet)
 			{
-				return null;
+				return null; // running (not paused): unsafe to read
 			}
-			IWaveEngine sim = this._sim;
+			IWaveEngine sim = _sim;
 			if (sim == null)
 			{
 				return null;
@@ -163,17 +167,17 @@ namespace _2D_wave_sim_V01
 			if (isField)
 			{
 				FrameRenderer.RenderField(sim, lut, brightness, pixels, width, height);
-				if (this._collector != null)
+				if (_collector != null)
 				{
-					ProbeOverlay.Burn(pixels, width, height, this._job.Probes, this._collector.Traces, ProbePlaceOn.Field, this._job.Settings.Steps);
+					ProbeOverlay.Burn(pixels, width, height, _job.Probes, _collector.Traces, ProbePlaceOn.Field, _job.Settings.Steps);
 				}
 			}
 			else
 			{
 				FrameRenderer.RenderIntensity(sim, lut, brightness, pixels, width, height);
-				if (this._collector != null)
+				if (_collector != null)
 				{
-					ProbeOverlay.Burn(pixels, width, height, this._job.Probes, this._collector.Traces, ProbePlaceOn.Intensity, this._job.Settings.Steps);
+					ProbeOverlay.Burn(pixels, width, height, _job.Probes, _collector.Traces, ProbePlaceOn.Intensity, _job.Settings.Steps);
 				}
 			}
 			return FrameRenderer.ToBitmap(pixels, width, height);
@@ -193,31 +197,36 @@ namespace _2D_wave_sim_V01
 			IFrameSink fieldSink = null;
 			IFrameSink intensitySink = null;
 			IWaveEngine engine = null;
+			// declared here, outside the try, because finally also needs them for the last-frame probe overlay
 			ProbeCollector collector = null;
 			int totalSteps = 0;
 			try
 			{
-				SimulationSettings settings = this._job.Settings;
-				bool writeField = this._job.FieldVideoPath.Length > 0;
-				bool writeIntensity = this._job.IntensityVideoPath.Length > 0;
+				SimulationSettings settings = _job.Settings;
+				bool writeField = _job.FieldVideoPath.Length > 0;
+				bool writeIntensity = _job.IntensityVideoPath.Length > 0;
 				bool needIntensity = writeIntensity || settings.PreviewIntensity;
+
+				// the scene and the simulator
 				SceneData scene;
-				if (this._job.Image != null)
+				if (_job.Image != null)
 				{
-					scene = SceneData.FromImage(this._job.Image, this._job.UseSources, this._job.DampingEdge);
-					this._job.Image.Dispose();
-					this._job.Image = null;
+					scene = SceneData.FromImage(_job.Image, _job.UseSources, _job.DampingEdge);
+					_job.Image.Dispose();
+					_job.Image = null;
 				}
 				else
 				{
-					scene = SceneData.Empty(this._job.Width, this._job.Height, this._job.DampingEdge, this._job.BackgroundRefractiveIndex);
+					scene = SceneData.Empty(_job.Width, _job.Height, _job.DampingEdge, _job.BackgroundRefractiveIndex);
 				}
 				int width = scene.Width;
 				int height = scene.Height;
+
+				// the probes
 				ProbeSampler sampler = null;
-				if (this._job.Probes != null && this._job.Probes.Count > 0)
+				if (_job.Probes != null && _job.Probes.Count > 0)
 				{
-					sampler = ProbeSampler.Build(this._job.Probes, width, height);
+					sampler = ProbeSampler.Build(_job.Probes, width, height);
 					collector = new ProbeCollector(sampler);
 					if (sampler.NeedsIntensity)
 					{
@@ -225,56 +234,61 @@ namespace _2D_wave_sim_V01
 					}
 				}
 				string engineNote = "";
-				engine = WaveEngineFactory.Create(scene, settings, this._job.SourceAmplitude, needIntensity, ref engineNote, this._job.ObjectSources);
-				this._sim = engine;
-				this._collector = collector;
+				engine = WaveEngineFactory.Create(scene, settings, _job.SourceAmplitude, needIntensity, ref engineNote, _job.ObjectSources);
+				_sim = engine;
+				_collector = collector;
 				result.Engine = engine.Description;
 				result.EngineNote = engineNote;
-				this.EngineReady?.Invoke(engine.Description, engineNote);
+				EngineReady?.Invoke(engine.Description, engineNote);
 				if (sampler != null)
 				{
 					engine.SetProbes(sampler);
 				}
+
+				// videos
 				if (writeField)
 				{
-					fieldSink = SimulationRunner.OpenSink(this._job.FieldVideoPath, width, height, settings.VideoFps, settings.VideoQuality, result);
+					fieldSink = SimulationRunner.OpenSink(_job.FieldVideoPath, width, height, settings.VideoFps, settings.VideoQuality, result);
 					result.Files.Add(fieldSink.FilePath);
 					result.FieldFile = fieldSink.FilePath;
 				}
 				if (writeIntensity)
 				{
-					intensitySink = SimulationRunner.OpenSink(this._job.IntensityVideoPath, width, height, settings.VideoFps, settings.VideoQuality, result);
+					intensitySink = SimulationRunner.OpenSink(_job.IntensityVideoPath, width, height, settings.VideoFps, settings.VideoQuality, result);
 					result.Files.Add(intensitySink.FilePath);
 					result.IntensityFile = intensitySink.FilePath;
 				}
-				int[] framePixels = null;
+				int[] fullPixels = null;
 				if (writeField || writeIntensity)
 				{
-					framePixels = new int[width * height];
+					fullPixels = new int[width * height];
 				}
-				byte[] fieldOverlay = null;
-				byte[] intensityOverlay = null;
-				if (this._job.GlowOverlay != null && (writeField || writeIntensity))
+				// the "glowing edges" overlay for the videos (FrameRenderer.AddOverlay): converted to a plain RGB
+				// byte array and gain-prescaled (FrameRenderer.ScaleOverlayRgb) once, up front, rather than redoing
+				// either on every single exported frame; this was the actual cost of the overlay on a video export
+				byte[] fieldOverlayScaled = null;
+				byte[] intensityOverlayScaled = null;
+				if (_job.GlowOverlay != null && (writeField || writeIntensity))
 				{
-					byte[] overlayRgb = FrameRenderer.ToRgbBytes(this._job.GlowOverlay, width, height);
+					byte[] overlayRgb = FrameRenderer.ToRgbBytes(_job.GlowOverlay, width, height);
 					if (writeField)
 					{
-						fieldOverlay = FrameRenderer.ScaleOverlayRgb(overlayRgb, this._job.FieldOverlayGain);
+						fieldOverlayScaled = FrameRenderer.ScaleOverlayRgb(overlayRgb, _job.FieldOverlayGain);
 					}
 					if (writeIntensity)
 					{
-						intensityOverlay = FrameRenderer.ScaleOverlayRgb(overlayRgb, this._job.IntensityOverlayGain);
+						intensityOverlayScaled = FrameRenderer.ScaleOverlayRgb(overlayRgb, _job.IntensityOverlayGain);
 					}
 				}
-				if (this._job.GlowOverlay != null)
+				if (_job.GlowOverlay != null)
 				{
-					this._job.GlowOverlay.Dispose();
-					this._job.GlowOverlay = null;
+					_job.GlowOverlay.Dispose();
+					_job.GlowOverlay = null;
 				}
-				// Preview is shrunk (never enlarged) to fit the preview box, keeping the aspect ratio.
+				// previews are made small enough to fit the preview area: shrunk (never enlarged), keeping the aspect ratio
 				int previewWidth = width;
 				int previewHeight = height;
-				double previewScale = Math.Min((double)this._job.PreviewWidth / width, (double)this._job.PreviewHeight / height);
+				double previewScale = Math.Min((double)_job.PreviewWidth / width, (double)_job.PreviewHeight / height);
 				if (previewScale < 1.0)
 				{
 					previewWidth = Math.Max(1, (int)Math.Floor(width * previewScale));
@@ -295,15 +309,15 @@ namespace _2D_wave_sim_V01
 				result.Status = SimulationStatus.Completed;
 				for (int i = 0; i < totalSteps; i++)
 				{
-					if (!this._gate.IsSet)
+					if (!_gate.IsSet)
 					{
-						// Paused: report the exact step count and exclude the wait from the elapsed time.
+						// paused: report the exact step count; the time of the pause does not count
 						stopwatch.Stop();
-						this.ProgressChanged?.Invoke(result.StepsDone, totalSteps);
-						this._gate.Wait();
+						ProgressChanged?.Invoke(result.StepsDone, totalSteps);
+						_gate.Wait();
 						stopwatch.Start();
 					}
-					if (Thread.VolatileRead(ref this._cancel) != 0)
+					if (Thread.VolatileRead(ref _cancel) != 0)
 					{
 						result.Status = SimulationStatus.Cancelled;
 						break;
@@ -316,6 +330,7 @@ namespace _2D_wave_sim_V01
 					result.StepsDone = i + 1;
 					if (i % visualizeEvery == 0)
 					{
+						// the probe values up to this step (the graphs in the videos need them)
 						if (collector != null)
 						{
 							collector.Collect(engine, result.StepsDone);
@@ -324,68 +339,86 @@ namespace _2D_wave_sim_V01
 								collector.CollectProfiles(engine, result.StepsDone);
 							}
 						}
+						// previews are only made when the pictures of the last preview have all been shown, and not
+						// more often than roughly PreviewIntervalMs. The second condition is the fix for a real bug:
+						// without it, this was gated purely by _previewPending (whether the UI thread has finished
+						// showing the last one, via ShowPreview/PreviewShown) - and on a GPU engine, PrepareFrame
+						// below is where the actual cost is (a full-resolution GPU->host readback, not just the small
+						// preview picture), so the GPU run's speed ended up riding on how fast the UI happened to be.
+						// With the "display overlay" checkboxes off, SetPreviewFrame is cheap and _previewPending
+						// clears almost immediately, so a readback fired on nearly every eligible step; with them on,
+						// ComposeGlowOverlay's per-pixel blend made the UI side slow enough to skip most of those
+						// readbacks "by accident", which is why turning the overlay on made the run go faster rather
+						// than slower. Pacing previews by elapsed time keeps the readback rate steady and no longer
+						// dependent on a checkbox that was never meant to affect simulation throughput. Exporting a
+						// video already forces a readback every eligible step regardless (see writeField/
+						// writeIntensity below), which is why the slowdown was never visible with video export on.
 						bool previewDue = stopwatch.ElapsedMilliseconds - lastPreviewMs >= PreviewIntervalMs;
-						bool doPreview = previewPixels != null && previewDue && Thread.VolatileRead(ref this._previewPending) <= 0;
+						bool doPreview = previewPixels != null && previewDue && Thread.VolatileRead(ref _previewPending) <= 0;
 						if (doPreview)
 						{
 							lastPreviewMs = stopwatch.ElapsedMilliseconds;
 						}
+						// a GPU engine copies only the data that is going to be drawn
 						engine.PrepareFrame(writeField || (doPreview && settings.PreviewField), writeIntensity || (doPreview && settings.PreviewIntensity));
 						if (writeField)
 						{
-							FrameRenderer.RenderField(engine, this._job.FieldLut, fieldBrightness, framePixels, width, height);
-							FrameRenderer.AddOverlay(framePixels, fieldOverlay, width, height);
+							FrameRenderer.RenderField(engine, _job.FieldLut, fieldBrightness, fullPixels, width, height);
+							FrameRenderer.AddOverlay(fullPixels, fieldOverlayScaled, width, height);
 							if (collector != null)
 							{
-								ProbeOverlay.Burn(framePixels, width, height, this._job.Probes, collector.Traces, ProbePlaceOn.Field, totalSteps);
+								ProbeOverlay.Burn(fullPixels, width, height, _job.Probes, collector.Traces, ProbePlaceOn.Field, totalSteps);
 							}
-							fieldSink.AddPixels(framePixels);
+							fieldSink.AddPixels(fullPixels);
 						}
 						if (writeIntensity)
 						{
-							FrameRenderer.RenderIntensity(engine, this._job.IntensityLut, intensityBrightness, framePixels, width, height);
-							FrameRenderer.AddOverlay(framePixels, intensityOverlay, width, height);
+							FrameRenderer.RenderIntensity(engine, _job.IntensityLut, intensityBrightness, fullPixels, width, height);
+							FrameRenderer.AddOverlay(fullPixels, intensityOverlayScaled, width, height);
 							if (collector != null)
 							{
-								ProbeOverlay.Burn(framePixels, width, height, this._job.Probes, collector.Traces, ProbePlaceOn.Intensity, totalSteps);
+								ProbeOverlay.Burn(fullPixels, width, height, _job.Probes, collector.Traces, ProbePlaceOn.Intensity, totalSteps);
 							}
-							intensitySink.AddPixels(framePixels);
+							intensitySink.AddPixels(fullPixels);
 						}
 						if (doPreview)
 						{
 							// Set the outstanding count before raising, so PreviewShown() cannot race it to 0.
 							int previewCount = (settings.PreviewField ? 1 : 0) + (settings.PreviewIntensity ? 1 : 0);
-							Interlocked.Exchange(ref this._previewPending, previewCount);
+							Interlocked.Exchange(ref _previewPending, previewCount);
 							if (settings.PreviewField)
 							{
-								FrameRenderer.RenderField(engine, this._job.FieldLut, fieldBrightness, previewPixels, previewWidth, previewHeight);
-								this.PreviewReady?.Invoke(true, FrameRenderer.ToBitmap(previewPixels, previewWidth, previewHeight));
+								FrameRenderer.RenderField(engine, _job.FieldLut, fieldBrightness, previewPixels, previewWidth, previewHeight);
+								PreviewReady?.Invoke(true, FrameRenderer.ToBitmap(previewPixels, previewWidth, previewHeight));
 							}
 							if (settings.PreviewIntensity)
 							{
-								FrameRenderer.RenderIntensity(engine, this._job.IntensityLut, intensityBrightness, previewPixels, previewWidth, previewHeight);
-								this.PreviewReady?.Invoke(false, FrameRenderer.ToBitmap(previewPixels, previewWidth, previewHeight));
+								FrameRenderer.RenderIntensity(engine, _job.IntensityLut, intensityBrightness, previewPixels, previewWidth, previewHeight);
+								PreviewReady?.Invoke(false, FrameRenderer.ToBitmap(previewPixels, previewWidth, previewHeight));
 							}
 						}
 					}
+					// the probe values go to the user interface about 20 times a second
 					if (collector != null && stopwatch.ElapsedMilliseconds - lastProbeMs >= 50L)
 					{
 						lastProbeMs = stopwatch.ElapsedMilliseconds;
 						collector.Collect(engine, result.StepsDone);
 						collector.CollectProfiles(engine, result.StepsDone);
-						this.ProbesUpdated?.Invoke(collector.TakeForUi());
+						ProbesUpdated?.Invoke(collector.TakeForUi());
 					}
 					if (stopwatch.ElapsedMilliseconds - lastProgressMs >= 100L)
 					{
 						lastProgressMs = stopwatch.ElapsedMilliseconds;
-						this.ProgressChanged?.Invoke(i + 1, totalSteps);
+						ProgressChanged?.Invoke(i + 1, totalSteps);
 					}
 				}
+
+				// the last probe values
 				if (collector != null)
 				{
 					collector.Collect(engine, result.StepsDone);
 					collector.CollectProfiles(engine, result.StepsDone);
-					this.ProbesUpdated?.Invoke(collector.TakeForUi());
+					ProbesUpdated?.Invoke(collector.TakeForUi());
 				}
 			}
 			catch (OutOfMemoryException)
@@ -400,6 +433,7 @@ namespace _2D_wave_sim_V01
 			}
 			finally
 			{
+				// close the videos, also after a stop or an error, so that the files can be played
 				try
 				{
 					if (fieldSink != null)
@@ -409,6 +443,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception)
 				{
+					// nothing more can be done
 				}
 				try
 				{
@@ -419,59 +454,64 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception)
 				{
+					// nothing more can be done
 				}
 				if (engine != null)
 				{
 					try
 					{
-						// Capture the final full-size frames for the UI / frame export before the engine goes away.
+						// one last full-resolution snapshot, so a still export still has something to save once the run
+						// has fully stopped and the engine itself is gone (see SimulationResult.LastFieldFrame/LastIntensityFrame)
 						int[] lastPixels = new int[engine.Width * engine.Height];
 						bool hasIntensity = engine.IntensityData != null;
 						engine.PrepareFrame(true, hasIntensity);
-						FrameRenderer.RenderField(engine, this._job.FieldLut, (float)this._job.Settings.FieldBrightness, lastPixels, engine.Width, engine.Height);
+						FrameRenderer.RenderField(engine, _job.FieldLut, (float)_job.Settings.FieldBrightness, lastPixels, engine.Width, engine.Height);
 						if (collector != null)
 						{
-							ProbeOverlay.Burn(lastPixels, engine.Width, engine.Height, this._job.Probes, collector.Traces, ProbePlaceOn.Field, totalSteps);
+							ProbeOverlay.Burn(lastPixels, engine.Width, engine.Height, _job.Probes, collector.Traces, ProbePlaceOn.Field, totalSteps);
 						}
 						result.LastFieldFrame = FrameRenderer.ToBitmap(lastPixels, engine.Width, engine.Height);
 						if (hasIntensity)
 						{
-							FrameRenderer.RenderIntensity(engine, this._job.IntensityLut, (float)this._job.Settings.IntensityBrightness, lastPixels, engine.Width, engine.Height);
+							FrameRenderer.RenderIntensity(engine, _job.IntensityLut, (float)_job.Settings.IntensityBrightness, lastPixels, engine.Width, engine.Height);
 							if (collector != null)
 							{
-								ProbeOverlay.Burn(lastPixels, engine.Width, engine.Height, this._job.Probes, collector.Traces, ProbePlaceOn.Intensity, totalSteps);
+								ProbeOverlay.Burn(lastPixels, engine.Width, engine.Height, _job.Probes, collector.Traces, ProbePlaceOn.Intensity, totalSteps);
 							}
 							result.LastIntensityFrame = FrameRenderer.ToBitmap(lastPixels, engine.Width, engine.Height);
 						}
 					}
 					catch (Exception)
 					{
+						// no still frame this time - not fatal, the export buttons just won't have anything to save
 					}
 					try
 					{
-						engine.Dispose();
+						(engine as IDisposable)?.Dispose();
 					}
 					catch (Exception)
 					{
+						// nothing more can be done
 					}
-					this._sim = null;
-					this._collector = null;
+					_sim = null;
+					_collector = null;
 				}
-				if (this._job.Image != null)
+				if (_job.Image != null)
 				{
-					this._job.Image.Dispose();
+					_job.Image.Dispose();
 				}
 			}
 			stopwatch.Stop();
 			result.Elapsed = stopwatch.Elapsed;
-			this.ProgressChanged?.Invoke(result.StepsDone, this._job.Settings.Steps);
-			this.Finished?.Invoke(result);
+			ProgressChanged?.Invoke(result.StepsDone, _job.Settings.Steps);
+			Finished?.Invoke(result);
 		}
 
 		/// <summary>
-		/// Opens an H.264 MP4 writer for .mp4 paths, falling back to a Motion JPEG .avi (same name, .avi
-		/// extension) when the Media Foundation encoder cannot be set up; any partial .mp4 is deleted and
-		/// the reason is stored in <see cref="SimulationResult.Message"/>. Other extensions always get AVI.
+		/// Opens a video file. An .mp4 path is written as H.264 with the encoder of Windows (Media Foundation),
+		/// falling back to a Motion JPEG .avi (same name, .avi extension) when that is not possible (no Media
+		/// Foundation, size not supported); any partial .mp4 is deleted and the reason is stored in
+		/// <see cref="SimulationResult.Message"/>. Other extensions always get AVI.
 		/// </summary>
 		/// <param name="filePath">Requested output path; the extension decides the container.</param>
 		/// <param name="w">Frame width in pixels.</param>
@@ -498,6 +538,7 @@ namespace _2D_wave_sim_V01
 						}
 						catch (Exception)
 						{
+							// an empty leftover file does no harm
 						}
 					}
 					result.Message = "MP4 (H.264) video could not be made on this computer (" + ex.Message.Trim() + "). The videos were written as Motion JPEG .avi files instead; play them with VLC.";
@@ -510,7 +551,13 @@ namespace _2D_wave_sim_V01
 		/// <summary>Unused leftover; the JPEG quality actually comes from <see cref="SimulationSettings.VideoQuality"/>.</summary>
 		private const long JpegQuality = 90L;
 
-		/// <summary>Minimum time between two preview frames, in stopwatch milliseconds (about 30 fps).</summary>
+		/// <summary>
+		/// Minimum time between two preview frames, in stopwatch milliseconds (about 30 fps). See its use in
+		/// <see cref="Run"/> for why this exists: it keeps a GPU engine's readback rate steady and independent of
+		/// how fast the UI thread happens to be at displaying the previous one (e.g. with/without the "display
+		/// overlay" checkboxes), rather than implicitly riding on <see cref="_previewPending"/> alone. ~30 fps is
+		/// already faster than a picture box is usefully watchable at.
+		/// </summary>
 		private const long PreviewIntervalMs = 33L;
 
 		/// <summary>The job to run; its bitmaps are consumed and disposed by the worker.</summary>
@@ -528,10 +575,19 @@ namespace _2D_wave_sim_V01
 		/// <summary>Pause gate: set = running, reset = paused. The worker waits on it at the top of each step.</summary>
 		private readonly ManualResetEventSlim _gate;
 
-		/// <summary>The live engine, published for <see cref="RenderCurrentFrame"/>; null before creation and after the run ends.</summary>
+		/// <summary>
+		/// The live engine, set once at the start of <see cref="Run"/> and cleared just before it is disposed at the
+		/// end; read from the UI thread (<see cref="RenderCurrentFrame"/>) only while paused, when the worker thread
+		/// is parked at <c>_gate.Wait()</c> and is not touching it.
+		/// </summary>
 		private IWaveEngine _sim;
 
-		/// <summary>The live probe collector (null when the job has no probes or after the run ends); used by <see cref="RenderCurrentFrame"/>.</summary>
+		/// <summary>
+		/// The probe collector for this run (null when there are no probes, or after the run ends), set alongside
+		/// <see cref="_sim"/> so <see cref="RenderCurrentFrame"/> can also burn the probe markers/graphs onto a still
+		/// export: the video export loop in <see cref="Run"/> already did this (<see cref="ProbeOverlay.Burn"/>) but
+		/// <see cref="RenderCurrentFrame"/> did not, which left probe data out of exported still frames.
+		/// </summary>
 		private ProbeCollector _collector;
 
 		/// <summary>Handler for <see cref="ProgressChanged"/>: steps completed so far and the total step count.</summary>

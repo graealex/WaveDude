@@ -6,12 +6,16 @@ using System.Globalization;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// User-editable description of one wave source (single or composite array) plus the
-	/// generated <see cref="SourceElement"/> list that the simulation actually consumes.
-	/// Edited on the source tab of <c>Form1</c> (UI thread only), persisted in the
-	/// <see cref="SectionName"/> section of the project config, and expanded into elements by
-	/// <see cref="GenerateElements"/> whenever the user saves the source. Units are the ones
-	/// shown in the UI: positions in canvas pixels, frequency as a 1..255 level, amplitude in
+	/// User-editable description of one wave source (single point source or composite array of point sources
+	/// built from the same base parameters, optionally randomised) plus the generated
+	/// <see cref="SourceElement"/> list that the simulation actually consumes.
+	/// Edited on the source tab of <c>Form1</c> (UI thread only) and persisted in the
+	/// <see cref="SectionName"/> section of the project config. "Generate composite source" resolves the
+	/// current parameters (and, for a composite source, a fresh random draw) into a fixed list of elements via
+	/// <see cref="GenerateElements"/>, which is what the simulation runs; "Save source" keeps both the
+	/// authoring parameters (so the source can be reopened and edited or regenerated) and that generated list
+	/// (so a saved project runs exactly what was generated, even before it is regenerated again). Units are the
+	/// ones shown in the UI: positions in canvas pixels, frequency as a 1..255 level, amplitude in
 	/// percent, phase in degrees, pulse widths in cycles, detach time in simulation steps.
 	/// </summary>
 	public sealed class SourceSettings
@@ -19,35 +23,35 @@ namespace _2D_wave_sim_V01
 		/// <summary>Creates a source with the editor defaults: "Source 1", simple, continuous Gaussian at (100, 100) but not yet positioned, frequency level 100, 100 % amplitude, 10-cycle widths, 1x1 array with 10 px spacing, nothing randomised, no elements.</summary>
 		public SourceSettings()
 		{
-			this.Name = "Source 1";
-			this.MainType = SourceMainType.Simple;
-			this.PosX = 100;
-			this.PosY = 100;
-			this.HasPosition = false;
-			this.SourceOn = true;
-			this.DetachSource = false;
-			this.DetachAfterSteps = 1000;
-			this.Frequency = 100;
-			this.Amplitude = 100;
-			this.PhaseDeg = 0;
-			this.Mode = SourceMode.Continuous;
-			this.PulseShape = SourcePulseShape.Gaussian;
-			this.PulseWidthCycles = 10;
-			this.OffStateCycles = 10;
-			this.ArraySizeX = 1;
-			this.ArraySizeY = 1;
-			this.SpacingX = 10;
-			this.SpacingY = 10;
-			this.CompositeMode = SourceCompositeMode.InheritFromSingle;
-			this.RandomizeFrequency = false;
-			this.RandomizeFrequencyAmount = 0;
-			this.RandomizePhase = false;
-			this.RandomizePhaseAmount = 0;
-			this.RandomizeOffWidth = false;
-			this.RandomizeOffWidthAmount = 0;
-			this.RandomizePosition = false;
-			this.RandomizePositionAmount = 0;
-			this.Elements = new List<SourceElement>();
+			Name = "Source 1";
+			MainType = SourceMainType.Simple;
+			PosX = 100;
+			PosY = 100;
+			HasPosition = false;
+			SourceOn = true;
+			DetachSource = false;
+			DetachAfterSteps = 1000;
+			Frequency = 100;
+			Amplitude = 100;
+			PhaseDeg = 0;
+			Mode = SourceMode.Continuous;
+			PulseShape = SourcePulseShape.Gaussian;
+			PulseWidthCycles = 10;
+			OffStateCycles = 10;
+			ArraySizeX = 1;
+			ArraySizeY = 1;
+			SpacingX = 10;
+			SpacingY = 10;
+			CompositeMode = SourceCompositeMode.InheritFromSingle;
+			RandomizeFrequency = false;
+			RandomizeFrequencyAmount = 0;
+			RandomizePhase = false;
+			RandomizePhaseAmount = 0;
+			RandomizeOffWidth = false;
+			RandomizeOffWidthAmount = 0;
+			RandomizePosition = false;
+			RandomizePositionAmount = 0;
+			Elements = new List<SourceElement>();
 		}
 
 		/// <summary>Display name shown in the source list and next to the marker on the scene picture; must be non-blank to save.</summary>
@@ -56,26 +60,38 @@ namespace _2D_wave_sim_V01
 		/// <summary>Single point source or composite array.</summary>
 		public SourceMainType MainType { get; set; }
 
-		/// <summary>X position in canvas pixels of the source, or of the array centre for a composite source.</summary>
+		/// <summary>X position in canvas pixels of the source, or of the array centre for a composite source. Only meaningful once <see cref="HasPosition"/> is true; until then it is just the unset default and the Sources tab must not draw a marker for it.</summary>
 		public int PosX { get; set; }
 
-		/// <summary>Y position in canvas pixels of the source, or of the array centre for a composite source.</summary>
+		/// <summary>Y position in canvas pixels of the source, or of the array centre for a composite source; see <see cref="PosX"/>.</summary>
 		public int PosY { get; set; }
 
 		/// <summary>
 		/// True once the user has placed the source (by picking on the picture or editing the
-		/// position inputs); only sources with a position get a marker drawn on the scene picture.
-		/// Defaults to false for a new source but to true when loaded from a project without the key.
+		/// position inputs) rather than still holding the default; only sources with a position get
+		/// a marker drawn on the scene picture. Defaults to false for a new source but to true when
+		/// loaded from a project saved before this flag existed (see <see cref="FromDictionary"/>),
+		/// since its sources were positioned under the old rules.
 		/// </summary>
 		public bool HasPosition { get; set; }
 
-		/// <summary>Whether the source takes part in simulation runs; disabled sources are listed in grey and skipped.</summary>
+		/// <summary>
+		/// Whether the source interacts with the simulation at all; a new source starts on. Switching it off
+		/// keeps every parameter (it can still be edited, and switched back on) but the source takes no part
+		/// in a run: it is listed in grey and <c>SourcesForRun</c> leaves it out entirely, so it neither drives
+		/// the field nor gets in the way of waves passing through its position.
+		/// </summary>
 		public bool SourceOn { get; set; }
 
-		/// <summary>Whether the source is switched off during the run after <see cref="DetachAfterSteps"/>.</summary>
+		/// <summary>
+		/// When true, the source stops driving the field after <see cref="DetachAfterSteps"/> simulation steps
+		/// (it runs normally up to that point). A source that keeps driving the field also holds it at a fixed
+		/// value there, which diffracts waves that later pass through that point; detaching releases that hold
+		/// once the source has done its job, so the field becomes free of it again for the rest of the run.
+		/// </summary>
 		public bool DetachSource { get; set; }
 
-		/// <summary>Simulation step at which the source starts fading out when <see cref="DetachSource"/> is set; 0 or greater.</summary>
+		/// <summary>Simulation step (0-based) at which the source detaches and starts fading out (over <see cref="SourceElement.DetachRampSteps"/> steps) when <see cref="DetachSource"/> is set; 0 or greater.</summary>
 		public int DetachAfterSteps { get; set; }
 
 		/// <summary>
@@ -85,7 +101,7 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public int Frequency { get; set; }
 
-		/// <summary>Amplitude in percent, 0..100; becomes 0..1 on the element.</summary>
+		/// <summary>Amplitude in percent of the source amplitude, 0..100; becomes 0..1 on the element. 100 matches <c>numAmplitude</c>'s own Designer default for a new source.</summary>
 		public int Amplitude { get; set; }
 
 		/// <summary>Phase offset in degrees, -180..180; converted to radians on the element.</summary>
@@ -154,7 +170,7 @@ namespace _2D_wave_sim_V01
 		{
 			SourceSettings copy = (SourceSettings)base.MemberwiseClone();
 			copy.Elements = new List<SourceElement>();
-			foreach (SourceElement element in this.Elements)
+			foreach (SourceElement element in Elements)
 			{
 				copy.Elements.Add(element.Clone());
 			}
@@ -168,49 +184,49 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void Normalize()
 		{
-			if (this.Frequency < 1)
+			if (Frequency < 1)
 			{
-				this.Frequency = 1;
+				Frequency = 1;
 			}
-			if (this.Frequency > 255)
+			if (Frequency > 255)
 			{
-				this.Frequency = 255;
+				Frequency = 255;
 			}
-			if (this.Amplitude < 0)
+			if (Amplitude < 0)
 			{
-				this.Amplitude = 0;
+				Amplitude = 0;
 			}
-			if (this.Amplitude > 100)
+			if (Amplitude > 100)
 			{
-				this.Amplitude = 100;
+				Amplitude = 100;
 			}
-			if (this.PhaseDeg < -180)
+			if (PhaseDeg < -180)
 			{
-				this.PhaseDeg = -180;
+				PhaseDeg = -180;
 			}
-			if (this.PhaseDeg > 180)
+			if (PhaseDeg > 180)
 			{
-				this.PhaseDeg = 180;
+				PhaseDeg = 180;
 			}
-			if (this.PulseWidthCycles < 1)
+			if (PulseWidthCycles < 1)
 			{
-				this.PulseWidthCycles = 1;
+				PulseWidthCycles = 1;
 			}
-			if (this.OffStateCycles < 1)
+			if (OffStateCycles < 1)
 			{
-				this.OffStateCycles = 1;
+				OffStateCycles = 1;
 			}
-			if (this.ArraySizeX < 1)
+			if (ArraySizeX < 1)
 			{
-				this.ArraySizeX = 1;
+				ArraySizeX = 1;
 			}
-			if (this.ArraySizeY < 1)
+			if (ArraySizeY < 1)
 			{
-				this.ArraySizeY = 1;
+				ArraySizeY = 1;
 			}
-			if (this.DetachAfterSteps < 0)
+			if (DetachAfterSteps < 0)
 			{
-				this.DetachAfterSteps = 0;
+				DetachAfterSteps = 0;
 			}
 		}
 
@@ -228,49 +244,49 @@ namespace _2D_wave_sim_V01
 		/// <param name="rng">Random generator for the per-element offsets; may be any instance when nothing is randomised.</param>
 		public void GenerateElements(Random rng)
 		{
-			this.Normalize();
+			Normalize();
 			List<SourceElement> elements = new List<SourceElement>();
-			if (this.MainType == SourceMainType.Simple)
+			if (MainType == SourceMainType.Simple)
 			{
-				elements.Add(this.MakeBaseElement(this.PosX, this.PosY));
+				elements.Add(MakeBaseElement(PosX, PosY));
 			}
 			else
 			{
-				int arraySizeX = this.ArraySizeX;
-				int arraySizeY = this.ArraySizeY;
-				bool randomize = this.CompositeMode == SourceCompositeMode.InheritAndRandomize;
-				for (int i = 0; i < arraySizeY; i++)
+				int cols = ArraySizeX;
+				int rows = ArraySizeY;
+				bool randomize = CompositeMode == SourceCompositeMode.InheritAndRandomize;
+				for (int row = 0; row < rows; row++)
 				{
-					for (int j = 0; j < arraySizeX; j++)
+					for (int col = 0; col < cols; col++)
 					{
-						// Grid is centred on (PosX, PosY); with an even size the centre falls between two elements.
-						int x = this.PosX + (int)Math.Round((j - (arraySizeX - 1) / 2.0) * this.SpacingX);
-						int y = this.PosY + (int)Math.Round((i - (arraySizeY - 1) / 2.0) * this.SpacingY);
-						if (randomize && this.RandomizePosition && this.RandomizePositionAmount > 0)
+						// The array is centred on (PosX, PosY), not anchored at a corner; with an even size the centre falls between two elements.
+						int x = PosX + (int)Math.Round((col - (cols - 1) / 2.0) * SpacingX);
+						int y = PosY + (int)Math.Round((row - (rows - 1) / 2.0) * SpacingY);
+						if (randomize && RandomizePosition && RandomizePositionAmount > 0)
 						{
-							x += SourceSettings.RandomInt(rng, this.RandomizePositionAmount);
-							y += SourceSettings.RandomInt(rng, this.RandomizePositionAmount);
+							x += SourceSettings.RandomInt(rng, RandomizePositionAmount);
+							y += SourceSettings.RandomInt(rng, RandomizePositionAmount);
 						}
-						SourceElement element = this.MakeBaseElement(x, y);
-						if (randomize && this.RandomizeFrequency && this.RandomizeFrequencyAmount > 0)
+						SourceElement element = MakeBaseElement(x, y);
+						if (randomize && RandomizeFrequency && RandomizeFrequencyAmount > 0)
 						{
-							element.Level = SourceSettings.Clamp(this.Frequency + SourceSettings.RandomInt(rng, this.RandomizeFrequencyAmount), 1, 255);
+							element.Level = SourceSettings.Clamp(Frequency + SourceSettings.RandomInt(rng, RandomizeFrequencyAmount), 1, 255);
 						}
-						if (randomize && this.RandomizePhase && this.RandomizePhaseAmount > 0)
+						if (randomize && RandomizePhase && RandomizePhaseAmount > 0)
 						{
-							int phaseDeg = SourceSettings.Clamp(this.PhaseDeg + SourceSettings.RandomInt(rng, this.RandomizePhaseAmount), -180, 180);
+							int phaseDeg = SourceSettings.Clamp(PhaseDeg + SourceSettings.RandomInt(rng, RandomizePhaseAmount), -180, 180);
 							element.PhaseRad = phaseDeg * Math.PI / 180.0;
 						}
-						if (randomize && this.RandomizeOffWidth && this.RandomizeOffWidthAmount > 0)
+						if (randomize && RandomizeOffWidth && RandomizeOffWidthAmount > 0)
 						{
-							element.OffWidthCycles = Math.Max(1, this.OffStateCycles + SourceSettings.RandomInt(rng, this.RandomizeOffWidthAmount));
-							element.RandomizeOffWidthAmount = this.RandomizeOffWidthAmount;
+							element.OffWidthCycles = Math.Max(1, OffStateCycles + SourceSettings.RandomInt(rng, RandomizeOffWidthAmount));
+							element.RandomizeOffWidthAmount = RandomizeOffWidthAmount;
 						}
 						elements.Add(element);
 					}
 				}
 			}
-			this.Elements = elements;
+			Elements = elements;
 		}
 
 		/// <summary>
@@ -284,16 +300,16 @@ namespace _2D_wave_sim_V01
 			{
 				PosX = x,
 				PosY = y,
-				Level = this.Frequency,
-				Amplitude = this.Amplitude / 100.0,
-				PhaseRad = this.PhaseDeg * Math.PI / 180.0,
-				Mode = this.Mode,
-				PulseShape = this.PulseShape,
-				OnWidthCycles = this.PulseWidthCycles,
-				OffWidthCycles = this.OffStateCycles,
-				OffWidthBase = this.OffStateCycles,
+				Level = Frequency,
+				Amplitude = Amplitude / 100.0,
+				PhaseRad = PhaseDeg * Math.PI / 180.0,
+				Mode = Mode,
+				PulseShape = PulseShape,
+				OnWidthCycles = PulseWidthCycles,
+				OffWidthCycles = OffStateCycles,
+				OffWidthBase = OffStateCycles,
 				RandomizeOffWidthAmount = 0,
-				DetachAfterStep = this.DetachSource ? this.DetachAfterSteps : -1
+				DetachAfterStep = DetachSource ? DetachAfterSteps : -1
 			};
 		}
 
@@ -360,36 +376,36 @@ namespace _2D_wave_sim_V01
 		private Dictionary<string, object> ToDictionary()
 		{
 			Dictionary<string, object> data = new Dictionary<string, object>();
-			data["name"] = this.Name;
-			data["main_type"] = ((this.MainType == SourceMainType.Composite) ? "composite" : "single");
-			data["x"] = this.PosX;
-			data["y"] = this.PosY;
-			data["has_position"] = this.HasPosition;
-			data["source_on"] = this.SourceOn;
-			data["detach_source"] = this.DetachSource;
-			data["detach_after_steps"] = this.DetachAfterSteps;
-			data["frequency"] = this.Frequency;
-			data["amplitude"] = this.Amplitude;
-			data["phase_deg"] = this.PhaseDeg;
-			data["mode"] = ((this.Mode == SourceMode.Pulsed) ? "pulsed" : "continuous");
-			data["pulse_shape"] = ((this.PulseShape == SourcePulseShape.SmoothedSquare) ? "smoothed_square" : "gaussian");
-			data["pulse_width_cycles"] = this.PulseWidthCycles;
-			data["off_state_cycles"] = this.OffStateCycles;
-			data["array_size_x"] = this.ArraySizeX;
-			data["array_size_y"] = this.ArraySizeY;
-			data["spacing_x"] = this.SpacingX;
-			data["spacing_y"] = this.SpacingY;
-			data["composite_mode"] = ((this.CompositeMode == SourceCompositeMode.InheritAndRandomize) ? "randomize" : "inherit");
-			data["randomize_frequency"] = this.RandomizeFrequency;
-			data["randomize_frequency_amount"] = this.RandomizeFrequencyAmount;
-			data["randomize_phase"] = this.RandomizePhase;
-			data["randomize_phase_amount"] = this.RandomizePhaseAmount;
-			data["randomize_off_width"] = this.RandomizeOffWidth;
-			data["randomize_off_width_amount"] = this.RandomizeOffWidthAmount;
-			data["randomize_position"] = this.RandomizePosition;
-			data["randomize_position_amount"] = this.RandomizePositionAmount;
+			data["name"] = Name;
+			data["main_type"] = ((MainType == SourceMainType.Composite) ? "composite" : "single");
+			data["x"] = PosX;
+			data["y"] = PosY;
+			data["has_position"] = HasPosition;
+			data["source_on"] = SourceOn;
+			data["detach_source"] = DetachSource;
+			data["detach_after_steps"] = DetachAfterSteps;
+			data["frequency"] = Frequency;
+			data["amplitude"] = Amplitude;
+			data["phase_deg"] = PhaseDeg;
+			data["mode"] = ((Mode == SourceMode.Pulsed) ? "pulsed" : "continuous");
+			data["pulse_shape"] = ((PulseShape == SourcePulseShape.SmoothedSquare) ? "smoothed_square" : "gaussian");
+			data["pulse_width_cycles"] = PulseWidthCycles;
+			data["off_state_cycles"] = OffStateCycles;
+			data["array_size_x"] = ArraySizeX;
+			data["array_size_y"] = ArraySizeY;
+			data["spacing_x"] = SpacingX;
+			data["spacing_y"] = SpacingY;
+			data["composite_mode"] = ((CompositeMode == SourceCompositeMode.InheritAndRandomize) ? "randomize" : "inherit");
+			data["randomize_frequency"] = RandomizeFrequency;
+			data["randomize_frequency_amount"] = RandomizeFrequencyAmount;
+			data["randomize_phase"] = RandomizePhase;
+			data["randomize_phase_amount"] = RandomizePhaseAmount;
+			data["randomize_off_width"] = RandomizeOffWidth;
+			data["randomize_off_width_amount"] = RandomizeOffWidthAmount;
+			data["randomize_position"] = RandomizePosition;
+			data["randomize_position_amount"] = RandomizePositionAmount;
 			List<object> elements = new List<object>();
-			foreach (SourceElement element in this.Elements)
+			foreach (SourceElement element in Elements)
 			{
 				Dictionary<string, object> elementData = new Dictionary<string, object>();
 				elementData["x"] = element.PosX;
@@ -412,7 +428,8 @@ namespace _2D_wave_sim_V01
 
 		/// <summary>
 		/// Inverse of <see cref="ToDictionary"/>. Missing or out-of-range values fall back to the
-		/// constructor defaults, except <c>has_position</c> which defaults to true; unknown enum
+		/// constructor defaults, except <c>has_position</c> which defaults to true (see the comments in the
+		/// body for the keys that were added after the first projects were saved); unknown enum
 		/// strings map to the first enum value. Stored elements are restored as they are (they are
 		/// not regenerated), with a 0.5 amplitude fallback and the phase range left wide open.
 		/// </summary>
@@ -423,7 +440,11 @@ namespace _2D_wave_sim_V01
 			s.MainType = ((SourceSettings.ReadText(d, "main_type", "single") == "composite") ? SourceMainType.Composite : SourceMainType.Simple);
 			s.PosX = SourceSettings.ReadInt(d, "x", s.PosX, -1000000, 1000000);
 			s.PosY = SourceSettings.ReadInt(d, "y", s.PosY, -1000000, 1000000);
+			// a project saved before HasPosition existed has no "has_position" entry - default to true, since its
+			// sources were positioned under the old rules (there was no "unset" state back then)
 			s.HasPosition = SourceSettings.ReadBool(d, "has_position", true);
+			// a project saved before SourceOn/DetachSource existed has no entries for them either - default to the
+			// same behaviour it always had: on, and never detaching
 			s.SourceOn = SourceSettings.ReadBool(d, "source_on", true);
 			s.DetachSource = SourceSettings.ReadBool(d, "detach_source", false);
 			s.DetachAfterSteps = SourceSettings.ReadInt(d, "detach_after_steps", s.DetachAfterSteps, 0, 1000000000);
@@ -470,6 +491,9 @@ namespace _2D_wave_sim_V01
 						element.PulseShape = ((SourceSettings.ReadText(elementDict, "pulse_shape", "gaussian") == "smoothed_square") ? SourcePulseShape.SmoothedSquare : SourcePulseShape.Gaussian);
 						element.OnWidthCycles = SourceSettings.ReadInt(elementDict, "on_width_cycles", 10, 1, 1000000);
 						element.OffWidthCycles = SourceSettings.ReadInt(elementDict, "off_width_cycles", 10, 1, 1000000);
+						// a project saved before off-width re-randomisation existed has no "off_width_base" entry -
+						// default to this element's own off_width_cycles (already read above), which is exactly its
+						// anchor under the old, always-static behaviour
 						element.OffWidthBase = SourceSettings.ReadInt(elementDict, "off_width_base", element.OffWidthCycles, 1, 1000000);
 						element.RandomizeOffWidthAmount = SourceSettings.ReadInt(elementDict, "randomize_off_width_amount", 0, 0, 1000000);
 						element.DetachAfterStep = SourceSettings.ReadInt(elementDict, "detach_after_step", -1, -1, 1000000000);
@@ -509,6 +533,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
 				{
+					// use the fallback
 				}
 			}
 			return fallback;
@@ -529,6 +554,7 @@ namespace _2D_wave_sim_V01
 				}
 				catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
 				{
+					// use the fallback
 				}
 			}
 			return fallback;

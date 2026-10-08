@@ -19,6 +19,7 @@ namespace _2D_wave_sim_V01
 		/// <see cref="GpuWaveSimulator.TryCreate"/>, translating the usual OpenCL loader failures (missing, wrong-bitness or
 		/// incomplete OpenCL.dll) into a readable reason; any failure falls back to the CPU <see cref="WaveSimulator"/>.
 		/// Never throws for GPU problems, but CPU engine construction may still throw (e.g. out of memory).
+		/// Object sources (the Sources tab) run on either engine, the same as the image sources.
 		/// </summary>
 		/// <param name="scene">Per-pixel speed, damping and image sources of the canvas; the engine copies it into its padded grid.</param>
 		/// <param name="settings">Supplies <see cref="SimulationSettings.UseGpu"/> and the physics options passed to the engine (frequency scale, Laplacian order, time decay, intensity scale).</param>
@@ -30,7 +31,7 @@ namespace _2D_wave_sim_V01
 		/// The "the first choice failed - ..." form is only produced if <c>TryCreate</c> ever returns an engine together with a
 		/// message, which it does not at present.
 		/// </param>
-		/// <param name="objectSources">Object sources to drive in addition to the image sources; may be null.</param>
+		/// <param name="objectSources">The generated elements of the object sources (Sources tab) to drive in addition to the image sources; may be null.</param>
 		/// <returns>A ready engine; the caller owns and must dispose it.</returns>
 		public static IWaveEngine Create(SceneData scene, SimulationSettings settings, double sourceAmplitude, bool trackIntensity, ref string note, List<SourceElement> objectSources = null)
 		{

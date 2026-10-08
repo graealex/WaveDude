@@ -24,7 +24,8 @@ namespace _2D_wave_sim_V01
 
 		/// <summary>
 		/// Draws the markers and, where the box is at least 60 x 30 pixels, the graph of every active probe placed
-		/// on <paramref name="placeOn"/> into <paramref name="pixels"/>. Graphs are rendered by
+		/// on <paramref name="placeOn"/> into <paramref name="pixels"/>. The frame is the whole scene, so the box
+		/// is where the probe says (in scene pixels). Graphs are rendered by
 		/// <see cref="ProbeGraphPainter.DrawGraph"/> into a temporary premultiplied bitmap and alpha-blended in.
 		/// </summary>
 		/// <param name="pixels">Opaque ARGB frame, row-major, index y * w + x; modified in place.</param>
@@ -72,28 +73,29 @@ namespace _2D_wave_sim_V01
 			try
 			{
 				int[] row = new int[bmp.Width];
-				for (int i = 0; i < bmp.Height; i++)
+				// (x, y) is a bitmap pixel, (frameX, frameY) the frame pixel it lands on
+				for (int y = 0; y < bmp.Height; y++)
 				{
-					int y = rect.Y + i;
-					if (y < 0 || y >= h)
+					int frameY = rect.Y + y;
+					if (frameY < 0 || frameY >= h)
 					{
 						continue;
 					}
-					Marshal.Copy(IntPtr.Add(data.Scan0, i * data.Stride), row, 0, bmp.Width);
-					for (int j = 0; j < bmp.Width; j++)
+					Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, bmp.Width);
+					for (int x = 0; x < bmp.Width; x++)
 					{
-						int x = rect.X + j;
-						if (x < 0 || x >= w)
+						int frameX = rect.X + x;
+						if (frameX < 0 || frameX >= w)
 						{
 							continue;
 						}
-						int src = row[j];
+						int src = row[x];
 						int alpha = (src >> 24) & 255;
 						if (alpha == 0)
 						{
 							continue;
 						}
-						int index = y * w + x;
+						int index = frameY * w + frameX;
 						if (alpha == 255)
 						{
 							pixels[index] = src | unchecked((int)0xFF000000);
@@ -131,6 +133,7 @@ namespace _2D_wave_sim_V01
 		{
 			int arm = Math.Max(6, h / 120);
 			bool isLine = probe.Kind == ProbeKind.Line;
+			// black underneath, white on top
 			for (int pass = 0; pass <= 1; pass++)
 			{
 				int color = (pass == 0) ? unchecked((int)0xFF000000) : unchecked((int)0xFFFFFFFF);
@@ -145,6 +148,7 @@ namespace _2D_wave_sim_V01
 					ProbeOverlay.DrawCrossPixels(pixels, w, h, probe.PosBX, probe.PosBY, arm, color, radius);
 				}
 			}
+			// the number of the probe next to the cross; a line probe's two ends are labelled with which end they are
 			string label = (index + 1).ToString(CultureInfo.InvariantCulture);
 			float fontPx = Math.Max(12f, h / 60f);
 			if (isLine)
@@ -233,7 +237,7 @@ namespace _2D_wave_sim_V01
 			int stepX = (x0 < x1) ? 1 : -1;
 			int stepY = (y0 < y1) ? 1 : -1;
 			int error = dx + dy;
-			int iterations = 0;
+			int guard = 0;
 			while (true)
 			{
 				for (int oy = -radius; oy <= radius; oy++)
@@ -248,11 +252,11 @@ namespace _2D_wave_sim_V01
 						}
 					}
 				}
-				if ((x0 == x1 && y0 == y1) || iterations > 100000)
+				if ((x0 == x1 && y0 == y1) || guard > 100000)
 				{
 					break;
 				}
-				iterations++;
+				guard++;
 				int error2 = 2 * error;
 				if (error2 >= dy)
 				{

@@ -7,218 +7,201 @@ namespace _2D_wave_sim_V01
 {
 	/// <summary>
 	/// CPU implementation of <see cref="IWaveEngine"/>: an explicit leapfrog finite-difference solver for the
-	/// scalar 2D wave equation on a grid padded by one cell on each side. Created by
+	/// scalar 2D wave equation on a grid padded by one cell on each side, a port of the Python class
+	/// WaveSimulator2D (which runs on the GPU with CuPy). Created by
 	/// <see cref="WaveEngineFactory"/> on the <see cref="SimulationRunner"/> worker thread, which is the only
 	/// thread that advances it; the UI thread reads <see cref="FieldData"/> / <see cref="IntensityData"/> only
-	/// while the run is paused.
+	/// while the run is paused. The engine has no thread affinity of its own: any single thread may drive it.
 	/// </summary>
 	/// <remarks>
+	/// <para>
 	/// Units: grid spacing and time step are both 1, so the wave speed c is in cells (canvas pixels) per step,
 	/// the per-cell <c>c2</c> is c² = 1/n² for refractive index n, and <see cref="Time"/> counts steps. Source
 	/// frequencies are angular frequencies in radians per step (<see cref="_levelFrequency"/>).
-	/// Per step: the sources are blended into the field once (<see cref="ApplySources"/>), then the field is
-	/// advanced by <see cref="_subSteps"/> leapfrog sub-steps (<see cref="UpdateField"/>), the last of which also
-	/// updates the running intensity. The 4th-order stencil needs a shorter time step to stay stable, hence
-	/// the sub-stepping; the 9-point stencil always runs a single sub-step.
+	/// </para>
+	/// <para>
+	/// The scheme: laplacian = 3x3 convolution with [[0.066, 0.184, 0.066], [0.184, -1, 0.184], [0.066, 0.184, 0.066]],
+	/// new u = u + (u - previous u) * d + laplacian * c², with the field outside the domain fixed at 0. The sources
+	/// are applied before each step as in update_scene / StaticImageScene.update_field:
+	/// u = u * 0.9 + sin(frequency * t) * 0.1 (<see cref="ApplySources"/>). The field is then advanced by
+	/// <see cref="_subSteps"/> leapfrog sub-steps (<see cref="UpdateField"/>), the last of which also updates the
+	/// running intensity. The arrays have a border of one cell (which always stays 0) so that the step needs no edge
+	/// tests. The rows are divided over all processor cores.
+	/// </para>
+	/// <para>
+	/// The intensity is no longer a single exponential average of WaveVisualizer.update (I = I * 0.98 + u² * 0.02):
+	/// a single-pole filter like that only rolls off at 6 dB/octave, so it never fully removes the ripple at the
+	/// source's own oscillation frequency, just delays it - lengthening its time constant mostly adds trail without
+	/// buying much extra ripple suppression. Instead the same one-pole filter (I = I * alpha + x * (1 - alpha)) is run
+	/// twice in a row (<see cref="_intensityStage1"/>, then <see cref="_intensity"/>), a critically-damped 2-pole
+	/// low-pass that rolls off at 12 dB/octave, so for the same responsiveness it suppresses the ripple far more
+	/// without needing to know the local frequency at every pixel. Two full stages turned out to add more delay than
+	/// wanted at low frequencies (a short pulse can come and go before the second stage has caught up, understating
+	/// its peak) for not that much extra benefit over one, so what is actually shown/exported
+	/// (<see cref="_intensityOut"/>) is a blend of the one-stage and two-stage outputs (<see cref="IntensityBlend"/>) -
+	/// roughly the middle ground between the two (about 9, not 6 or 12, dB/octave), still well ahead of a single
+	/// stage at rejecting the ripple but reacting closer to as fast. alpha (<see cref="_intensityAlpha"/>) is derived
+	/// once per simulation so the time constant of each stage scales inversely with the frequency of the slowest
+	/// active source, times the user's <see cref="SimulationSettings.TimeDecayFactor"/> - see that property's doc
+	/// for why.
+	/// </para>
+	/// <para>
+	/// Optionally (<see cref="SimulationSettings.Use4thOrderLaplacian"/>), the Laplacian is instead computed with a
+	/// 4th order accurate, 5-point "cross" stencil (reaching 2 cells away along x and along y) wherever there is
+	/// room for it - see <see cref="UpdateField"/>. This reduces numerical dispersion (short, under-resolved
+	/// wavelengths otherwise travel slower than long ones - see the <see cref="SimulationSettings.WaveSpeedC"/> doc)
+	/// at roughly twice the memory reads per step. The outermost ring of the domain still uses the original 3x3
+	/// kernel, since it only has the usual one cell of border to read from, not the two the wider stencil needs.
+	/// </para>
+	/// <para>
+	/// The 4th order stencil's coefficients (-1/12, 4/3, -5) reach much further from zero than the 3x3 kernel's
+	/// (0.066, 0.184, -1) - about 7 times further at the highest spatial frequency the grid can represent - so the
+	/// same c² that is safely stable with the 3x3 kernel can be wildly unstable with the 4th order one (the field
+	/// blows up: everywhere saturates except at object edges, which is what an invalid/unstable Laplacian looks
+	/// like). To stay stable without changing the physical wave speed, <see cref="AdvanceOneStep"/> instead takes
+	/// <see cref="_subSteps"/> smaller time steps per call when the 4th order stencil is used: c² is scaled by
+	/// 1 / _subSteps² (matching a time step _subSteps times smaller) and the damping factor d by its _subSteps-th
+	/// root (so _subSteps applications of it compound back to the original d), so the net effect after _subSteps
+	/// steps is exactly the same physical propagation and damping as one ordinary step - just spread over more,
+	/// individually stable, time steps. _subSteps is computed once per scene from its highest c²
+	/// (<see cref="ComputeSubSteps"/>) and is 1 (no sub-stepping, and a multiply by the exact literal 1.0F)
+	/// whenever the 3x3 kernel is used or the scene's c² does not need it.
+	/// </para>
 	/// </remarks>
-	internal sealed class WaveSimulator : IWaveEngine
+	internal sealed class WaveSimulator : IWaveEngine, IDisposable
 	{
 		/// <summary>
 		/// Copies the scene's c² and damping maps into the padded grid, derives the sub-step count (4th order
-		/// only) and the matching per-sub-step damping and c² corrections, indexes the image and object sources,
-		/// and sets the intensity averaging constant from the slowest source level in use.
+		/// only, and only when the scene's highest c² needs it) and the matching per-sub-step damping and c²
+		/// corrections, indexes the image and object sources, and sets the intensity averaging constant from the
+		/// slowest source level in use.
 		/// </summary>
-		/// <param name="scene">Per-cell c² and damping maps plus the image (green-channel) sources.</param>
-		/// <param name="sourceFrequencyScale">Multiplier in the level-to-angular-frequency mapping; see <see cref="_levelFrequency"/>.</param>
-		/// <param name="sourceAmplitude">Peak amplitude of the image sources (object sources carry their own).</param>
-		/// <param name="trackIntensity">Whether to allocate and update the intensity buffers; when false <see cref="IntensityData"/> stays null.</param>
-		/// <param name="use4thOrderLaplacian">Use the 4th-order 5-point-per-axis stencil (with sub-stepping) instead of the 9-point one.</param>
-		/// <param name="timeDecayFactor">Intensity averaging time in units of 100/level steps; see <see cref="_intensityAlpha"/>.</param>
-		/// <param name="intensityScale">Multiplier applied to the intensity output.</param>
-		/// <param name="objectSources">Interactive sources; those positioned outside the canvas are dropped.</param>
+		/// <param name="scene">Per-cell c² and damping maps plus the image (green-channel) sources; its arrays are copied.</param>
+		/// <param name="sourceFrequencyScale">Frequency of a source = green value / 255 × 0.5 × this value; see <see cref="_levelFrequency"/>.</param>
+		/// <param name="sourceAmplitude">Peak amplitude of the image sources (1 = the value of the Python code; object sources carry their own).</param>
+		/// <param name="trackIntensity">Whether to allocate and update the intensity buffers (it costs extra time in every step); when false <see cref="IntensityData"/> stays null.</param>
+		/// <param name="use4thOrderLaplacian">Use the 4th-order 5-point-per-axis stencil (with sub-stepping) instead of the 9-point one; see the class remarks.</param>
+		/// <param name="timeDecayFactor"><see cref="SimulationSettings.TimeDecayFactor"/>: intensity averaging time in units of <see cref="NominalDecayLevel"/>/level steps; see that property's doc and <see cref="_intensityAlpha"/>.</param>
+		/// <param name="intensityScale"><see cref="SimulationSettings.IntensityScale"/>, the multiplier applied to the intensity output; see that property's doc.</param>
+		/// <param name="objectSources">The generated elements of the object sources (Sources tab), or null/empty for none; those positioned outside the canvas are dropped.</param>
 		public WaveSimulator(SceneData scene, double sourceFrequencyScale, double sourceAmplitude, bool trackIntensity, bool use4thOrderLaplacian, double timeDecayFactor, double intensityScale, List<SourceElement> objectSources = null)
 		{
-			this._levelFrequency = new double[256];
-			this._levelUsed = new bool[256];
-			this._levelValue = new float[256];
-			this._objRandom = new Random();
-			this._probeValues = new List<List<float>>();
-			this._sourceAmplitude = sourceAmplitude;
-			this._use4thOrderLaplacian = use4thOrderLaplacian;
-			this._intensityScale = (float)intensityScale;
-			this._width = scene.Width;
-			this._height = scene.Height;
-			this._stride = this._width + 2;
-			int cellCount = this._stride * (this._height + 2);
-			this._u = new float[cellCount];
-			this._uPrev = new float[cellCount];
-			this._c2 = new float[cellCount];
-			this._d = new float[cellCount];
+			_sourceAmplitude = sourceAmplitude;
+			_use4thOrderLaplacian = use4thOrderLaplacian;
+			_intensityScale = (float)intensityScale;
+			_width = scene.Width;
+			_height = scene.Height;
+			_stride = _width + 2;
+			int cellCount = _stride * (_height + 2);
+			_u = new float[cellCount];
+			_uPrev = new float[cellCount];
+			_c2 = new float[cellCount];
+			float[] damping = new float[cellCount];
 			if (trackIntensity)
 			{
-				this._intensity = new float[cellCount];
-				this._intensityStage1 = new float[cellCount];
-				this._intensityOut = new float[cellCount];
+				_intensity = new float[cellCount];
+				_intensityStage1 = new float[cellCount];
+				_intensityOut = new float[cellCount];
 			}
-			for (int y = 0; y < this._height; y++)
+			for (int y = 0; y < _height; y++)
 			{
-				Array.Copy(scene.C2, y * this._width, this._c2, (y + 1) * this._stride + 1, this._width);
-				Array.Copy(scene.D, y * this._width, this._d, (y + 1) * this._stride + 1, this._width);
+				Array.Copy(scene.C2, y * _width, _c2, (y + 1) * _stride + 1, _width);
+				Array.Copy(scene.D, y * _width, damping, (y + 1) * _stride + 1, _width);
 			}
-			if (use4thOrderLaplacian)
+
+			// see the class remarks: sub-stepping keeps the 4th order stencil stable without changing the physical
+			// wave speed or damping - _subSteps stays 1 (no sub-stepping) unless the 4th order stencil is in use and
+			// this scene's highest c² actually needs it
+			_subSteps = use4thOrderLaplacian ? ComputeSubSteps(MaxOf(_c2)) : 1;
+			if (_subSteps > 1)
 			{
-				float maxC2 = 0f;
-				for (int i = 0; i < this._c2.Length; i++)
+				// Damping is applied once per sub-step, so take the sub-step root to keep the per-step decay unchanged
+				// (_subSteps applications of it compound back to the original d).
+				_damping = new float[cellCount];
+				double exponent = 1.0 / _subSteps;
+				for (int i = 0; i < cellCount; i++)
 				{
-					if (this._c2[i] > maxC2)
-					{
-						maxC2 = this._c2[i];
-					}
+					_damping[i] = (float)Math.Pow(damping[i], exponent);
 				}
-				this._subSteps = WaveSimulator.ComputeSubSteps(maxC2);
-			}
-			else
-			{
-				this._subSteps = 1;
-			}
-			if (this._subSteps > 1)
-			{
-				// Damping is applied once per sub-step, so take the sub-step root to keep the per-step decay unchanged.
-				float[] dEffective = new float[this._d.Length];
-				double exponent = 1.0 / this._subSteps;
-				for (int i = 0; i < this._d.Length; i++)
-				{
-					dEffective[i] = (float)Math.Pow(this._d[i], exponent);
-				}
-				this._dEffective = dEffective;
 				// A sub-step is 1/subSteps long, so c²·dt² shrinks by 1/subSteps².
-				this._c2Mult = 1f / (float)(this._subSteps * this._subSteps);
+				_c2Mult = 1f / (_subSteps * _subSteps);
 			}
 			else
 			{
-				this._dEffective = this._d;
-				this._c2Mult = 1f;
+				_damping = damping;
+				_c2Mult = 1f;
 			}
+
 			int sourceCount = scene.SourceCount;
-			this._sourceIndex = new int[sourceCount];
-			this._sourceLevel = new byte[sourceCount];
+			_sourceIndex = new int[sourceCount];
+			_sourceLevel = new byte[sourceCount];
 			for (int i = 0; i < sourceCount; i++)
 			{
-				this._sourceIndex[i] = (scene.SourceY[i] + 1) * this._stride + scene.SourceX[i] + 1;
-				this._sourceLevel[i] = scene.SourceLevel[i];
-				this._levelUsed[scene.SourceLevel[i]] = true;
+				_sourceIndex[i] = (scene.SourceY[i] + 1) * _stride + scene.SourceX[i] + 1;
+				_sourceLevel[i] = scene.SourceLevel[i];
+				_levelUsed[scene.SourceLevel[i]] = true;
 			}
 			for (int level = 0; level <= 255; level++)
 			{
-				this._levelFrequency[level] = level / 255.0 * 0.5 * sourceFrequencyScale;
+				_levelFrequency[level] = level / 255.0 * 0.5 * sourceFrequencyScale;
 			}
-			if (objectSources == null)
+
+			// object sources: keep only the elements whose position is inside the canvas (a randomized composite
+			// element can fall outside)
+			List<SourceElement> insideSources = new List<SourceElement>();
+			List<int> insideIndices = new List<int>();
+			if (objectSources != null)
 			{
-				this._objSources = Array.Empty<SourceElement>();
-				this._objIndex = Array.Empty<int>();
-			}
-			else
-			{
-				List<SourceElement> insideSources = new List<SourceElement>();
-				List<int> insideIndices = new List<int>();
 				foreach (SourceElement source in objectSources)
 				{
-					if (source.PosX >= 0 && source.PosX < this._width && source.PosY >= 0 && source.PosY < this._height)
+					if (source.PosX >= 0 && source.PosX < _width && source.PosY >= 0 && source.PosY < _height)
 					{
 						insideSources.Add(source);
-						insideIndices.Add((source.PosY + 1) * this._stride + source.PosX + 1);
+						insideIndices.Add((source.PosY + 1) * _stride + source.PosX + 1);
 					}
 				}
-				this._objSources = insideSources.ToArray();
-				this._objIndex = insideIndices.ToArray();
 			}
-			// The intensity decay time is scaled by the lowest (slowest) source level in use.
-			int lowestLevel = 0;
-			for (int level = 1; level <= 255; level++)
+			_objSources = insideSources.ToArray();
+			_objIndex = insideIndices.ToArray();
+			_objCycleAnchor = new double[_objSources.Length];
+			_objCurrentOffWidth = new int[_objSources.Length];
+			for (int i = 0; i < _objSources.Length; i++)
 			{
-				if (this._levelUsed[level])
-				{
-					lowestLevel = level;
-					break;
-				}
+				// the very first cycle uses the off-width already rolled once at "Generate composite source" time;
+				// later cycles (for elements that opt into it) redraw from OffWidthBase - see ComputePulsePosition
+				_objCurrentOffWidth[i] = _objSources[i].OffWidthCycles;
 			}
-			foreach (SourceElement source in this._objSources)
-			{
-				if (source.Level > 0 && (lowestLevel == 0 || source.Level < lowestLevel))
-				{
-					lowestLevel = source.Level;
-				}
-			}
-			if (lowestLevel == 0)
-			{
-				lowestLevel = NominalDecayLevel;
-			}
-			double decaySteps = Math.Max(1.0, timeDecayFactor * 100.0 / lowestLevel);
-			this._intensityAlpha = (float)Math.Exp(-1.0 / decaySteps);
-			this._objCycleAnchor = new double[this._objSources.Length];
-			this._objCurrentOffWidth = new int[this._objSources.Length];
-			for (int i = 0; i < this._objSources.Length; i++)
-			{
-				this._objCurrentOffWidth[i] = this._objSources[i].OffWidthCycles;
-			}
+
+			// the intensity's averaging time constant scales inversely with the frequency of the slowest active
+			// source (image or object) - see TimeDecayFactor's doc (SimulationSettings) for why, and
+			// NominalDecayLevel's doc for the calibration this reproduces
+			_intensityAlpha = IntensityRetention(timeDecayFactor, LowestSourceLevel(_levelUsed, _objSources));
 		}
 
 		/// <summary>Scene width in cells (canvas pixels), excluding the padding.</summary>
-		public int Width
-		{
-			get
-			{
-				return this._width;
-			}
-		}
+		public int Width => _width;
 
 		/// <summary>Scene height in cells (canvas pixels), excluding the padding.</summary>
-		public int Height
-		{
-			get
-			{
-				return this._height;
-			}
-		}
+		public int Height => _height;
 
-		/// <summary>Row pitch of the padded buffers: <see cref="Width"/> + 2.</summary>
-		public int Stride
-		{
-			get
-			{
-				return this._stride;
-			}
-		}
+		/// <summary>Row pitch of the padded buffers: <see cref="Width"/> + 2. Pixel (x, y) is at (y + 1) * Stride + x + 1.</summary>
+		public int Stride => _stride;
 
 		/// <summary>
-		/// The current field u (padded layout). The array instance changes every sub-step because the two
-		/// field buffers are swapped, so callers must re-read this property per frame rather than cache the array.
+		/// The current field u of the last completed step (padded layout). The array instance changes every sub-step
+		/// because the two field buffers are swapped, so callers must re-read this property per frame rather than
+		/// cache the array. Do not change.
 		/// </summary>
-		public float[] FieldData
-		{
-			get
-			{
-				return this._u;
-			}
-		}
+		public float[] FieldData => _u;
 
-		/// <summary>Scaled running intensity (padded layout), or null when the engine was created without intensity tracking.</summary>
-		public float[] IntensityData
-		{
-			get
-			{
-				return this._intensityOut;
-			}
-		}
+		/// <summary>Scaled running intensity (padded layout), or null when the engine was created without intensity tracking. Do not change.</summary>
+		public float[] IntensityData => _intensityOut;
 
 		/// <summary>Engine label for the UI/result: "CPU (n threads)" with the logical processor count.</summary>
-		public string Description
-		{
-			get
-			{
-				return "CPU (" + Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture) + " threads)";
-			}
-		}
+		public string Description => "CPU (" + Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture) + " threads)";
+
+		/// <summary>Elapsed simulation time in steps (one per <see cref="AdvanceOneStep"/>).</summary>
+		public double Time => _time;
 
 		/// <summary>No-op: the CPU buffers are always host-resident and up to date.</summary>
 		public void PrepareFrame(bool needField, bool needIntensity)
@@ -231,31 +214,45 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
+		/// Advances the simulation by one step: blends the sources in once, runs <see cref="_subSteps"/> leapfrog
+		/// sub-steps (the intensity is updated on the last one only) and increments <see cref="Time"/>.
+		/// </summary>
+		public void AdvanceOneStep()
+		{
+			ApplySources();
+			for (int subStep = 1; subStep <= _subSteps; subStep++)
+			{
+				UpdateField(subStep == _subSteps);
+			}
+			_time += 1.0;
+		}
+
+		/// <summary>
 		/// Installs the probe layout (or clears it when <paramref name="sampler"/> is null or empty), discarding any
 		/// pending samples and integrated totals, and allocates the per-pixel totals for integrated line probes.
 		/// </summary>
 		/// <exception cref="InvalidOperationException">The sampler needs intensity but this engine does not track it.</exception>
 		public void SetProbes(ProbeSampler sampler)
 		{
-			this._probeValues.Clear();
-			this._profileTotals = null;
+			_probeValues.Clear();
+			_profileTotals = null;
 			if (sampler == null || sampler.Count == 0)
 			{
-				this._sampler = null;
+				_sampler = null;
 				return;
 			}
-			if (sampler.NeedsIntensity && this._intensityOut == null)
+			if (sampler.NeedsIntensity && _intensityOut == null)
 			{
 				throw new InvalidOperationException("the intensity is not tracked");
 			}
-			this._sampler = sampler;
-			this._profileTotals = new double[sampler.Count][];
+			_sampler = sampler;
+			_profileTotals = new double[sampler.Count][];
 			for (int i = 0; i < sampler.Count; i++)
 			{
-				this._probeValues.Add(new List<float>());
+				_probeValues.Add(new List<float>());
 				if (sampler.Integrate[i])
 				{
-					this._profileTotals[i] = new double[sampler.Pixels[i].Length];
+					_profileTotals[i] = new double[sampler.Pixels[i].Length];
 				}
 			}
 		}
@@ -267,30 +264,32 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void SampleProbes()
 		{
-			if (this._sampler == null)
+			if (_sampler == null)
 			{
 				return;
 			}
-			int step = (int)Math.Round(this._time);
-			for (int i = 0; i < this._sampler.Count; i++)
+			int step = (int)Math.Round(_time);
+			for (int p = 0; p < _sampler.Count; p++)
 			{
-				if (!this._sampler.IsProfile[i])
+				if (!_sampler.IsProfile[p])
 				{
-					float[] source = this._sampler.UseIntensity[i] ? this._intensityOut : this._u;
-					this._probeValues[i].Add(this._sampler.Compute(i, source));
+					float[] data = _sampler.UseIntensity[p] ? _intensityOut : _u;
+					_probeValues[p].Add(_sampler.Compute(p, data));
 				}
-				else if (this._sampler.Integrate[i])
+				else if (_sampler.Integrate[p])
 				{
-					if (this._sampler.UseStartAfterStep[i] && step < this._sampler.StartAfterStep[i])
+					// before "start after step" the totals are simply never added to, so they stay at zero: any
+					// intensity that arrived earlier is purged rather than being baked into the total once recording starts
+					if (_sampler.UseStartAfterStep[p] && step < _sampler.StartAfterStep[p])
 					{
 						continue;
 					}
-					int[] pixels = this._sampler.Pixels[i];
-					double[] totals = this._profileTotals[i];
-					float[] intensityOut = this._intensityOut;
-					for (int j = 0; j < pixels.Length; j++)
+					// the intensity that has passed every point of the line, added up over the steps
+					int[] pixels = _sampler.Pixels[p];
+					double[] totals = _profileTotals[p];
+					for (int k = 0; k < pixels.Length; k++)
 					{
-						totals[j] += intensityOut[pixels[j]];
+						totals[k] += _intensityOut[pixels[k]];
 					}
 				}
 			}
@@ -300,15 +299,15 @@ namespace _2D_wave_sim_V01
 		/// <returns>One array per probe, one value per step (empty for line probes); an empty outer array when no sampler is set.</returns>
 		public float[][] TakeProbeSamples()
 		{
-			if (this._sampler == null)
+			if (_sampler == null)
 			{
 				return new float[0][];
 			}
-			float[][] samples = new float[this._sampler.Count][];
-			for (int i = 0; i < this._sampler.Count; i++)
+			float[][] samples = new float[_sampler.Count][];
+			for (int p = 0; p < _sampler.Count; p++)
 			{
-				samples[i] = this._probeValues[i].ToArray();
-				this._probeValues[i].Clear();
+				samples[p] = _probeValues[p].ToArray();
+				_probeValues[p].Clear();
 			}
 			return samples;
 		}
@@ -320,54 +319,46 @@ namespace _2D_wave_sim_V01
 		/// </returns>
 		public float[][] ReadProbeProfiles()
 		{
-			if (this._sampler == null)
+			if (_sampler == null)
 			{
 				return new float[0][];
 			}
-			float[][] profiles = new float[this._sampler.Count][];
-			for (int i = 0; i < this._sampler.Count; i++)
+			float[][] profiles = new float[_sampler.Count][];
+			for (int p = 0; p < _sampler.Count; p++)
 			{
-				if (!this._sampler.IsProfile[i])
+				if (!_sampler.IsProfile[p])
 				{
 					continue;
 				}
-				int[] pixels = this._sampler.Pixels[i];
+				int[] pixels = _sampler.Pixels[p];
 				float[] profile = new float[pixels.Length];
-				if (this._sampler.Integrate[i])
+				if (_sampler.Integrate[p])
 				{
-					double[] totals = this._profileTotals[i];
-					for (int j = 0; j < pixels.Length; j++)
+					double[] totals = _profileTotals[p];
+					for (int k = 0; k < pixels.Length; k++)
 					{
-						profile[j] = (float)totals[j];
+						profile[k] = (float)totals[k];
 					}
 				}
 				else
 				{
-					float[] source = this._sampler.UseIntensity[i] ? this._intensityOut : this._u;
-					for (int j = 0; j < pixels.Length; j++)
+					float[] data = _sampler.UseIntensity[p] ? _intensityOut : _u;
+					for (int k = 0; k < pixels.Length; k++)
 					{
-						profile[j] = source[pixels[j]];
+						profile[k] = data[pixels[k]];
 					}
 				}
-				profiles[i] = profile;
+				profiles[p] = profile;
 			}
 			return profiles;
 		}
 
-		/// <summary>Elapsed simulation time in steps (one per <see cref="AdvanceOneStep"/>).</summary>
-		public double Time
-		{
-			get
-			{
-				return this._time;
-			}
-		}
-
 		/// <summary>
 		/// Number of sub-steps per time step needed to keep the 4th-order stencil stable for the largest c² in the
-		/// scene: the smallest n with c²·λmax/n² ≤ <see cref="SubStepTargetLimit"/>, at least 1.
+		/// scene: the smallest n with c²·λmax/n² ≤ <see cref="SubStepTargetLimit"/>, at least 1. Shared with
+		/// <see cref="GpuWaveSimulator"/>.
 		/// </summary>
-		private static int ComputeSubSteps(float maxC2)
+		internal static int ComputeSubSteps(float maxC2)
 		{
 			if (maxC2 <= 0f)
 			{
@@ -377,18 +368,59 @@ namespace _2D_wave_sim_V01
 			return Math.Max(1, (int)Math.Round(subSteps));
 		}
 
-		/// <summary>
-		/// Advances the simulation by one step: blends the sources in once, runs <see cref="_subSteps"/> leapfrog
-		/// sub-steps (the intensity is updated on the last one only) and increments <see cref="Time"/>.
-		/// </summary>
-		public void AdvanceOneStep()
+		/// <summary>Largest value in <paramref name="values"/>, or 0 for an empty or all-negative array.</summary>
+		internal static float MaxOf(float[] values)
 		{
-			this.ApplySources();
-			for (int i = 1; i <= this._subSteps; i++)
+			float max = 0f;
+			foreach (float value in values)
 			{
-				this.UpdateField(this._dEffective, this._c2Mult, i == this._subSteps);
+				if (value > max)
+				{
+					max = value;
+				}
 			}
-			this._time += 1.0;
+			return max;
+		}
+
+		/// <summary>
+		/// The lowest (slowest) source level in use, image or object (a level of 0 means "no source" and is
+		/// excluded), or <see cref="NominalDecayLevel"/> when no source has a level above 0. Shared with
+		/// <see cref="GpuWaveSimulator"/>.
+		/// </summary>
+		/// <param name="levelUsed">Per level 0..255: whether an image source uses it.</param>
+		/// <param name="objectSources">Object sources to consider as well.</param>
+		internal static int LowestSourceLevel(bool[] levelUsed, IEnumerable<SourceElement> objectSources)
+		{
+			int minActiveLevel = 0;
+			for (int level = 1; level <= 255; level++)
+			{
+				if (levelUsed[level])
+				{
+					minActiveLevel = level;
+					break;
+				}
+			}
+			foreach (SourceElement source in objectSources)
+			{
+				if (source.Level > 0 && (minActiveLevel == 0 || source.Level < minActiveLevel))
+				{
+					minActiveLevel = source.Level;
+				}
+			}
+			return minActiveLevel == 0 ? NominalDecayLevel : minActiveLevel;
+		}
+
+		/// <summary>
+		/// Per-step retention factor of the intensity averages: exp(-1/tauSteps) with
+		/// tauSteps = <paramref name="timeDecayFactor"/>·<see cref="NominalDecayLevel"/>/<paramref name="lowestLevel"/>,
+		/// at least 1 step, so the time constant scales inversely with the slowest source's frequency and
+		/// <see cref="SimulationSettings.TimeDecayFactor"/> counts steps at a nominal source level of
+		/// <see cref="NominalDecayLevel"/>. Shared with <see cref="GpuWaveSimulator"/>.
+		/// </summary>
+		internal static float IntensityRetention(double timeDecayFactor, int lowestLevel)
+		{
+			double tauSteps = Math.Max(1.0, timeDecayFactor * NominalDecayLevel / lowestLevel);
+			return (float)Math.Exp(-1.0 / tauSteps);
 		}
 
 		/// <summary>
@@ -399,75 +431,88 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ApplySources()
 		{
-			float[] u = this._u;
-			if (this._sourceIndex.Length > 0)
+			float[] u = _u;
+			if (_sourceIndex.Length > 0)
 			{
+				// sin(phase + frequency * t) * amplitude is the same for all sources with the same green value:
+				// one sine per level in use, not per source pixel
 				for (int level = 1; level <= 255; level++)
 				{
-					if (this._levelUsed[level])
+					if (_levelUsed[level])
 					{
-						this._levelValue[level] = (float)(Math.Sin(this._levelFrequency[level] * this._time) * this._sourceAmplitude);
+						_levelValue[level] = (float)(Math.Sin(_levelFrequency[level] * _time) * _sourceAmplitude);
 					}
 				}
-				for (int i = 0; i < this._sourceIndex.Length; i++)
+				for (int i = 0; i < _sourceIndex.Length; i++)
 				{
-					int idx = this._sourceIndex[i];
-					u[idx] = u[idx] * SourceOpacity + this._levelValue[this._sourceLevel[i]] * (1f - SourceOpacity);
+					int idx = _sourceIndex[i];
+					u[idx] = u[idx] * SourceOpacity + _levelValue[_sourceLevel[i]] * (1f - SourceOpacity);
 				}
 			}
-			for (int i = 0; i < this._objSources.Length; i++)
+			for (int i = 0; i < _objSources.Length; i++)
 			{
-				SourceElement source = this._objSources[i];
-				float fade = 1f;
+				SourceElement source = _objSources[i];
+				// "detach source": once the run reaches the source's detach step, its drive is faded out linearly over
+				// the next DetachRampSteps steps (rather than cut instantly), then it stops driving the field entirely
+				// (not even towards 0) so it releases its hold and stops diffracting waves through that point. A hard
+				// cutoff would otherwise leave a small kink in the forcing right at the detach step, which can ring.
+				float detachFade = 1f;
 				if (source.DetachAfterStep >= 0)
 				{
-					// Linear fade to zero over 30 steps (SourceElement.DetachRampSteps) after the detach step.
-					double sinceDetach = this._time - source.DetachAfterStep;
-					if (sinceDetach >= 30.0)
+					double stepsSinceDetach = _time - source.DetachAfterStep;
+					if (stepsSinceDetach >= SourceElement.DetachRampSteps)
 					{
 						continue;
 					}
-					if (sinceDetach > 0.0)
+					if (stepsSinceDetach > 0.0)
 					{
-						fade = (float)(1.0 - sinceDetach / 30.0);
+						detachFade = (float)(1.0 - stepsSinceDetach / SourceElement.DetachRampSteps);
 					}
 				}
-				double freq = this._levelFrequency[source.Level];
-				double envelope;
-				if (source.Mode == SourceMode.Continuous)
+				double freq = _levelFrequency[source.Level];
+				double envelope = 1.0;
+				if (source.Mode != SourceMode.Continuous)
 				{
-					envelope = 1.0;
+					double pulsePos = ComputePulsePosition(i, source, freq, out int offWidth, out bool isFirstCycle);
+					envelope = PulseEnvelope(source, pulsePos, offWidth, isFirstCycle);
 				}
-				else
-				{
-					int offWidth = 0;
-					bool isFirstCycle = false;
-					double pulsePos = this.ComputePulsePosition(i, source, freq, ref offWidth, ref isFirstCycle);
-					envelope = this.PulseEnvelope(source, pulsePos, offWidth, isFirstCycle);
-				}
-				float value = (float)(Math.Sin(source.PhaseRad + freq * this._time) * source.Amplitude * envelope) * fade;
-				int idx = this._objIndex[i];
+				float value = (float)(Math.Sin(source.PhaseRad + freq * _time) * source.Amplitude * envelope) * detachFade;
+				int idx = _objIndex[i];
 				u[idx] = u[idx] * SourceOpacity + value * (1f - SourceOpacity);
 			}
 		}
 
 		/// <summary>
-		/// Position (in cycles of the source frequency) of a pulsed source within its current on/off period. Also
-		/// reports the off-width in effect for that period and whether the source is still in its first period.
-		/// With a fixed off-width the period is phase-shifted by the off-width so the on-phase starts at step 0.
-		/// With a randomized off-width the position is measured from the anchor of the current period (which
-		/// begins with its off-phase); whenever a period completes the anchor moves on and a fresh off-width is
-		/// drawn from <c>OffWidthBase ± RandomizeOffWidthAmount</c> (at least 1), at most
-		/// <see cref="CycleAdvanceGuard"/> periods at a time.
+		/// Returns the element's position within its current off+on cycle (0 = the very start of the "off" span, up
+		/// to but not including its current period, in cycles of the source frequency), and reports the off-width
+		/// in effect for that cycle via <paramref name="offWidth"/>. For most elements
+		/// (<see cref="SourceElement.RandomizeOffWidthAmount"/> &lt;= 0) the off-width never changes, so this is a
+		/// pure, stateless function of <see cref="_time"/> - except that the cycle clock is shifted by the
+		/// off-width, so the run starts already at the beginning of the "on" span (pos = offWidth) instead of at the
+		/// start of an off span: a single/non-randomized source sitting silent for its off-width at the very start of
+		/// a run was never the intent, only ever a side effect of the cycle position formula happening to start at 0.
+		/// An element with RandomizeOffWidthAmount &gt; 0 (only ever a composite source with "Randomize off-width"
+		/// ticked) keeps the original start-in-off-state behavior instead, since there the elements are meant to
+		/// desynchronize from a common starting point rather than all begin already mid-pulse. For such an element
+		/// this also owns its runtime state (<see cref="_objCycleAnchor"/>, <see cref="_objCurrentOffWidth"/>): each
+		/// time <see cref="_time"/> has advanced far enough to complete the current cycle, it advances the element's
+		/// cycle anchor and redraws a fresh off-width (uniformly within ± RandomizeOffWidthAmount of
+		/// <see cref="SourceElement.OffWidthBase"/>, at least 1, at most <see cref="CycleAdvanceGuard"/> cycles at a
+		/// time) before computing the position - so every source keeps its own, independently-drifting rhythm
+		/// instead of staying locked to whatever it rolled once at generate time.
+		/// <paramref name="isFirstCycle"/> reports whether pos falls within the element's very first off+on cycle
+		/// since the run began - see <see cref="PulseEnvelope"/> for why that matters for the SmoothedSquare shape.
 		/// </summary>
 		/// <param name="i">Index of the source in <see cref="_objSources"/> (selects its anchor/off-width slot).</param>
 		/// <param name="el">The source whose pulse timing is evaluated.</param>
 		/// <param name="freq">Angular frequency of the source in radians per step.</param>
 		/// <param name="offWidth">Receives the off-width (cycles) in effect for the current period.</param>
 		/// <param name="isFirstCycle">Receives whether the source is still in its first period.</param>
-		private double ComputePulsePosition(int i, SourceElement el, double freq, ref int offWidth, ref bool isFirstCycle)
+		private double ComputePulsePosition(int i, SourceElement el, double freq, out int offWidth, out bool isFirstCycle)
 		{
-			double cycles = freq * this._time / (2.0 * Math.PI);
+			// cycles of the source's own frequency elapsed since t = 0 (not folding in the phase, so the on/off timing
+			// does not shift when only the phase of the wave itself is changed)
+			double cycleClock = freq * _time / (2.0 * Math.PI);
 			if (el.RandomizeOffWidthAmount <= 0)
 			{
 				offWidth = el.OffWidthCycles;
@@ -477,51 +522,59 @@ namespace _2D_wave_sim_V01
 					isFirstCycle = true;
 					return 0.0;
 				}
-				double shifted = cycles + offWidth;
-				isFirstCycle = Math.Floor(shifted / period) == 0.0;
-				return shifted - period * Math.Floor(shifted / period);
+				// shifted so cycleClock = 0 lands at pos = offWidth (the start of the "on" span), not pos = 0 (the start
+				// of an "off" span) - see the summary above
+				double adjustedClock = cycleClock + offWidth;
+				isFirstCycle = Math.Floor(adjustedClock / period) == 0.0;
+				return adjustedClock - period * Math.Floor(adjustedClock / period);   // 0 .. period
 			}
 			else
 			{
-				offWidth = this._objCurrentOffWidth[i];
-				int period = el.OnWidthCycles + offWidth;
-				if (period <= 0)
+				offWidth = _objCurrentOffWidth[i];
+				int dynPeriod = el.OnWidthCycles + offWidth;
+				if (dynPeriod <= 0)
 				{
 					isFirstCycle = true;
 					return 0.0;
 				}
-				double sinceAnchor = cycles - this._objCycleAnchor[i];
+				double sinceAnchor = cycleClock - _objCycleAnchor[i];
 				int guard = 0;
-				while (sinceAnchor >= period && guard < CycleAdvanceGuard)
+				while (sinceAnchor >= dynPeriod && guard < CycleAdvanceGuard)
 				{
-					this._objCycleAnchor[i] += period;
-					sinceAnchor -= period;
-					offWidth = Math.Max(1, el.OffWidthBase + SourceSettings.RandomInt(this._objRandom, el.RandomizeOffWidthAmount));
-					this._objCurrentOffWidth[i] = offWidth;
-					period = el.OnWidthCycles + offWidth;
+					_objCycleAnchor[i] += dynPeriod;
+					sinceAnchor -= dynPeriod;
+					offWidth = Math.Max(1, el.OffWidthBase + SourceSettings.RandomInt(_objRandom, el.RandomizeOffWidthAmount));
+					_objCurrentOffWidth[i] = offWidth;
+					dynPeriod = el.OnWidthCycles + offWidth;
 					guard++;
 				}
 				if (sinceAnchor < 0.0)
 				{
-					sinceAnchor = 0.0;
+					sinceAnchor = 0.0;   // should not happen (_time only increases), guarded for safety
 				}
-				isFirstCycle = this._objCycleAnchor[i] == 0.0;
+				// the anchor only ever advances (above) once a cycle has actually completed, so it still reading its
+				// initial 0 means no cycle has completed yet - we are still in the element's very first (off-first) cycle
+				isFirstCycle = _objCycleAnchor[i] == 0.0;
 				return sinceAnchor;
 			}
 		}
 
 		/// <summary>
-		/// Amplitude envelope (0..1) of a pulsed source at the given position within its on/off period (a
-		/// non-positive period yields 1). Gaussian: zero during the off-phase, then a bell centred in the on-window
-		/// with σ = on-width/6. Smoothed square: the product of an arctan rise at the start and an arctan fall at
-		/// the end of the on-window (softness 0.35 cycles); positions are wrapped so the tails of neighbouring
-		/// periods blend smoothly, except in the first period so the pulse does not start mid-tail.
+		/// Amplitude envelope (0..1) of a pulsed source: the source is "off" for <paramref name="offWidth"/> cycles
+		/// of its own frequency, then "on" for <see cref="SourceElement.OnWidthCycles"/> cycles, repeating (off
+		/// precedes on so that, at the start of a run, every source is silent for its own off-width before its first
+		/// pulse, rather than every source firing simultaneously at t = 0; a non-positive period yields 1). Within
+		/// the "on" span the amplitude is shaped by the pulse shape: Gaussian tapers smoothly to (about) 0 at both
+		/// ends of the "on" span (a bell centred in the on-window with σ = on-width/6), and SmoothedSquare rises and
+		/// falls quickly (an atan-smoothed square wave, avoiding a hard on/off step that would ring the field).
+		/// <paramref name="pos"/> and <paramref name="offWidth"/> come from <see cref="ComputePulsePosition"/>, as
+		/// does <paramref name="isFirstCycle"/> - see the SmoothedSquare branch for why that one matters.
 		/// </summary>
 		/// <param name="el">The source; supplies the pulse shape and on-width.</param>
 		/// <param name="pos">Position within the period in cycles, as returned by <see cref="ComputePulsePosition"/>.</param>
 		/// <param name="offWidth">Off-width (cycles) in effect for this period.</param>
 		/// <param name="isFirstCycle">Whether this is the first period (suppresses the tail wrapping of the smoothed square).</param>
-		private double PulseEnvelope(SourceElement el, double pos, int offWidth, bool isFirstCycle)
+		private static double PulseEnvelope(SourceElement el, double pos, int offWidth, bool isFirstCycle)
 		{
 			int onWidthCycles = el.OnWidthCycles;
 			int period = onWidthCycles + offWidth;
@@ -529,35 +582,42 @@ namespace _2D_wave_sim_V01
 			{
 				return 1.0;
 			}
+			double onPos = pos - offWidth;   // 0 .. onWidth, position within the "on" span
 			if (el.PulseShape == SourcePulseShape.Gaussian)
 			{
-				if (pos < offWidth)
+				if (onPos < 0.0)
 				{
 					return 0.0;
 				}
-				double onPos = pos - offWidth;
 				double center = onWidthCycles / 2.0;
 				double sigma = Math.Max(onWidthCycles / 6.0, 1E-06);
 				double z = (onPos - center) / sigma;
 				return Math.Exp(-0.5 * z * z);
 			}
-			else
+			// a flat-topped pulse (envelope 1 while "on", 0 while "off") with a short, FIXED-width (in cycles, not a
+			// fraction of the on/off span) smoothed edge at the rise and the fall, evaluated on a coordinate shifted
+			// so the "on" span starts at 0 (folding around the period).
+			if (onPos < 0.0 && !isFirstCycle)
 			{
-				double onPos = pos - offWidth;
-				if (onPos < 0.0 && !isFirstCycle)
-				{
-					onPos += period;
-				}
-				double fallArg = onPos - onWidthCycles;
-				double riseArg = onPos;
-				if (riseArg > period / 2.0)
-				{
-					riseArg -= period;
-				}
-				double rise = 0.5 + Math.Atan(riseArg / 0.35) / Math.PI;
-				double fall = 0.5 - Math.Atan(fallArg / 0.35) / Math.PI;
-				return rise * fall;
+				// wrapping onPos forward by a full period makes it continue the falling tail of the on-span that
+				// JUST ended - correct from the second off-span onward, where that on-span really happened. A
+				// source's very first off-span (isFirstCycle) has no real preceding on-emission to continue from, so
+				// wrapping there would fabricate one: pos = 0 would land exactly on that phantom falling edge and
+				// start the run at envelope ~0.5 instead of ~0, emitting a spurious one-cycle "blip" before the
+				// source actually goes quiet. Left un-wrapped (deeply negative) instead, riseArg/fallArg below
+				// correctly place it far from both edges, so the envelope is (very close to) 0 until the real rising edge.
+				onPos += period;
 			}
+			const double EdgeWidth = 0.35;
+			double fallArg = onPos - onWidthCycles;   // 0 at the falling edge, grows past it
+			double riseArg = onPos;                   // 0 at the rising edge
+			if (riseArg > period / 2.0)
+			{
+				riseArg -= period;   // signed distance to the *nearest* rising edge
+			}
+			double rise = 0.5 + Math.Atan(riseArg / EdgeWidth) / Math.PI;
+			double fall = 0.5 - Math.Atan(fallArg / EdgeWidth) / Math.PI;
+			return rise * fall;
 		}
 
 		/// <summary>
@@ -571,28 +631,33 @@ namespace _2D_wave_sim_V01
 		/// buffers are swapped. Border cells are never written and stay 0.
 		/// When tracking, the intensity is a cascade of two exponential moving averages of u² (retention
 		/// <see cref="_intensityAlpha"/>); the output mixes both stages (<see cref="IntensityBlend"/>) times
-		/// <see cref="_intensityScale"/>.
+		/// <see cref="_intensityScale"/>. The damping array is <see cref="_damping"/> (the scene's d itself when
+		/// <see cref="_subSteps"/> = 1, otherwise its 1/_subSteps-th root) and c² is scaled by
+		/// <see cref="_c2Mult"/> (1.0F, an exact no-op, when _subSteps = 1).
 		/// </summary>
-		/// <param name="dArray">Damping map to use, already corrected for the sub-step length.</param>
-		/// <param name="c2Mult">Factor on c² for the sub-step length (1/subSteps²).</param>
-		/// <param name="updateIntensity">Whether to update the intensity buffers in this sub-step (last sub-step only).</param>
-		private void UpdateField(float[] dArray, float c2Mult, bool updateIntensity)
+		/// <param name="updateIntensity">
+		/// Whether to update the intensity buffers in this sub-step: only on the last one, so that its own exponential
+		/// averaging still runs once per <see cref="AdvanceOneStep"/> call, from the field after all of its sub-steps,
+		/// matching its calibration (<see cref="_intensityAlpha"/>) regardless of how many sub-steps that call takes.
+		/// </param>
+		private void UpdateField(bool updateIntensity)
 		{
-			float[] u = this._u;
-			float[] uPrev = this._uPrev;
-			float[] c2 = this._c2;
-			float[] d = dArray;
-			float[] intensity = this._intensity;
-			float[] stage1 = this._intensityStage1;
-			float[] intensityOut = this._intensityOut;
+			// Local copies for the parallel loop: the lambda should not touch fields.
+			float[] u = _u;
+			float[] uPrev = _uPrev;
+			float[] c2 = _c2;
+			float[] d = _damping;
+			float[] intensity = _intensity;
+			float[] stage1 = _intensityStage1;
+			float[] intensityOut = _intensityOut;
 			bool track = intensity != null && updateIntensity;
-			int stride = this._stride;
-			int w = this._width;
-			int h = this._height;
-			bool use4th = this._use4thOrderLaplacian;
-			float mult = c2Mult;
-			float alpha = this._intensityAlpha;
-			float scale = this._intensityScale;
+			int stride = _stride;
+			int w = _width;
+			int h = _height;
+			bool use4th = _use4thOrderLaplacian;
+			float mult = _c2Mult;
+			float alpha = _intensityAlpha;
+			float scale = _intensityScale;
 			int bands = Math.Min(h, Environment.ProcessorCount * 4);
 
 			Parallel.For(0, bands, band =>
@@ -602,7 +667,9 @@ namespace _2D_wave_sim_V01
 				for (int y = rowStart; y <= rowEnd; y++)
 				{
 					int idx = (y + 1) * stride + 1;
-					// The 4th-order stencil reaches two cells out, but the padding is only one cell wide.
+					// the 4th order stencil reaches 2 cells away, so it is only safe for domain rows/columns that
+					// have that much room before the (1 cell wide) border - the outermost ring of the domain (y = 0,
+					// y = h - 1, and, per column below, x = 0, x = w - 1) falls back to the original 3x3 kernel
 					bool rowAllows4th = use4th && y >= 1 && y <= h - 2;
 					for (int x = 0; x < w; x++)
 					{
@@ -620,10 +687,14 @@ namespace _2D_wave_sim_V01
 								+ KernelEdge * (u[idx - 1] + u[idx + 1] + u[idx - stride] + u[idx + stride])
 								- center;
 						}
+						// the new value replaces the previous one (each cell only reads its own previous value)
 						float next = center + (center - uPrev[idx]) * d[idx] + laplacian * c2[idx] * mult;
 						uPrev[idx] = next;
 						if (track)
 						{
+							// two cascaded one-pole stages (see the class remarks), blended with the 1-stage
+							// result (IntensityBlend) for the shown/exported intensity rather than using the full
+							// 2-stage cascade outright
 							float s1 = stage1[idx] * alpha + next * next * (1f - alpha);
 							stage1[idx] = s1;
 							float s2 = intensity[idx] * alpha + s1 * (1f - alpha);
@@ -635,9 +706,9 @@ namespace _2D_wave_sim_V01
 				}
 			});
 
-			// uPrev now holds the new field; swap buffers.
-			this._uPrev = u;
-			this._u = uPrev;
+			// the array that received the new values is now the current field
+			_uPrev = u;
+			_u = uPrev;
 		}
 
 		/// <summary>Weight of the four diagonal neighbours in the 9-point Laplacian.</summary>
@@ -649,26 +720,48 @@ namespace _2D_wave_sim_V01
 		/// <summary>Fraction of the old field value kept when a source value is blended in (soft source injection).</summary>
 		private const float SourceOpacity = 0.9f;
 
-		/// <summary>Source level assumed for the intensity decay time when no source has a level above 0.</summary>
-		private const int NominalDecayLevel = 100;
+		/// <summary>
+		/// Nominal source level (of 255) that <see cref="SimulationSettings.TimeDecayFactor"/>'s steps count is
+		/// calibrated against - see that property's doc and <see cref="IntensityRetention"/>; also the level assumed
+		/// when no source has a level above 0 (<see cref="LowestSourceLevel"/>).
+		/// </summary>
+		internal const int NominalDecayLevel = 100;
 
-		/// <summary>Mix of the two intensity averaging stages in the output: 0 = first stage only, 1 = second stage only.</summary>
+		/// <summary>
+		/// How much of the fully cascaded (2-stage, 12 dB/octave) intensity is blended into the shown/exported value
+		/// versus the 1-stage (6 dB/octave) intensity (0 = first stage only, 1 = second stage only) - see the class
+		/// remarks; 0.5 is the middle ground, about 9 dB/octave.
+		/// </summary>
 		private const float IntensityBlend = 0.5f;
 
-		/// <summary>4th-order stencil weight of the nearest neighbours (4/3).</summary>
-		private const float FourthOrderNear = 1.3333334f;
+		// the 4th order "cross" stencil's coefficients: (-f(-2) + 16f(-1) - 30f(0) + 16f(+1) - f(+2)) / 12 per axis,
+		// the two axes' center terms combined into one (-60/12 = -5) since both apply to the same center pixel
 
-		/// <summary>4th-order stencil weight of the second-nearest neighbours (-1/12).</summary>
-		private const float FourthOrderFar = -0.083333336f;
+		/// <summary>4th-order stencil weight of the nearest neighbours (16 / 12).</summary>
+		private const float FourthOrderNear = 4.0f / 3.0f;
 
-		/// <summary>4th-order stencil centre weight (2 × -5/2 for the two axes).</summary>
+		/// <summary>4th-order stencil weight of the second-nearest neighbours (-1 / 12).</summary>
+		private const float FourthOrderFar = -1.0f / 12.0f;
+
+		/// <summary>4th-order stencil centre weight (-60 / 12, the two axes' centre terms combined).</summary>
 		private const float FourthOrderCenter = -5f;
 
-		/// <summary>Largest eigenvalue magnitude of the 2D 4th-order stencil (2 × 16/3), for the stability estimate in <see cref="ComputeSubSteps"/>.</summary>
-		private const float FourthOrderLambdaMax = 10.666667f;
+		/// <summary>
+		/// The 4th order stencil's largest |eigenvalue| (at the grid's highest spatial frequency, kx = ky = π):
+		/// 2 * (-1/12 * cos(2k) + 4/3 * cos(k) - 5/2)|k=π per axis, summed over x and y = -32/3. Used by the
+		/// stability estimate in <see cref="ComputeSubSteps"/>.
+		/// </summary>
+		private const float FourthOrderLambdaMax = 32.0f / 3.0f;
 
-		/// <summary>Allowed c²·λmax·dt² per sub-step; 2 keeps a margin below the leapfrog stability bound of 4.</summary>
+		/// <summary>
+		/// How far below the hard stability limit (c² * |λmax| &lt;= 4) sub-stepping aims to stay - chosen to give
+		/// roughly the same safety margin the 3x3 kernel already has in practice (its own c² * |λmax| is about 1.8
+		/// at the highest c² the app allows, i.e. about 2.2 times under the limit of 4).
+		/// </summary>
 		private const float SubStepTargetLimit = 2f;
+
+		/// <summary>Upper bound on the periods <see cref="ComputePulsePosition"/> advances at once (guards against a tiny period).</summary>
+		private const int CycleAdvanceGuard = 1000;
 
 		/// <summary>Scene width in cells.</summary>
 		private readonly int _width;
@@ -682,19 +775,29 @@ namespace _2D_wave_sim_V01
 		/// <summary>Whether interior cells use the 4th-order stencil.</summary>
 		private readonly bool _use4thOrderLaplacian;
 
-		/// <summary>Leapfrog sub-steps per simulation step; 1 unless the 4th-order stencil is on.</summary>
+		/// <summary>
+		/// Leapfrog sub-steps per simulation step (see the class remarks); 1 (no sub-stepping) unless the 4th-order
+		/// stencil is on and this scene's highest c² needs it.
+		/// </summary>
 		private readonly int _subSteps;
 
-		/// <summary>Damping map applied per sub-step: <see cref="_d"/> raised to 1/<see cref="_subSteps"/>, or <see cref="_d"/> itself without sub-stepping.</summary>
-		private readonly float[] _dEffective;
+		/// <summary>
+		/// Per-cell damping applied per sub-step (padded), 1 = lossless: the scene's map itself when
+		/// <see cref="_subSteps"/> = 1 (same array, so multiplying by it is bit-for-bit identical to before),
+		/// otherwise a separate array of it raised to the power 1/<see cref="_subSteps"/>.
+		/// </summary>
+		private readonly float[] _damping;
 
-		/// <summary>1/<see cref="_subSteps"/>², scaling c² for the shorter sub-step.</summary>
+		/// <summary>1/<see cref="_subSteps"/>², scaling c² for the shorter sub-step (or exactly 1.0F when _subSteps = 1, a bit-for-bit no-op multiply).</summary>
 		private readonly float _c2Mult;
 
-		/// <summary>Per-step retention of the intensity averages: exp(-1/decaySteps) with decaySteps = timeDecayFactor·100/lowest source level.</summary>
+		/// <summary>
+		/// The intensity's exponential-average decay factor for this simulation (replaces the old fixed 0.98F) - see
+		/// <see cref="SimulationSettings.TimeDecayFactor"/>'s doc and <see cref="IntensityRetention"/>.
+		/// </summary>
 		private readonly float _intensityAlpha;
 
-		/// <summary>Multiplier on the intensity output.</summary>
+		/// <summary><see cref="SimulationSettings.IntensityScale"/>, the multiplier on the intensity output - see that property's doc.</summary>
 		private readonly float _intensityScale;
 
 		/// <summary>Current field (padded); exchanged with <see cref="_uPrev"/> after every sub-step.</summary>
@@ -706,16 +809,24 @@ namespace _2D_wave_sim_V01
 		/// <summary>Per-cell c² = 1/n² (padded; border cells 0).</summary>
 		private readonly float[] _c2;
 
-		/// <summary>Per-cell damping from the scene (padded), 1 = lossless; source of <see cref="_dEffective"/>.</summary>
-		private readonly float[] _d;
-
-		/// <summary>Second-stage running average of u² (padded), or null when intensity is not tracked.</summary>
+		/// <summary>
+		/// Second-stage running average of u² (padded): the 2-stage cascade's internal recursive state (12 dB/octave),
+		/// no longer what is shown/exported - see <see cref="_intensityOut"/> and the class remarks. Null when
+		/// intensity is not tracked.
+		/// </summary>
 		private readonly float[] _intensity;
 
-		/// <summary>First-stage running average of u² (padded), or null when intensity is not tracked.</summary>
+		/// <summary>
+		/// The first of the two cascaded exponential-filter stages that make up the intensity (padded; see the class
+		/// remarks), or null when intensity is not tracked, same as <see cref="_intensity"/>.
+		/// </summary>
 		private readonly float[] _intensityStage1;
 
-		/// <summary>Blended and scaled intensity exposed as <see cref="IntensityData"/>, or null when not tracked.</summary>
+		/// <summary>
+		/// The blend of <see cref="_intensityStage1"/> and <see cref="_intensity"/> (<see cref="IntensityBlend"/>)
+		/// times <see cref="_intensityScale"/> that is actually shown/exported as <see cref="IntensityData"/>, or null
+		/// when not tracked.
+		/// </summary>
 		private readonly float[] _intensityOut;
 
 		/// <summary>Padded cell index of every image source.</summary>
@@ -725,13 +836,17 @@ namespace _2D_wave_sim_V01
 		private readonly byte[] _sourceLevel;
 
 		/// <summary>Angular frequency in radians per step for each level 0..255: level/255 × 0.5 × sourceFrequencyScale.</summary>
-		private readonly double[] _levelFrequency;
+		private readonly double[] _levelFrequency = new double[256];
 
 		/// <summary>Which levels have at least one image source; only those get a value computed per step.</summary>
-		private readonly bool[] _levelUsed;
+		private readonly bool[] _levelUsed = new bool[256];
 
-		/// <summary>Image source value for the current step, per level.</summary>
-		private readonly float[] _levelValue;
+		/// <summary>
+		/// Scratch for <see cref="ApplySources"/>: the source value of each level in use for the current step,
+		/// computed once per level and shared by every image source of that level. Kept as a field so it is not
+		/// re-allocated every step; written and read only by the driving thread.
+		/// </summary>
+		private readonly float[] _levelValue = new float[256];
 
 		/// <summary>Peak amplitude of the image sources.</summary>
 		private readonly double _sourceAmplitude;
@@ -742,17 +857,20 @@ namespace _2D_wave_sim_V01
 		/// <summary>Padded cell index of every entry in <see cref="_objSources"/>.</summary>
 		private readonly int[] _objIndex;
 
-		/// <summary>Random generator for randomized off-widths; used on the worker thread only.</summary>
-		private readonly Random _objRandom;
+		/// <summary>Random generator for randomized off-widths; used by the driving thread only.</summary>
+		private readonly Random _objRandom = new Random();
 
-		/// <summary>Per object source: start (in cycles) of its current period; used in randomized off-width mode only.</summary>
+		/// <summary>
+		/// Per object source (parallel to <see cref="_objSources"/>): the cycle-clock value (in cycles of the
+		/// element's own frequency) at which its current off+on cycle started. Runtime state for pulsed sources
+		/// whose off-width is re-randomized at runtime (<see cref="SourceElement.RandomizeOffWidthAmount"/>);
+		/// elements that never re-randomize (the common case) never touch it: their position within the cycle is
+		/// a pure function of <see cref="_time"/>, exactly as before.
+		/// </summary>
 		private readonly double[] _objCycleAnchor;
 
-		/// <summary>Per object source: off-width (cycles) in effect for its current period.</summary>
+		/// <summary>Per object source (parallel to <see cref="_objSources"/>): off-width (cycles) in effect for its current period; see <see cref="_objCycleAnchor"/>.</summary>
 		private readonly int[] _objCurrentOffWidth;
-
-		/// <summary>Upper bound on the periods <see cref="ComputePulsePosition"/> advances at once (guards against a tiny period).</summary>
-		private const int CycleAdvanceGuard = 1000;
 
 		/// <summary>Elapsed time in steps.</summary>
 		private double _time;
@@ -761,7 +879,7 @@ namespace _2D_wave_sim_V01
 		private ProbeSampler _sampler;
 
 		/// <summary>Point-probe samples gathered since the last <see cref="TakeProbeSamples"/>, one list per probe.</summary>
-		private readonly List<List<float>> _probeValues;
+		private readonly List<List<float>> _probeValues = new List<List<float>>();
 
 		/// <summary>Running per-pixel intensity sums for integrated line probes (null entries for other probes); null without a sampler.</summary>
 		private double[][] _profileTotals;

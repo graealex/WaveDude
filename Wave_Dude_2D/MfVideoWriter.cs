@@ -6,8 +6,10 @@ namespace _2D_wave_sim_V01
 	/// <summary>
 	/// <see cref="IFrameSink"/> that encodes H.264 MP4 through the Media Foundation sink writer
 	/// (<c>mfplat.dll</c> / <c>mfreadwrite.dll</c>, talked to via the hand-written <c>IMF*Native</c> COM
-	/// interfaces). Created by <see cref="SimulationRunner"/>; a failing constructor means
-	/// "no H.264 on this machine" and triggers the AVI fallback. Used from the worker thread only.
+	/// interfaces). The H.264 encoder is the one built into Windows, so no codec or other program is needed
+	/// and every Windows player opens the file. Created by <see cref="SimulationRunner"/>; a failing
+	/// constructor (no Media Foundation or H.264 encoder, size not supported) means "no H.264 on this
+	/// machine" and triggers the AVI fallback. Used from the worker thread only.
 	/// Media Foundation is started in the constructor and shut down in <see cref="Cleanup"/>.
 	/// </summary>
 	internal sealed class MfVideoWriter : IFrameSink
@@ -53,70 +55,67 @@ namespace _2D_wave_sim_V01
 		/// <exception cref="COMException">Media Foundation returned a failure HRESULT (no encoder, bad path, ...).</exception>
 		public MfVideoWriter(string filePath, int width, int height, int framesPerSecond, int quality)
 		{
-			this._path = filePath;
-			this._srcWidth = width;
-			this._srcHeight = height;
-			this._width = width & -2;
-			this._height = height & -2;
-			this._fps = framesPerSecond;
-			if (this._width < 16 || this._height < 16)
+			_path = filePath;
+			_srcWidth = width;
+			_srcHeight = height;
+			_width = width & ~1; // the encoded size: H.264 needs even sizes
+			_height = height & ~1;
+			_fps = framesPerSecond;
+			if (_width < 16 || _height < 16)
 			{
 				throw new NotSupportedException("The canvas is too small for H.264 video.");
 			}
-			if ((long)this._width * this._height > 9437184L)
+			if ((long)_width * _height > 4096L * 2304L)
 			{
 				throw new NotSupportedException("The canvas is too large for the H.264 encoder of Windows.");
 			}
-			if (this._width != this._srcWidth || this._height != this._srcHeight)
+			if (_width != _srcWidth || _height != _srcHeight)
 			{
-				this._cropped = new int[this._width * this._height];
+				_cropped = new int[_width * _height];
 			}
-			MfVideoWriter.Check(MfVideoWriter.MFStartup(MfVersion, 0));
-			this._started = true;
+			Check(MFStartup(MfVersion, 0));
+			_started = true;
 			try
 			{
-				MfVideoWriter.Check(MfVideoWriter.MFCreateSinkWriterFromURL(filePath, IntPtr.Zero, IntPtr.Zero, ref this._writerPtr));
-				this._writer = (IMFSinkWriterNative)Marshal.GetObjectForIUnknown(this._writerPtr);
+				Check(MFCreateSinkWriterFromURL(filePath, IntPtr.Zero, IntPtr.Zero, ref _writerPtr));
+				_writer = (IMFSinkWriterNative)Marshal.GetObjectForIUnknown(_writerPtr);
+				// the quality (1 to 100) sets the bits per pixel of every frame: 0.01 * 50 ^ (quality / 100),
+				// which is 0.01 at quality 1, 0.15 at 70 and 0.5 at 100 (1920 x 1080 at 60 frames/s: 1 to 62 Mbit/s)
 				int clampedQuality = Math.Max(1, Math.Min(100, quality));
 				double bitsPerPixel = 0.01 * Math.Pow(50.0, clampedQuality / 100.0);
-				long bitrate = (long)Math.Round((double)this._width * this._height * this._fps * bitsPerPixel);
+				long bitrate = (long)Math.Round((double)_width * _height * _fps * bitsPerPixel);
 				bitrate = Math.Max(300000L, Math.Min(200000000L, bitrate));
-				IntPtr outputType = this.MakeType(MfVideoWriter.H264Format, (int)bitrate, false);
+				IntPtr outputType = MakeType(H264Format, (int)bitrate, false);
 				int streamIndex = 0;
 				try
 				{
-					MfVideoWriter.Check(this._writer.AddStream(outputType, ref streamIndex));
+					Check(_writer.AddStream(outputType, ref streamIndex));
 				}
 				finally
 				{
 					Marshal.Release(outputType);
 				}
-				IntPtr inputType = this.MakeType(MfVideoWriter.Rgb32Format, 0, true);
+				// the pictures are given as 32 bit pixels; the sink writer converts them for the encoder
+				IntPtr inputType = MakeType(Rgb32Format, 0, true);
 				try
 				{
-					MfVideoWriter.Check(this._writer.SetInputMediaType(streamIndex, inputType, IntPtr.Zero));
+					Check(_writer.SetInputMediaType(streamIndex, inputType, IntPtr.Zero));
 				}
 				finally
 				{
 					Marshal.Release(inputType);
 				}
-				MfVideoWriter.Check(this._writer.BeginWriting());
+				Check(_writer.BeginWriting());
 			}
 			catch
 			{
-				this.Cleanup();
+				Cleanup();
 				throw;
 			}
 		}
 
 		/// <summary>The MP4 path given to the constructor.</summary>
-		public string FilePath
-		{
-			get
-			{
-				return this._path;
-			}
-		}
+		public string FilePath => _path;
 
 		/// <summary>
 		/// Creates a progressive video <c>IMFMediaType</c> for <paramref name="format"/> at the writer's even size,
@@ -129,25 +128,25 @@ namespace _2D_wave_sim_V01
 		private IntPtr MakeType(Guid format, int bitrate, bool topDown)
 		{
 			IntPtr mediaType = IntPtr.Zero;
-			MfVideoWriter.Check(MfVideoWriter.MFCreateMediaType(ref mediaType));
+			Check(MFCreateMediaType(ref mediaType));
 			try
 			{
 				IMFAttributesNative attributes = (IMFAttributesNative)Marshal.GetObjectForIUnknown(mediaType);
 				try
 				{
-					MfVideoWriter.Check(attributes.SetGUID(MfVideoWriter.MajorType, MfVideoWriter.VideoType));
-					MfVideoWriter.Check(attributes.SetGUID(MfVideoWriter.SubType, format));
+					Check(attributes.SetGUID(MajorType, VideoType));
+					Check(attributes.SetGUID(SubType, format));
 					if (bitrate > 0)
 					{
-						MfVideoWriter.Check(attributes.SetUINT32(MfVideoWriter.AvgBitrate, bitrate));
+						Check(attributes.SetUINT32(AvgBitrate, bitrate));
 					}
-					MfVideoWriter.Check(attributes.SetUINT32(MfVideoWriter.InterlaceMode, 2)); // MFVideoInterlace_Progressive
-					MfVideoWriter.Check(attributes.SetUINT64(MfVideoWriter.FrameSize, ((ulong)this._width << 32) | (ulong)this._height));
-					MfVideoWriter.Check(attributes.SetUINT64(MfVideoWriter.FrameRate, ((ulong)this._fps << 32) | 1UL));
-					MfVideoWriter.Check(attributes.SetUINT64(MfVideoWriter.PixelAspectRatio, 4294967297UL)); // 1:1 packed as (1 << 32) | 1
+					Check(attributes.SetUINT32(InterlaceMode, 2)); // MFVideoInterlace_Progressive
+					Check(attributes.SetUINT64(FrameSize, ((ulong)_width << 32) | (ulong)_height));
+					Check(attributes.SetUINT64(FrameRate, ((ulong)_fps << 32) | 1UL));
+					Check(attributes.SetUINT64(PixelAspectRatio, (1UL << 32) | 1UL)); // 1:1
 					if (topDown)
 					{
-						MfVideoWriter.Check(attributes.SetUINT32(MfVideoWriter.DefaultStride, this._width * 4));
+						Check(attributes.SetUINT32(DefaultStride, _width * 4));
 					}
 				}
 				finally
@@ -174,48 +173,48 @@ namespace _2D_wave_sim_V01
 		/// <exception cref="COMException">A Media Foundation call failed.</exception>
 		public void AddPixels(int[] pixels)
 		{
-			if (this._closed)
+			if (_closed)
 			{
 				throw new InvalidOperationException("The video file is already closed.");
 			}
 			int[] source = pixels;
-			if (this._cropped != null)
+			if (_cropped != null)
 			{
-				for (int y = 0; y < this._height; y++)
+				for (int y = 0; y < _height; y++)
 				{
-					Array.Copy(pixels, y * this._srcWidth, this._cropped, y * this._width, this._width);
+					Array.Copy(pixels, y * _srcWidth, _cropped, y * _width, _width);
 				}
-				source = this._cropped;
+				source = _cropped;
 			}
-			int byteLength = this._width * this._height * 4;
+			int byteLength = _width * _height * 4;
 			IntPtr bufferPtr = IntPtr.Zero;
 			IntPtr samplePtr = IntPtr.Zero;
 			IMFMediaBufferNative buffer = null;
 			IMFSampleNative sample = null;
 			try
 			{
-				MfVideoWriter.Check(MfVideoWriter.MFCreateMemoryBuffer(byteLength, ref bufferPtr));
+				Check(MFCreateMemoryBuffer(byteLength, ref bufferPtr));
 				buffer = (IMFMediaBufferNative)Marshal.GetObjectForIUnknown(bufferPtr);
 				IntPtr data = IntPtr.Zero;
 				int maxLength = 0;
 				int currentLength = 0;
-				MfVideoWriter.Check(buffer.Lock(ref data, ref maxLength, ref currentLength));
+				Check(buffer.Lock(ref data, ref maxLength, ref currentLength));
 				try
 				{
-					Marshal.Copy(source, 0, data, this._width * this._height);
+					Marshal.Copy(source, 0, data, _width * _height);
 				}
 				finally
 				{
 					buffer.Unlock();
 				}
-				MfVideoWriter.Check(buffer.SetCurrentLength(byteLength));
-				MfVideoWriter.Check(MfVideoWriter.MFCreateSample(ref samplePtr));
+				Check(buffer.SetCurrentLength(byteLength));
+				Check(MFCreateSample(ref samplePtr));
 				sample = (IMFSampleNative)Marshal.GetObjectForIUnknown(samplePtr);
-				MfVideoWriter.Check(sample.AddBuffer(bufferPtr));
-				MfVideoWriter.Check(sample.SetSampleTime(this._frames * 10000000L / this._fps));
-				MfVideoWriter.Check(sample.SetSampleDuration(10000000L / this._fps));
-				MfVideoWriter.Check(this._writer.WriteSample(0, samplePtr));
-				this._frames++;
+				Check(sample.AddBuffer(bufferPtr));
+				Check(sample.SetSampleTime(_frames * 10000000L / _fps));
+				Check(sample.SetSampleDuration(10000000L / _fps));
+				Check(_writer.WriteSample(0, samplePtr));
+				_frames++;
 			}
 			finally
 			{
@@ -246,21 +245,21 @@ namespace _2D_wave_sim_V01
 		/// <exception cref="COMException"><c>Finalize</c> failed; cleanup has still been performed.</exception>
 		public void Close()
 		{
-			if (this._closed)
+			if (_closed)
 			{
 				return;
 			}
-			this._closed = true;
+			_closed = true;
 			try
 			{
-				if (this._writer != null && this._frames > 0)
+				if (_writer != null && _frames > 0)
 				{
-					MfVideoWriter.Check(this._writer.FinalizeWriting());
+					Check(_writer.FinalizeWriting());
 				}
 			}
 			finally
 			{
-				this.Cleanup();
+				Cleanup();
 			}
 		}
 
@@ -271,27 +270,27 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void Cleanup()
 		{
-			if (this._writer != null)
+			if (_writer != null)
 			{
-				Marshal.ReleaseComObject(this._writer);
-				this._writer = null;
+				Marshal.ReleaseComObject(_writer);
+				_writer = null;
 			}
-			if (this._writerPtr != IntPtr.Zero)
+			if (_writerPtr != IntPtr.Zero)
 			{
-				Marshal.Release(this._writerPtr);
-				this._writerPtr = IntPtr.Zero;
+				Marshal.Release(_writerPtr);
+				_writerPtr = IntPtr.Zero;
 			}
-			if (this._started)
+			if (_started)
 			{
-				this._started = false;
-				MfVideoWriter.MFShutdown();
+				_started = false;
+				MFShutdown();
 			}
 		}
 
 		/// <summary>Same as <see cref="Close"/>.</summary>
 		public void Dispose()
 		{
-			this.Close();
+			Close();
 		}
 
 		/// <summary>Throws the matching .NET exception for a failed HRESULT (negative value); succeeds silently otherwise.</summary>
@@ -303,8 +302,11 @@ namespace _2D_wave_sim_V01
 			}
 		}
 
-		/// <summary><c>MF_VERSION</c> = 0x00020070 (SDK version 2, API version 0x70) passed to <c>MFStartup</c>.</summary>
-		private const int MfVersion = 131184;
+		/// <summary>
+		/// The version of Media Foundation that is asked for: <c>MF_VERSION</c> of the Windows 7 and later SDK
+		/// (SDK version 2, API version 0x70), passed to <c>MFStartup</c>.
+		/// </summary>
+		private const int MfVersion = 0x00020070;
 
 		/// <summary><c>MF_MT_MAJOR_TYPE</c> attribute key.</summary>
 		private static readonly Guid MajorType = new Guid("48eba18e-f8c9-4687-bf11-0a74c9f96a8f");

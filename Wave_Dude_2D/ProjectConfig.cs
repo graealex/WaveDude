@@ -10,10 +10,19 @@ namespace _2D_wave_sim_V01
 {
 	/// <summary>
 	/// The contents of a project's configuration.json: a flat dictionary of top-level values
-	/// (format version, project name, created/modified timestamps, description) plus named
+	/// (format version, project name, created/modified timestamps, description; always present) plus named
 	/// sub-dictionaries ("sections") that <see cref="SceneSettings"/>, <see cref="SimulationSettings"/>,
 	/// <see cref="ProbeSettings"/> and <see cref="SourceSettings"/> read and write through
-	/// <see cref="GetSection"/>. Owned by a <see cref="Project"/>; created by <see cref="ProjectStore"/>.
+	/// <see cref="GetSection"/>. Every tab that gets functionality later stores its own settings as a section
+	/// the same way, for example:
+	/// <code>
+	/// var section = project.Config.GetSection("probes");
+	/// section["count"] = 3;
+	/// project.Save();
+	/// </code>
+	/// Forward compatibility: keys that this version of the program does not know are kept and written back
+	/// unchanged, so a file written by a newer version is not damaged by an older one (it is refused when its
+	/// format_version is newer). Owned by a <see cref="Project"/>; created by <see cref="ProjectStore"/>.
 	/// Reading uses <see cref="JavaScriptSerializer"/>; writing is done by hand so the file stays
 	/// stable, indented and human-readable. Values are stored as the serializer produces them
 	/// (string, int, long, decimal, double, bool, nested dictionaries and object arrays), so the
@@ -25,87 +34,57 @@ namespace _2D_wave_sim_V01
 		public ProjectConfig(string projectName)
 		{
 			string now = ProjectConfig.Timestamp(DateTime.UtcNow);
-			this._values = new Dictionary<string, object>();
-			this._values[KeyFormatVersion] = CurrentFormatVersion;
-			this._values[KeyProjectName] = projectName;
-			this._values[KeyCreated] = now;
-			this._values[KeyModified] = now;
+			_values = new Dictionary<string, object>();
+			_values[KeyFormatVersion] = CurrentFormatVersion;
+			_values[KeyProjectName] = projectName;
+			_values[KeyCreated] = now;
+			_values[KeyModified] = now;
 		}
 
 		/// <summary>Wraps a deserialised dictionary (used by <see cref="Load"/>); adds the format version if the file had none.</summary>
 		private ProjectConfig(Dictionary<string, object> values)
 		{
-			this._values = values;
-			if (!this._values.ContainsKey(KeyFormatVersion))
+			_values = values;
+			if (!_values.ContainsKey(KeyFormatVersion))
 			{
-				this._values[KeyFormatVersion] = CurrentFormatVersion;
+				_values[KeyFormatVersion] = CurrentFormatVersion;
 			}
 		}
 
 		/// <summary>Format version stored in the file; <see cref="CurrentFormatVersion"/> when missing or unreadable.</summary>
-		public int FormatVersion
-		{
-			get
-			{
-				return this.GetInteger(KeyFormatVersion, CurrentFormatVersion);
-			}
-		}
+		public int FormatVersion => GetInteger(KeyFormatVersion, CurrentFormatVersion);
 
 		/// <summary>Gets or sets the project name ("" when missing). <see cref="Project.Save"/> overwrites it with the folder name before saving.</summary>
 		public string ProjectName
 		{
-			get
-			{
-				return this.GetString(KeyProjectName, "");
-			}
-			set
-			{
-				this._values[KeyProjectName] = value;
-			}
+			get => GetString(KeyProjectName, "");
+			set => _values[KeyProjectName] = value;
 		}
 
 		/// <summary>UTC creation timestamp as "yyyy-MM-ddTHH:mm:ssZ", or "" when missing.</summary>
-		public string Created
-		{
-			get
-			{
-				return this.GetString(KeyCreated, "");
-			}
-		}
+		public string Created => GetString(KeyCreated, "");
 
 		/// <summary>UTC timestamp of the last <see cref="Save"/> as "yyyy-MM-ddTHH:mm:ssZ", or "" when missing.</summary>
-		public string Modified
-		{
-			get
-			{
-				return this.GetString(KeyModified, "");
-			}
-		}
+		public string Modified => GetString(KeyModified, "");
 
-		/// <summary>Gets or sets the free-text project description ("" when missing).</summary>
+		/// <summary>Gets or sets the free-text project description (Form1's <c>btnDescription</c> / <see cref="frmDescription"/>); "" when none was set.</summary>
 		public string Description
 		{
-			get
-			{
-				return this.GetString(KeyDescription, "");
-			}
-			set
-			{
-				this._values[KeyDescription] = value;
-			}
+			get => GetString(KeyDescription, "");
+			set => _values[KeyDescription] = value;
 		}
 
 		/// <summary>True when a top-level value or section named <paramref name="key"/> exists (even if its value is null).</summary>
 		public bool ContainsKey(string key)
 		{
-			return this._values.ContainsKey(key);
+			return _values.ContainsKey(key);
 		}
 
 		/// <summary>Top-level value <paramref name="key"/> converted to a string with the invariant culture, or <paramref name="fallback"/> when missing or null.</summary>
 		public string GetString(string key, string fallback)
 		{
 			object value;
-			if (this._values.TryGetValue(key, out value) && value != null)
+			if (_values.TryGetValue(key, out value) && value != null)
 			{
 				return Convert.ToString(value, CultureInfo.InvariantCulture);
 			}
@@ -116,7 +95,7 @@ namespace _2D_wave_sim_V01
 		public int GetInteger(string key, int fallback)
 		{
 			object value;
-			if (this._values.TryGetValue(key, out value) && value != null)
+			if (_values.TryGetValue(key, out value) && value != null)
 			{
 				try
 				{
@@ -130,10 +109,10 @@ namespace _2D_wave_sim_V01
 			return fallback;
 		}
 
-		/// <summary>Sets (or replaces) the top-level value <paramref name="key"/>; a dictionary value becomes a section.</summary>
+		/// <summary>Sets (or replaces) the top-level value <paramref name="key"/>; a dictionary value becomes a section. Allowed values: string, bool, numbers, null, a <c>Dictionary&lt;string, object&gt;</c>, or a list or array of these.</summary>
 		public void SetValue(string key, object value)
 		{
-			this._values[key] = value;
+			_values[key] = value;
 		}
 
 		/// <summary>
@@ -143,7 +122,7 @@ namespace _2D_wave_sim_V01
 		public Dictionary<string, object> GetSection(string name)
 		{
 			object existing;
-			if (this._values.TryGetValue(name, out existing))
+			if (_values.TryGetValue(name, out existing))
 			{
 				Dictionary<string, object> section = existing as Dictionary<string, object>;
 				if (section != null)
@@ -152,7 +131,7 @@ namespace _2D_wave_sim_V01
 				}
 			}
 			Dictionary<string, object> created = new Dictionary<string, object>();
-			this._values[name] = created;
+			_values[name] = created;
 			return created;
 		}
 
@@ -192,16 +171,17 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void Save(string filePath)
 		{
-			this._values[KeyFormatVersion] = CurrentFormatVersion;
-			this._values[KeyModified] = ProjectConfig.Timestamp(DateTime.UtcNow);
+			_values[KeyFormatVersion] = CurrentFormatVersion;
+			_values[KeyModified] = ProjectConfig.Timestamp(DateTime.UtcNow);
 			StringBuilder sb = new StringBuilder();
-			ProjectConfig.WriteObject(sb, this._values, 0);
+			ProjectConfig.WriteObject(sb, _values, 0);
 			sb.AppendLine();
 			string directory = Path.GetDirectoryName(filePath);
 			if (!string.IsNullOrEmpty(directory))
 			{
 				Directory.CreateDirectory(directory);
 			}
+			// write to a temporary file first so a failed save never leaves a half-written configuration behind
 			string tempPath = filePath + ".tmp";
 			File.WriteAllText(tempPath, sb.ToString(), new UTF8Encoding(false));
 			if (File.Exists(filePath))
@@ -433,7 +413,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>File name of the pre-JSON configuration; an empty one marks a legacy project folder that <see cref="ProjectStore.Open"/> upgrades.</summary>
 		public const string LegacyFileName = "Configuration.txt";
 
-		/// <summary>Format version this build writes; files with a higher version are refused by <see cref="Load"/>.</summary>
+		/// <summary>Version of the file layout that this build writes; files with a higher version are refused by <see cref="Load"/>. Increase it when a change makes old files incompatible.</summary>
 		public const int CurrentFormatVersion = 1;
 
 		/// <summary>JSON key of the format version (int).</summary>
@@ -451,7 +431,7 @@ namespace _2D_wave_sim_V01
 		/// <summary>JSON key of the description (string).</summary>
 		private const string KeyDescription = "description";
 
-		/// <summary>The top-level JSON object: scalar values and section dictionaries keyed by name. Never null; shared by reference with the sections handed out by <see cref="GetSection"/>.</summary>
+		/// <summary>The top-level JSON object: scalar values and section dictionaries keyed by name. Never null; shared by reference with the sections handed out by <see cref="GetSection"/>. Insertion ordered in practice, so the file keeps a stable, readable order.</summary>
 		private readonly Dictionary<string, object> _values;
 	}
 }

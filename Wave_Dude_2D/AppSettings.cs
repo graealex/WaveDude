@@ -18,9 +18,9 @@ namespace _2D_wave_sim_V01
 		/// <summary>Starts with all three values empty (no root chosen, no project remembered).</summary>
 		public AppSettings()
 		{
-			this.LastRootFolder = "";
-			this.LastProjectName = "";
-			this.ProjectRoot = "";
+			LastRootFolder = "";
+			LastProjectName = "";
+			ProjectRoot = "";
 		}
 
 		/// <summary>
@@ -36,7 +36,10 @@ namespace _2D_wave_sim_V01
 		public string LastProjectName { get; set; }
 
 		/// <summary>
-		/// The folder that contains the user's project folders (File &gt; Choose project root).
+		/// The root folder browsed on the Configuration tab (<c>lstAllProjects</c>, File &gt; Choose project
+		/// root), i.e. the folder that contains the user's project folders. Distinct from
+		/// <see cref="LastRootFolder"/> / <see cref="LastProjectName"/>, which remember the project that was
+		/// actually open last, not necessarily the folder being browsed for other projects to switch to.
 		/// Empty until the user has chosen one; <see cref="Form1"/> keeps most of the UI disabled
 		/// while it is empty.
 		/// </summary>
@@ -73,6 +76,7 @@ namespace _2D_wave_sim_V01
 			}
 			catch
 			{
+				// use the defaults
 			}
 			return settings;
 		}
@@ -88,14 +92,15 @@ namespace _2D_wave_sim_V01
 				string path = AppSettings.SettingsFilePath();
 				Directory.CreateDirectory(Path.GetDirectoryName(path));
 				Dictionary<string, string> values = new Dictionary<string, string>();
-				values[KeyRootFolder] = this.LastRootFolder;
-				values[KeyProjectName] = this.LastProjectName;
-				values[KeyProjectRoot] = this.ProjectRoot;
+				values[KeyRootFolder] = LastRootFolder;
+				values[KeyProjectName] = LastProjectName;
+				values[KeyProjectRoot] = ProjectRoot;
 				JavaScriptSerializer serializer = new JavaScriptSerializer();
 				File.WriteAllText(path, serializer.Serialize(values), new UTF8Encoding(false));
 			}
 			catch
 			{
+				// the settings are a convenience only
 			}
 		}
 

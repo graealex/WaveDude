@@ -12,10 +12,10 @@ namespace _2D_wave_sim_V01
 	{
 		public SimulationJob()
 		{
-			this.BackgroundRefractiveIndex = 1.0;
-			this.SourceAmplitude = 1.0;
-			this.FieldVideoPath = "";
-			this.IntensityVideoPath = "";
+			BackgroundRefractiveIndex = 1.0;
+			SourceAmplitude = 1.0;
+			FieldVideoPath = "";
+			IntensityVideoPath = "";
 		}
 
 		/// <summary>
@@ -45,10 +45,10 @@ namespace _2D_wave_sim_V01
 		/// <summary>Snapshot (clone) of the simulation settings, so later edits in the UI do not affect the running job.</summary>
 		public SimulationSettings Settings;
 
-		/// <summary>ARGB palette of <see cref="ColorLut.Size"/> entries for field frames; null when neither field export nor field preview is wanted.</summary>
+		/// <summary>Colour table (<see cref="ColorLut.Size"/> packed ARGB values) for field frames, or null for grey levels (<see cref="FrameRenderer"/> then uses the table index itself as the grey level).</summary>
 		public int[] FieldLut;
 
-		/// <summary>ARGB palette of <see cref="ColorLut.Size"/> entries for intensity frames; null when neither intensity export nor preview is wanted.</summary>
+		/// <summary>Colour table (<see cref="ColorLut.Size"/> packed ARGB values) for intensity frames, or null for grey levels.</summary>
 		public int[] IntensityLut;
 
 		/// <summary>Full path of the field video to write (.mp4, may fall back to .avi); empty = do not export the field.</summary>
@@ -70,15 +70,27 @@ namespace _2D_wave_sim_V01
 		public int PreviewHeight;
 
 		/// <summary>
-		/// Glowing-edges image of the scene, canvas sized, to add onto the exported video frames; null when not exporting or both gains are 0.
-		/// The runner converts and disposes it before the first step.
+		/// The Viewer tab's "glowing edges" overlay (<c>Form1</c>'s <c>_glowEdgesImage</c>), exactly the size of the simulation
+		/// canvas; null when there is none (no scene image), or when both gains below are 0 (the overlay is switched off for
+		/// both Field and Intensity). Frozen at the start of the run, the same as <see cref="Settings"/>; the runner owns and
+		/// disposes it (converted to bytes before the first step). See <see cref="FrameRenderer.AddOverlay"/>.
 		/// </summary>
 		public Bitmap GlowOverlay;
 
-		/// <summary>Brightness multiplier for <see cref="GlowOverlay"/> on field frames; 0 = no overlay.</summary>
+		/// <summary>
+		/// How strongly to blend <see cref="GlowOverlay"/> into the Field video, frozen at the start of the run from
+		/// <c>Form1</c>'s <c>numBrightnessFieldOverlay</c> and <c>chkDiplayOverlayInField</c> (0 when unchecked, see
+		/// <c>Form1.FieldOverlayGain</c>). Only affects the exported videos: the live preview keeps blending its own copy of the
+		/// overlay in on the UI thread (<c>Form1.ShowPreview</c>/<c>ComposeGlowOverlay</c>), which can track the checkbox/brightness
+		/// box live; a running export cannot, so it uses whatever these were at the moment Start Simulation was pressed.
+		/// </summary>
 		public double FieldOverlayGain;
 
-		/// <summary>Brightness multiplier for <see cref="GlowOverlay"/> on intensity frames; 0 = no overlay.</summary>
+		/// <summary>
+		/// How strongly to blend <see cref="GlowOverlay"/> into the Intensity video, frozen at the start of the run from
+		/// <c>numBrightnessIntensityOverlay</c> and <c>chkDiplayOverlayInIntensity</c> (0 when unchecked); see
+		/// <see cref="FieldOverlayGain"/> for why only the exported video is affected.
+		/// </summary>
 		public double IntensityOverlayGain;
 	}
 }

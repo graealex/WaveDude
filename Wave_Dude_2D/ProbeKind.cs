@@ -7,8 +7,8 @@ namespace _2D_wave_sim_V01
 	public enum ProbeKind
 	{
 		/// <summary>Samples the single canvas pixel at position A once per simulation step, producing a time series.</summary>
-		Point,
+		Point = 0,
 		/// <summary>Samples every pixel on the Bresenham line from A to B, producing a profile along the line (no time axis).</summary>
-		Line
+		Line = 1
 	}
 }

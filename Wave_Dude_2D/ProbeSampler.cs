@@ -4,9 +4,16 @@ using System.Collections.Generic;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// Precomputed per-probe pixel indices (into the padded field grid, see <see cref="IWaveEngine"/>) and
-	/// sampling flags. Built once per run by <see cref="Build"/> on the simulation worker thread from the run's
-	/// probe list and canvas size, then handed to the engine (<see cref="IWaveEngine.SetProbes"/>) and to the
+	/// What a simulation engine has to measure for the probes: precomputed per-probe pixel indices (into the
+	/// padded field grid, see <see cref="IWaveEngine"/>) and what is read there, the field or the intensity.
+	/// <list type="bullet">
+	/// <item><description>Point probe: one pixel; the engine measures its value at every step (a series).</description></item>
+	/// <item><description>Point, integrated: the same, but the values are added up over time (done by <see cref="ProbeCollector"/>).</description></item>
+	/// <item><description>Line probe: the pixels on the line A-B; the engine gives the values along the line when asked (a profile).</description></item>
+	/// <item><description>Line, integrated: the engine adds the intensity of every pixel of the line up over the steps.</description></item>
+	/// </list>
+	/// Built once per run by <see cref="Build"/> on the simulation worker thread from the run's probe list and
+	/// canvas size, then handed to the engine (<see cref="IWaveEngine.SetProbes"/>) and to the
 	/// <see cref="ProbeCollector"/>. All per-probe arrays are indexed by the probe's position in that list.
 	/// Immutable after construction, so it may be read from any thread.
 	/// </summary>
@@ -15,28 +22,28 @@ namespace _2D_wave_sim_V01
 		/// <summary>Stores the per-probe arrays and derives the aggregate <see cref="NeedsIntensity"/>, <see cref="HasSeries"/> and <see cref="HasProfiles"/> flags.</summary>
 		private ProbeSampler(int[][] pixels, bool[] isProfile, bool[] useIntensity, bool[] cumulative, bool[] integrate, double[] lengths, bool[] useStartAfterStep, int[] startAfterStep)
 		{
-			this.Count = pixels.Length;
-			this.Pixels = pixels;
-			this.IsProfile = isProfile;
-			this.UseIntensity = useIntensity;
-			this.Cumulative = cumulative;
-			this.Integrate = integrate;
-			this.Lengths = lengths;
-			this.UseStartAfterStep = useStartAfterStep;
-			this.StartAfterStep = startAfterStep;
-			for (int i = 0; i < this.Count; i++)
+			Count = pixels.Length;
+			Pixels = pixels;
+			IsProfile = isProfile;
+			UseIntensity = useIntensity;
+			Cumulative = cumulative;
+			Integrate = integrate;
+			Lengths = lengths;
+			UseStartAfterStep = useStartAfterStep;
+			StartAfterStep = startAfterStep;
+			for (int i = 0; i < Count; i++)
 			{
 				if (useIntensity[i])
 				{
-					this.NeedsIntensity = true;
+					NeedsIntensity = true;
 				}
 				if (isProfile[i])
 				{
-					this.HasProfiles = true;
+					HasProfiles = true;
 				}
 				else
 				{
-					this.HasSeries = true;
+					HasSeries = true;
 				}
 			}
 		}
@@ -84,7 +91,7 @@ namespace _2D_wave_sim_V01
 					cumulative[i] = isIntegrated;
 				}
 				// Intensity and IntegratedIntensity both read the intensity buffer.
-				useIntensity[i] = probe.Measurement > ProbeMeasurement.Amplitude;
+				useIntensity[i] = probe.Measurement != ProbeMeasurement.Amplitude;
 				useStartAfterStep[i] = probe.UseStartAfterStep;
 				startAfterStep[i] = probe.StartAfterStep;
 			}
@@ -150,7 +157,7 @@ namespace _2D_wave_sim_V01
 		/// <returns>The value at the probe's first pixel, or 0 when <paramref name="data"/> is null.</returns>
 		public float Compute(int probeIndex, float[] data)
 		{
-			return (data == null) ? 0f : data[this.Pixels[probeIndex][0]];
+			return (data == null) ? 0f : data[Pixels[probeIndex][0]];
 		}
 
 		/// <summary>Number of probes; the length of every per-probe array.</summary>
@@ -183,10 +190,16 @@ namespace _2D_wave_sim_V01
 		/// <summary>True when at least one line probe exists.</summary>
 		public readonly bool HasProfiles;
 
-		/// <summary>Per probe: whether integrated measurements only start counting at <see cref="StartAfterStep"/>.</summary>
+		/// <summary>
+		/// Per probe: whether "start recording at step #" is on. Used to purge (never accumulate) the running
+		/// total of an integrated (cumulative) probe from before <see cref="StartAfterStep"/>, so the total shown
+		/// once recording starts is not inflated by intensity that arrived before it - see
+		/// <see cref="ProbeCollector.Collect"/>, <see cref="WaveSimulator.SampleProbes"/> and
+		/// <see cref="GpuWaveSimulator"/>'s <c>profile_accumulate</c> kernel.
+		/// </summary>
 		public readonly bool[] UseStartAfterStep;
 
-		/// <summary>Per probe: step number before which integrated measurements are ignored; only meaningful when <see cref="UseStartAfterStep"/> is set.</summary>
+		/// <summary>Per probe: the step at which recording starts (the total before it is purged); only meaningful when <see cref="UseStartAfterStep"/> is set.</summary>
 		public readonly int[] StartAfterStep;
 	}
 }

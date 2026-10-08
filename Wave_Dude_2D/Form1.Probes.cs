@@ -15,19 +15,51 @@ namespace _2D_wave_sim_V01
 	/// fed by the simulation worker, and it arrives already marshalled through <c>PostToUi</c>.
 	/// </summary>
 	/// <remarks>
+	/// <para>
+	/// A probe measures the field (amplitude) or the intensity while the simulation runs and shows
+	/// the result in a little graph box in the field or intensity picture: a point probe (A) plots
+	/// the value at A against the simulation step; a line probe (A-B) plots the values along the
+	/// line A-B (position on the line on X) at the current step, so it changes every step. The
+	/// settings are kept in <c>_probes</c> and stored in the "probes" section of the project file.
+	/// Each probe has its own "On" check box (<see cref="ProbeSettings.Active"/>): when off, the
+	/// probe is hidden (its marker, graph box and burned-in overlay are all skipped) but it keeps
+	/// being sampled, so switching it back on shows its recorded history rather than starting from
+	/// a blank graph.
+	/// </para>
+	/// <para>
+	/// There are two independent probes, Probe 1 and Probe 2, each with its own group of controls
+	/// (<c>grpProbe1</c>/<c>grpProbe2</c>). <c>_probeUi</c> holds one <see cref="ProbeControlSet"/>
+	/// per group, so the code that reads/writes a probe's settings and the events of its controls
+	/// can be shared between the two groups instead of being written out twice.
+	/// </para>
+	/// <para>
+	/// The Probes tab shows a copy of a simulation picture (Preview tab, "Copy Image..." buttons),
+	/// shared by both probes. Each group has its own Pick button: it lets the user click in that
+	/// picture for that probe's position A, for a line position B, and for the top left corner of
+	/// that probe's graph box.
+	/// </para>
+	/// <para>
 	/// Two coordinate systems are used throughout. Canvas pixels are 0-based cells of the
 	/// simulation grid (size from <c>EffectiveCanvas()</c> while editing, <c>_runCanvas</c> for the
 	/// current/last run); picture-box pixels are client coordinates of a <see cref="PictureBox"/>
 	/// in Zoom mode, where the image is scaled uniformly and centred. <see cref="ZoomedImageRectangle"/>
 	/// gives the image's rectangle in picture-box pixels; <see cref="TryPictureToCanvas"/> and
 	/// <see cref="ToScreen"/> convert between the two.
+	/// </para>
 	/// </remarks>
 	public partial class Form1
 	{
-		/// <summary>The control set for probe <paramref name="index"/>, or null before <see cref="InitializeProbeControls"/> has run (designer-wired handlers can fire that early).</summary>
+		/// <summary>
+		/// The control set for probe <paramref name="index"/>, or null while the form is still being
+		/// constructed: <c>InitializeComponent</c> (which runs before <see cref="InitializeProbeControls"/>)
+		/// sets some control values away from their .NET default, such as <c>numRunningWindow</c>'s 500,
+		/// and that alone fires the control's change event immediately, before <c>_probeUi</c> exists.
+		/// The event handlers below go through this instead of indexing <c>_probeUi</c> directly, so
+		/// that early firing is a harmless no-op instead of a <see cref="NullReferenceException"/>.
+		/// </summary>
 		private Form1.ProbeControlSet ProbeUi(int index)
 		{
-			return this._probeUi == null ? null : this._probeUi[index];
+			return _probeUi == null ? null : _probeUi[index];
 		}
 
 		/// <summary>Creates the default probe list: <see cref="ProbeCount"/> fresh, inactive probes.</summary>
@@ -41,33 +73,34 @@ namespace _2D_wave_sim_V01
 			return probes;
 		}
 
-		/// <summary>Pads or truncates <c>_probes</c> to exactly <see cref="ProbeCount"/> entries after loading a project (the config may hold any count).</summary>
+		/// <summary>Keeps <c>_probes</c> at exactly <see cref="ProbeCount"/> entries after loading a project: pads with new (default) probes when a saved project has fewer (from before Probe 2 existed), trims extras when it somehow has more.</summary>
 		private void NormalizeProbeCount()
 		{
-			while (this._probes.Count < Form1.ProbeCount)
+			while (_probes.Count < Form1.ProbeCount)
 			{
-				this._probes.Add(new ProbeSettings());
+				_probes.Add(new ProbeSettings());
 			}
-			while (this._probes.Count > Form1.ProbeCount)
+			while (_probes.Count > Form1.ProbeCount)
 			{
-				this._probes.RemoveAt(this._probes.Count - 1);
+				_probes.RemoveAt(_probes.Count - 1);
 			}
 		}
 
 		/// <summary>
-		/// One-time setup from the constructor: binds the designer controls of both probe panels into
-		/// <c>_probeUi</c>, fills the fixed combo boxes (item order mirrors the enum order because the
-		/// selected index is cast straight to the enum), sets spinner ranges, hooks the paint and mouse
-		/// handlers of the probe and preview pictures (which must already exist) and shows the current probes.
+		/// One-time setup from <c>Form1_Load</c>: binds the designer controls of both probe panels into
+		/// <c>_probeUi</c>, fills the fixed combo boxes (the choices are made here, not in the designer,
+		/// in the order of the <see cref="ProbeSettings"/> enumerations because the selected index is
+		/// cast straight to the enum), sets spinner ranges, hooks the paint and mouse handlers of the
+		/// probe and preview pictures (which must already exist) and shows the current probes.
 		/// </summary>
 		private void InitializeProbeControls()
 		{
-			this._probeUi = new Form1.ProbeControlSet[]
+			_probeUi = new Form1.ProbeControlSet[]
 			{
-				new Form1.ProbeControlSet(0, "Probe 1", this.chkProbeOn1, this.cmbPlaceOn, this.cmbMeasurement, this.cmbProbeType, this.cmbBoxSize, this.numAPosX, this.numAPosY, this.numBPosX, this.numBPosY, this.butPicPositions, this.radRunningScale, this.radFullScale, this.chkAutoScaleX, this.chkAutoScaleY, this.txtMinScaleY, this.txtMaxScaleY, this.chkStartAfterStep, this.txtStartAfterStep, this.numRunningWindow, new Control[] { this.numBPosX, this.numBPosY, this.Label14, this.Label15, this.Label16 }),
-				new Form1.ProbeControlSet(1, "Probe 2", this.chkProbeOn2, this.cmbPlaceOn2, this.cmbMeasurement2, this.cmbProbeType2, this.cmbBoxSize2, this.numAPosX2, this.numAPosY2, this.numBPosX2, this.numBPosY2, this.butPicPositions2, this.radRunningScale2, this.radFullScale2, this.chkAutoScaleX2, this.chkAutoScaleY2, this.txtMinScaleY2, this.txtMaxScaleY2, this.chkStartAfterStep2, this.txtStartAfterStep2, this.numRunningWindow2, new Control[] { this.numBPosX2, this.numBPosY2, this.Label28, this.Label27, this.Label25 })
+				new Form1.ProbeControlSet(0, "Probe 1", chkProbeOn1, cmbPlaceOn, cmbMeasurement, cmbProbeType, cmbBoxSize, numAPosX, numAPosY, numBPosX, numBPosY, butPicPositions, radRunningScale, radFullScale, chkAutoScaleX, chkAutoScaleY, txtMinScaleY, txtMaxScaleY, chkStartAfterStep, txtStartAfterStep, numRunningWindow, new Control[] { numBPosX, numBPosY, Label14, Label15, Label16 }),
+				new Form1.ProbeControlSet(1, "Probe 2", chkProbeOn2, cmbPlaceOn2, cmbMeasurement2, cmbProbeType2, cmbBoxSize2, numAPosX2, numAPosY2, numBPosX2, numBPosY2, butPicPositions2, radRunningScale2, radFullScale2, chkAutoScaleX2, chkAutoScaleY2, txtMinScaleY2, txtMaxScaleY2, chkStartAfterStep2, txtStartAfterStep2, numRunningWindow2, new Control[] { numBPosX2, numBPosY2, Label28, Label27, Label25 })
 			};
-			foreach (Form1.ProbeControlSet ui in this._probeUi)
+			foreach (Form1.ProbeControlSet ui in _probeUi)
 			{
 				foreach (ComboBox combo in new ComboBox[] { ui.CmbPlaceOn, ui.CmbMeasurement, ui.CmbProbeType, ui.CmbBoxSize })
 				{
@@ -84,28 +117,29 @@ namespace _2D_wave_sim_V01
 					position.DecimalPlaces = 0;
 					position.Minimum = 0m;
 					// Placeholder until SetProbeRanges knows the canvas size.
-					position.Maximum = 16383m;
+					position.Maximum = (decimal)(SceneSettings.MaxCanvasSize - 1);
 				}
 				ui.NumRunningWindow.DecimalPlaces = 0;
 				ui.NumRunningWindow.Minimum = 10m;
 				ui.NumRunningWindow.Maximum = ProbeSettings.MaxRunningWindow;
 			}
-			this._picField.Paint += this.PreviewPicture_Paint;
-			this._picIntensity.Paint += this.PreviewPicture_Paint;
-			this._picProbe.Paint += this.ProbePicture_Paint;
-			this._picProbe.MouseClick += this.ProbePicture_MouseClick;
-			this._picProbe.MouseMove += this.ProbePicture_MouseMove;
-			this._picProbe.MouseLeave += this.ProbePicture_MouseLeave;
-			this.ShowProbesInControls();
+			// the graphs and markers are drawn over the pictures (the pictures themselves stay clean)
+			_picField.Paint += PreviewPicture_Paint;
+			_picIntensity.Paint += PreviewPicture_Paint;
+			_picProbe.Paint += ProbePicture_Paint;
+			_picProbe.MouseClick += ProbePicture_MouseClick;
+			_picProbe.MouseMove += ProbePicture_MouseMove;
+			_picProbe.MouseLeave += ProbePicture_MouseLeave;
+			ShowProbesInControls();
 		}
 
 		/// <summary>Cancels any position pick in progress and pushes every probe in <c>_probes</c> into its controls.</summary>
 		private void ShowProbesInControls()
 		{
-			this.EndPick();
-			foreach (Form1.ProbeControlSet ui in this._probeUi)
+			EndPick();
+			foreach (Form1.ProbeControlSet ui in _probeUi)
 			{
-				this.ShowProbeInControls(ui);
+				ShowProbeInControls(ui);
 			}
 		}
 
@@ -117,15 +151,15 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ShowProbeInControls(Form1.ProbeControlSet ui)
 		{
-			ProbeSettings probe = this._probes[ui.Index];
+			ProbeSettings probe = _probes[ui.Index];
 			probe.Normalize();
-			this._loadingProbe = true;
+			_loadingProbe = true;
 			try
 			{
-				this.SetProbeRanges(ui);
+				SetProbeRanges(ui);
 				ui.ChkOn.Checked = probe.Active;
 				ui.CmbPlaceOn.SelectedIndex = (int)probe.PlaceOn;
-				this.FillMeasurementCombo(ui, probe);
+				FillMeasurementCombo(ui, probe);
 				ui.CmbProbeType.SelectedIndex = (int)probe.Kind;
 				ui.CmbBoxSize.SelectedIndex = (int)probe.BoxSize;
 				ui.NumAPosX.Value = Form1.ClampToRange(ui.NumAPosX, probe.PosAX);
@@ -144,10 +178,10 @@ namespace _2D_wave_sim_V01
 			}
 			finally
 			{
-				this._loadingProbe = false;
+				_loadingProbe = false;
 			}
-			this.UpdateProbeControlState(ui);
-			this.InvalidateProbePictures();
+			UpdateProbeControlState(ui);
+			InvalidateProbePictures();
 		}
 
 		/// <summary>
@@ -188,7 +222,7 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void UpdateProbeControlState(Form1.ProbeControlSet ui)
 		{
-			bool isLine = this._probes[ui.Index].Kind == ProbeKind.Line;
+			bool isLine = _probes[ui.Index].Kind == ProbeKind.Line;
 			foreach (Control control in ui.BOnlyControls)
 			{
 				control.Enabled = isLine;
@@ -205,29 +239,29 @@ namespace _2D_wave_sim_V01
 		/// <summary>Applies <see cref="SetProbeRanges(Form1.ProbeControlSet)"/> to both probes; no-op before the controls are initialized.</summary>
 		private void SetProbeRanges()
 		{
-			if (this._probeUi == null)
+			if (_probeUi == null)
 			{
 				return;
 			}
-			foreach (Form1.ProbeControlSet ui in this._probeUi)
+			foreach (Form1.ProbeControlSet ui in _probeUi)
 			{
-				this.SetProbeRanges(ui);
+				SetProbeRanges(ui);
 			}
 		}
 
 		/// <summary>
 		/// Limits the position spinners to the current canvas size (width-1 / height-1 in canvas pixels,
-		/// or 16383 when the size is unknown). Lowering a maximum can clamp the value and fire
-		/// ValueChanged, so <c>_loadingProbe</c> is raised meanwhile (and restored to its previous state,
-		/// since this is also called from inside <see cref="ShowProbeInControls"/>).
+		/// or <see cref="SceneSettings.MaxCanvasSize"/> - 1 when the size is unknown). Lowering a maximum
+		/// can clamp the value and fire ValueChanged, so <c>_loadingProbe</c> is raised meanwhile (and
+		/// restored to its previous state, since this is also called from inside <see cref="ShowProbeInControls"/>).
 		/// </summary>
 		private void SetProbeRanges(Form1.ProbeControlSet ui)
 		{
-			Size canvas = this.EffectiveCanvas();
-			decimal maxX = new decimal((canvas.Width > 0) ? (canvas.Width - 1) : 16383);
-			decimal maxY = new decimal((canvas.Height > 0) ? (canvas.Height - 1) : 16383);
-			bool wasLoading = this._loadingProbe;
-			this._loadingProbe = true;
+			Size canvas = EffectiveCanvas();
+			decimal maxX = new decimal((canvas.Width > 0) ? (canvas.Width - 1) : (SceneSettings.MaxCanvasSize - 1));
+			decimal maxY = new decimal((canvas.Height > 0) ? (canvas.Height - 1) : (SceneSettings.MaxCanvasSize - 1));
+			bool wasLoading = _loadingProbe;
+			_loadingProbe = true;
 			try
 			{
 				ui.NumAPosX.Maximum = maxX;
@@ -237,7 +271,7 @@ namespace _2D_wave_sim_V01
 			}
 			finally
 			{
-				this._loadingProbe = wasLoading;
+				_loadingProbe = wasLoading;
 			}
 		}
 
@@ -249,7 +283,7 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ReadProbeControls(Form1.ProbeControlSet ui)
 		{
-			ProbeSettings probe = this._probes[ui.Index];
+			ProbeSettings probe = _probes[ui.Index];
 			probe.Active = ui.ChkOn.Checked;
 			if (ui.CmbPlaceOn.SelectedIndex >= 0)
 			{
@@ -305,121 +339,121 @@ namespace _2D_wave_sim_V01
 		/// <summary>Probe 1: a combo box (place on / measurement / type / box size) changed; see <see cref="HandleProbeComboChanged"/>.</summary>
 		private void ProbeCombo_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeComboChanged(this.ProbeUi(0), sender);
+			HandleProbeComboChanged(ProbeUi(0), sender);
 		}
 
 		/// <summary>Probe 1: an A/B position spinner changed; the new canvas position is stored.</summary>
 		private void ProbePosition_ValueChanged(object sender, EventArgs e)
 		{
-			this.HandleProbePositionChanged(this.ProbeUi(0));
+			HandleProbePositionChanged(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: the "on" check box toggled the probe's active flag.</summary>
 		private void ProbeOn_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeOnChanged(this.ProbeUi(0));
+			HandleProbeOnChanged(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: Enter in a Y-range or start-after text box applies all controls.</summary>
 		private void ProbeTextBox_KeyDown(object sender, KeyEventArgs e)
 		{
-			this.HandleProbeTextBoxKeyDown(this.ProbeUi(0), e);
+			HandleProbeTextBoxKeyDown(ProbeUi(0), e);
 		}
 
 		/// <summary>Probe 1: running/full scale radio button changed.</summary>
 		private void ProbeScaleMode_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeScaleModeChanged(this.ProbeUi(0));
+			HandleProbeScaleModeChanged(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: auto X / auto Y check box changed.</summary>
 		private void ProbeAutoScale_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeAutoScaleChanged(this.ProbeUi(0));
+			HandleProbeAutoScaleChanged(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: a Y-range text box lost focus; all controls are applied.</summary>
 		private void ProbeYRange_Validated(object sender, EventArgs e)
 		{
-			this.HandleProbeControlApplied(this.ProbeUi(0));
+			HandleProbeControlApplied(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: the "start after step" check box toggled.</summary>
 		private void ProbeStartAfterStep_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeStartAfterStepChanged(this.ProbeUi(0));
+			HandleProbeStartAfterStepChanged(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: the start-after step text box lost focus; all controls are applied.</summary>
 		private void ProbeStartAfterStep_Validated(object sender, EventArgs e)
 		{
-			this.HandleProbeControlApplied(this.ProbeUi(0));
+			HandleProbeControlApplied(ProbeUi(0));
 		}
 
 		/// <summary>Probe 1: the running window spinner changed; all controls are applied.</summary>
 		private void ProbeRunningWindow_ValueChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeControlApplied(this.ProbeUi(0));
+			HandleProbeControlApplied(ProbeUi(0));
 		}
 
 		/// <summary>Probe 2: a combo box changed; see <see cref="HandleProbeComboChanged"/>.</summary>
 		private void ProbeCombo2_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeComboChanged(this.ProbeUi(1), sender);
+			HandleProbeComboChanged(ProbeUi(1), sender);
 		}
 
 		/// <summary>Probe 2: an A/B position spinner changed; the new canvas position is stored.</summary>
 		private void ProbePosition2_ValueChanged(object sender, EventArgs e)
 		{
-			this.HandleProbePositionChanged(this.ProbeUi(1));
+			HandleProbePositionChanged(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: the "on" check box toggled the probe's active flag.</summary>
 		private void ProbeOn2_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeOnChanged(this.ProbeUi(1));
+			HandleProbeOnChanged(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: Enter in a Y-range or start-after text box applies all controls.</summary>
 		private void ProbeTextBox2_KeyDown(object sender, KeyEventArgs e)
 		{
-			this.HandleProbeTextBoxKeyDown(this.ProbeUi(1), e);
+			HandleProbeTextBoxKeyDown(ProbeUi(1), e);
 		}
 
 		/// <summary>Probe 2: running/full scale radio button changed.</summary>
 		private void ProbeScaleMode2_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeScaleModeChanged(this.ProbeUi(1));
+			HandleProbeScaleModeChanged(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: auto X / auto Y check box changed.</summary>
 		private void ProbeAutoScale2_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeAutoScaleChanged(this.ProbeUi(1));
+			HandleProbeAutoScaleChanged(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: a Y-range text box lost focus; all controls are applied.</summary>
 		private void ProbeYRange2_Validated(object sender, EventArgs e)
 		{
-			this.HandleProbeControlApplied(this.ProbeUi(1));
+			HandleProbeControlApplied(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: the "start after step" check box toggled.</summary>
 		private void ProbeStartAfterStep2_CheckedChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeStartAfterStepChanged(this.ProbeUi(1));
+			HandleProbeStartAfterStepChanged(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: the start-after step text box lost focus; all controls are applied.</summary>
 		private void ProbeStartAfterStep2_Validated(object sender, EventArgs e)
 		{
-			this.HandleProbeControlApplied(this.ProbeUi(1));
+			HandleProbeControlApplied(ProbeUi(1));
 		}
 
 		/// <summary>Probe 2: the running window spinner changed; all controls are applied.</summary>
 		private void ProbeRunningWindow2_ValueChanged(object sender, EventArgs e)
 		{
-			this.HandleProbeControlApplied(this.ProbeUi(1));
+			HandleProbeControlApplied(ProbeUi(1));
 		}
 
 		/// <summary>
@@ -432,61 +466,67 @@ namespace _2D_wave_sim_V01
 		/// <param name="sender">The combo box that raised the event.</param>
 		private void HandleProbeComboChanged(Form1.ProbeControlSet ui, object sender)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			if (sender == ui.CmbProbeType && this._pickStep != 0 && this._pickIndex == ui.Index)
+			if (sender == ui.CmbProbeType && _pickStep != 0 && _pickIndex == ui.Index)
 			{
-				this.EndPick();
+				// the number of clicks depends on the type; only cancel a pick that belongs to this probe
+				EndPick();
 			}
 			if (sender == ui.CmbPlaceOn && ui.CmbPlaceOn.SelectedIndex >= 0)
 			{
-				ProbeSettings probe = this._probes[ui.Index];
+				// the measurements that are possible depend on the picture
+				ProbeSettings probe = _probes[ui.Index];
 				probe.PlaceOn = (ProbePlaceOn)ui.CmbPlaceOn.SelectedIndex;
 				probe.Normalize();
-				this._loadingProbe = true;
+				_loadingProbe = true;
 				try
 				{
-					this.FillMeasurementCombo(ui, probe);
+					FillMeasurementCombo(ui, probe);
 				}
 				finally
 				{
-					this._loadingProbe = false;
+					_loadingProbe = false;
 				}
 			}
-			this.ReadProbeControls(ui);
-			this.UpdateProbeControlState(ui);
-			this.ProbeSettingsChanged();
+			ReadProbeControls(ui);
+			UpdateProbeControlState(ui);
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>Stores the four position spinners (canvas pixels) into the probe and marks the project dirty; ignored while loading.</summary>
 		private void HandleProbePositionChanged(Form1.ProbeControlSet ui)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			ProbeSettings probe = this._probes[ui.Index];
+			ProbeSettings probe = _probes[ui.Index];
 			probe.PosAX = Convert.ToInt32(ui.NumAPosX.Value);
 			probe.PosAY = Convert.ToInt32(ui.NumAPosY.Value);
 			probe.PosBX = Convert.ToInt32(ui.NumBPosX.Value);
 			probe.PosBY = Convert.ToInt32(ui.NumBPosY.Value);
-			this.ProbeSettingsChanged();
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>Stores the "on" check box into <see cref="ProbeSettings.Active"/> and marks the project dirty; ignored while loading.</summary>
 		private void HandleProbeOnChanged(Form1.ProbeControlSet ui)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			this._probes[ui.Index].Active = ui.ChkOn.Checked;
-			this.ProbeSettingsChanged();
+			_probes[ui.Index].Active = ui.ChkOn.Checked;
+			ProbeSettingsChanged();
 		}
 
-		/// <summary>On Enter (and only then): swallows the key so the text box does not beep, then applies all controls of the probe; ignored while loading.</summary>
+		/// <summary>
+		/// Enter in a probe text box applies the value right away (like losing focus does) instead of
+		/// just beeping: the key is swallowed and all controls of the probe are applied. These are
+		/// single line boxes, so Enter never inserts an actual line break. Ignored while loading.
+		/// </summary>
 		private void HandleProbeTextBoxKeyDown(Form1.ProbeControlSet ui, KeyEventArgs e)
 		{
 			if (e.KeyCode != Keys.Return)
@@ -495,23 +535,23 @@ namespace _2D_wave_sim_V01
 			}
 			e.SuppressKeyPress = true;
 			e.Handled = true;
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			this.ReadProbeControls(ui);
-			this.ProbeSettingsChanged();
+			ReadProbeControls(ui);
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>Stores the scale mode radio buttons into the probe and marks the project dirty; ignored while loading.</summary>
 		private void HandleProbeScaleModeChanged(Form1.ProbeControlSet ui)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			this._probes[ui.Index].ScaleMode = (ui.RadFull.Checked ? ProbeScaleMode.Full : ProbeScaleMode.Running);
-			this.ProbeSettingsChanged();
+			_probes[ui.Index].ScaleMode = (ui.RadFull.Checked ? ProbeScaleMode.Full : ProbeScaleMode.Running);
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>
@@ -522,18 +562,19 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void HandleProbeAutoScaleChanged(Form1.ProbeControlSet ui)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			ProbeSettings probe = this._probes[ui.Index];
+			ProbeSettings probe = _probes[ui.Index];
 			bool wasAutoY = probe.AutoScaleY;
 			probe.AutoScaleX = ui.ChkAutoX.Checked;
 			probe.AutoScaleY = ui.ChkAutoY.Checked;
+			// switching the automatic value axis off keeps the range that is shown now, ready to fine-tune by hand
 			if (wasAutoY && !probe.AutoScaleY)
 			{
-				this.FreezeValueRange(ui, probe);
-				this._loadingProbe = true;
+				FreezeValueRange(ui, probe);
+				_loadingProbe = true;
 				try
 				{
 					ui.TxtMinY.Text = probe.YMin.ToString("G6", CultureInfo.InvariantCulture);
@@ -541,34 +582,34 @@ namespace _2D_wave_sim_V01
 				}
 				finally
 				{
-					this._loadingProbe = false;
+					_loadingProbe = false;
 				}
 			}
-			this.UpdateProbeControlState(ui);
-			this.ProbeSettingsChanged();
+			UpdateProbeControlState(ui);
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>Generic "commit" used by Validated and ValueChanged events: reads all controls back and marks the project dirty; ignored while loading.</summary>
 		private void HandleProbeControlApplied(Form1.ProbeControlSet ui)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			this.ReadProbeControls(ui);
-			this.ProbeSettingsChanged();
+			ReadProbeControls(ui);
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>Stores the "start after step" check box, enables/disables its text box and marks the project dirty; ignored while loading.</summary>
 		private void HandleProbeStartAfterStepChanged(Form1.ProbeControlSet ui)
 		{
-			if (ui == null || this._loadingProbe)
+			if (ui == null || _loadingProbe)
 			{
 				return;
 			}
-			this._probes[ui.Index].UseStartAfterStep = ui.ChkStartAfter.Checked;
-			this.UpdateProbeControlState(ui);
-			this.ProbeSettingsChanged();
+			_probes[ui.Index].UseStartAfterStep = ui.ChkStartAfter.Checked;
+			UpdateProbeControlState(ui);
+			ProbeSettingsChanged();
 		}
 
 		/// <summary>
@@ -582,17 +623,18 @@ namespace _2D_wave_sim_V01
 		private void FreezeValueRange(Form1.ProbeControlSet ui, ProbeSettings p)
 		{
 			int index = ui.Index;
-			if (this._probeTraces.Count <= index || this._runProbes == null || this._runProbes.Count <= index)
+			if (_probeTraces.Count <= index || _runProbes == null || _runProbes.Count <= index)
 			{
 				return;
 			}
-			if (this._runProbes[index].Kind != p.Kind)
+			if (_runProbes[index].Kind != p.Kind)
 			{
 				return;
 			}
-			ProbeTrace trace = this._probeTraces[index];
+			ProbeTrace trace = _probeTraces[index];
 			if (p.Kind == ProbeKind.Line)
 			{
+				// a line probe shows nothing at all before the start step: nothing to freeze
 				if (p.UseStartAfterStep && trace.StepsSampled < p.StartAfterStep)
 				{
 					return;
@@ -612,7 +654,7 @@ namespace _2D_wave_sim_V01
 			double xMax = 0.0;
 			double yMin = 0.0;
 			double yMax = 0.0;
-			ProbeGraphPainter.ComputeRanges(autoScaled, trace, this._runSteps, ref xMin, ref xMax, ref yMin, ref yMax);
+			ProbeGraphPainter.ComputeRanges(autoScaled, trace, _runSteps, ref xMin, ref xMax, ref yMin, ref yMax);
 			if (yMax > yMin)
 			{
 				p.YMin = yMin;
@@ -623,24 +665,24 @@ namespace _2D_wave_sim_V01
 		/// <summary>Marks the project dirty (unless a loading flag is set) and repaints all three probe-related pictures.</summary>
 		private void ProbeSettingsChanged()
 		{
-			this.MarkProjectChanged();
-			this.InvalidateProbePictures();
+			MarkProjectChanged();
+			InvalidateProbePictures();
 		}
 
 		/// <summary>Invalidates the probe picture and the field/intensity previews so markers and graph boxes are redrawn; safe before the pictures exist.</summary>
 		private void InvalidateProbePictures()
 		{
-			if (this._picProbe != null)
+			if (_picProbe != null)
 			{
-				this._picProbe.Invalidate();
+				_picProbe.Invalidate();
 			}
-			if (this._picField != null)
+			if (_picField != null)
 			{
-				this._picField.Invalidate();
+				_picField.Invalidate();
 			}
-			if (this._picIntensity != null)
+			if (_picIntensity != null)
 			{
-				this._picIntensity.Invalidate();
+				_picIntensity.Invalidate();
 			}
 		}
 
@@ -651,24 +693,24 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ProbeTabChanged(object sender, EventArgs e)
 		{
-			this.EndPick();
-			this.SetProbeRanges();
-			if (this.tabMainFunctions.SelectedTab == this.tabProbeList)
+			EndPick();
+			SetProbeRanges();
+			if (tabMainFunctions.SelectedTab == tabProbeList)
 			{
-				this.AutoLoadSceneImageIfEmpty(this._picProbe);
+				AutoLoadSceneImageIfEmpty(_picProbe);
 			}
 		}
 
 		/// <summary>Probe 1 "pick positions" button: starts picking in the probe picture, or cancels it when already picking.</summary>
 		private void butPicPositions_Click(object sender, EventArgs e)
 		{
-			this.StartOrCancelPick(this.ProbeUi(0));
+			StartOrCancelPick(ProbeUi(0));
 		}
 
 		/// <summary>Probe 2 "pick positions" button: starts picking in the probe picture, or cancels it when already picking.</summary>
 		private void butPicPositions2_Click(object sender, EventArgs e)
 		{
-			this.StartOrCancelPick(this.ProbeUi(1));
+			StartOrCancelPick(ProbeUi(1));
 		}
 
 		/// <summary>Toggles pick mode for one probe: cancels a pick in progress (for any probe) and, unless that pick was this probe's, starts a new one.</summary>
@@ -678,28 +720,34 @@ namespace _2D_wave_sim_V01
 			{
 				return;
 			}
-			bool wasPicking = this._pickStep != 0 && this._pickIndex == ui.Index;
-			this.EndPick();
+			bool wasPicking = _pickStep != 0 && _pickIndex == ui.Index;
+			EndPick();
 			if (!wasPicking)
 			{
-				this.StartPick(ui);
+				StartPick(ui);
 			}
 		}
 
-		/// <summary>Gives the probe picture a black bitmap of the canvas size so positions can be picked without a scene image; does nothing when the canvas size is unknown. The bitmap is owned by the picture box.</summary>
+		/// <summary>
+		/// When there is no picture yet to pick from (no simulation has run), makes a plain black one at
+		/// the canvas size that the Configuration tab currently specifies (the scene image's size, or the
+		/// user defined width/height), so a probe position can still be picked before ever running a
+		/// simulation. Replaced by the real picture as soon as one is copied over from the Preview tab.
+		/// Does nothing when the canvas size is unknown. The bitmap is owned by the picture box.
+		/// </summary>
 		private void EnsureProbePicture()
 		{
-			Size canvas = this.EffectiveCanvas();
+			Size canvas = EffectiveCanvas();
 			if (canvas.Width <= 0 || canvas.Height <= 0)
 			{
 				return;
 			}
-			Bitmap bitmap = new Bitmap(canvas.Width, canvas.Height);
-			using (Graphics g = Graphics.FromImage(bitmap))
+			Bitmap placeholder = new Bitmap(canvas.Width, canvas.Height);
+			using (Graphics g = Graphics.FromImage(placeholder))
 			{
 				g.Clear(Color.Black);
 			}
-			this._picProbe.Image = bitmap;
+			_picProbe.Image = placeholder;
 		}
 
 		/// <summary>
@@ -710,40 +758,40 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void StartPick(Form1.ProbeControlSet ui)
 		{
-			if (this._picProbe.Image == null)
+			if (_picProbe.Image == null)
 			{
-				this.EnsureProbePicture();
+				EnsureProbePicture();
 			}
-			if (this._picProbe.Image == null)
+			if (_picProbe.Image == null)
 			{
 				MessageBox.Show(this, "There is no picture to pick from yet, and the canvas size is not known either\r\n(choose a scene image, or a user defined width and height, on the Configuration tab first).", "Probe positions", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 				return;
 			}
-			this._pickIndex = ui.Index;
-			this._pickStep = 1;
-			this._pickHover = null;
-			this._picProbe.Cursor = Cursors.Cross;
+			_pickIndex = ui.Index;
+			_pickStep = 1;
+			_pickHover = null;
+			_picProbe.Cursor = Cursors.Cross;
 			ui.ButPick.Text = "Cancel";
-			this.ShowPickInstruction();
+			ShowPickInstruction();
 		}
 
 		/// <summary>Writes the status-bar instruction for the current pick step (1: position A / the point, 2: position B, 3: top-left corner of the graph box).</summary>
 		private void ShowPickInstruction()
 		{
-			Form1.ProbeControlSet ui = this._probeUi[this._pickIndex];
-			switch (this._pickStep)
+			Form1.ProbeControlSet ui = _probeUi[_pickIndex];
+			switch (_pickStep)
 			{
 			case 1:
-				this.ToolStripStatusLabel1.Text = ((this._probes[this._pickIndex].Kind == ProbeKind.Line) ? (ui.Title + ": click in the picture for position A, the start of the line (press Cancel to stop picking).") : (ui.Title + ": click in the picture for the position of the probe (press Cancel to stop picking)."));
+				ToolStripStatusLabel1.Text = ((_probes[_pickIndex].Kind == ProbeKind.Line) ? (ui.Title + ": click in the picture for position A, the start of the line (press Cancel to stop picking).") : (ui.Title + ": click in the picture for the position of the probe (press Cancel to stop picking)."));
 				break;
 			case 2:
-				this.ToolStripStatusLabel1.Text = ui.Title + ": click in the picture for position B, the end of the line.";
+				ToolStripStatusLabel1.Text = ui.Title + ": click in the picture for position B, the end of the line.";
 				break;
 			case 3:
-				this.ToolStripStatusLabel1.Text = ui.Title + ": click in the picture for the top left corner of the graph box.";
+				ToolStripStatusLabel1.Text = ui.Title + ": click in the picture for the top left corner of the graph box.";
 				break;
 			default:
-				this.ToolStripStatusLabel1.Text = "";
+				ToolStripStatusLabel1.Text = "";
 				break;
 			}
 		}
@@ -751,21 +799,21 @@ namespace _2D_wave_sim_V01
 		/// <summary>Leaves pick mode: restores the pick button text, clears step and hover, resets the cursor, repaints, and clears the status bar if a pick was active. Safe to call when nothing is being picked or before the probe picture exists.</summary>
 		private void EndPick()
 		{
-			bool wasPicking = this._pickStep != 0;
+			bool wasPicking = _pickStep != 0;
 			if (wasPicking)
 			{
-				this._probeUi[this._pickIndex].ButPick.Text = this._probeUi[this._pickIndex].PickButtonText;
+				_probeUi[_pickIndex].ButPick.Text = _probeUi[_pickIndex].PickButtonText;
 			}
-			this._pickStep = 0;
-			this._pickHover = null;
-			if (this._picProbe != null)
+			_pickStep = 0;
+			_pickHover = null;
+			if (_picProbe != null)
 			{
-				this._picProbe.Cursor = Cursors.Default;
-				this._picProbe.Invalidate();
+				_picProbe.Cursor = Cursors.Default;
+				_picProbe.Invalidate();
 			}
 			if (wasPicking)
 			{
-				this.ToolStripStatusLabel1.Text = "";
+				ToolStripStatusLabel1.Text = "";
 			}
 		}
 
@@ -777,58 +825,58 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ProbePicture_MouseClick(object sender, MouseEventArgs e)
 		{
-			if (this._pickStep == 0 || e.Button != MouseButtons.Left)
+			if (_pickStep == 0 || e.Button != MouseButtons.Left)
 			{
 				return;
 			}
-			Form1.ProbeControlSet ui = this._probeUi[this._pickIndex];
+			Form1.ProbeControlSet ui = _probeUi[_pickIndex];
 			int x = 0;
 			int y = 0;
-			if (!this.TryPictureToCanvas(this._picProbe, e.Location, ref x, ref y))
+			if (!TryPictureToCanvas(_picProbe, e.Location, ref x, ref y))
 			{
 				return;
 			}
-			switch (this._pickStep)
+			switch (_pickStep)
 			{
 			case 1:
 				ui.NumAPosX.Value = Form1.ClampToRange(ui.NumAPosX, x);
 				ui.NumAPosY.Value = Form1.ClampToRange(ui.NumAPosY, y);
-				this._pickStep = ((this._probes[this._pickIndex].Kind == ProbeKind.Line) ? 2 : 3);
-				this.ShowPickInstruction();
+				_pickStep = ((_probes[_pickIndex].Kind == ProbeKind.Line) ? 2 : 3);
+				ShowPickInstruction();
 				break;
 			case 2:
 				ui.NumBPosX.Value = Form1.ClampToRange(ui.NumBPosX, x);
 				ui.NumBPosY.Value = Form1.ClampToRange(ui.NumBPosY, y);
-				this._pickStep = 3;
-				this.ShowPickInstruction();
+				_pickStep = 3;
+				ShowPickInstruction();
 				break;
 			default:
-				this._probes[this._pickIndex].BoxX = x;
-				this._probes[this._pickIndex].BoxY = y;
-				this.ProbeSettingsChanged();
-				this.EndPick();
+				_probes[_pickIndex].BoxX = x;
+				_probes[_pickIndex].BoxY = y;
+				ProbeSettingsChanged();
+				EndPick();
 				break;
 			}
-			this._picProbe.Invalidate();
+			_picProbe.Invalidate();
 		}
 
 		/// <summary>During step 3 (graph box placement) remembers the mouse position in picture-box pixels so <see cref="ProbePicture_Paint"/> can preview the box there.</summary>
 		private void ProbePicture_MouseMove(object sender, MouseEventArgs e)
 		{
-			if (this._pickStep == 3)
+			if (_pickStep == 3)
 			{
-				this._pickHover = new Point?(e.Location);
-				this._picProbe.Invalidate();
+				_pickHover = new Point?(e.Location);
+				_picProbe.Invalidate();
 			}
 		}
 
 		/// <summary>Drops the box preview position when the mouse leaves the probe picture.</summary>
 		private void ProbePicture_MouseLeave(object sender, EventArgs e)
 		{
-			if (this._pickHover != null)
+			if (_pickHover != null)
 			{
-				this._pickHover = null;
-				this._picProbe.Invalidate();
+				_pickHover = null;
+				_picProbe.Invalidate();
 			}
 		}
 
@@ -849,7 +897,7 @@ namespace _2D_wave_sim_V01
 			{
 				return false;
 			}
-			Size canvas = this.EffectiveCanvas();
+			Size canvas = EffectiveCanvas();
 			if (canvas.Width <= 0)
 			{
 				canvas = box.Image.Size;
@@ -902,24 +950,25 @@ namespace _2D_wave_sim_V01
 		private void PreviewPicture_Paint(object sender, PaintEventArgs e)
 		{
 			PictureBox picture = (PictureBox)sender;
-			if (picture.Image == null || this._runProbes == null || this._runCanvas.Width <= 0)
+			if (picture.Image == null || _runProbes == null || _runCanvas.Width <= 0)
 			{
 				return;
 			}
-			ProbePlaceOn placeOn = ((picture == this._picField) ? ProbePlaceOn.Field : ProbePlaceOn.Intensity);
+			ProbePlaceOn placeOn = ((picture == _picField) ? ProbePlaceOn.Field : ProbePlaceOn.Intensity);
 			RectangleF area = Form1.ZoomedImageRectangle(picture);
 			if (area.Width <= 0f)
 			{
 				return;
 			}
-			float sx = area.Width / this._runCanvas.Width;
-			float sy = area.Height / this._runCanvas.Height;
-			for (int i = 0; i < this._runProbes.Count; i++)
+			float sx = area.Width / _runCanvas.Width;
+			float sy = area.Height / _runCanvas.Height;
+			for (int i = 0; i < _runProbes.Count; i++)
 			{
-				ProbeSettings probe = this._runProbes[i].Clone();
-				if (i < this._probes.Count)
+				// what is measured comes from the run; how the graph looks can be changed while it runs
+				ProbeSettings probe = _runProbes[i].Clone();
+				if (i < _probes.Count)
 				{
-					probe.CopyDisplayFrom(this._probes[i]);
+					probe.CopyDisplayFrom(_probes[i]);
 				}
 				if (probe.PlaceOn != placeOn || !probe.Active)
 				{
@@ -927,76 +976,79 @@ namespace _2D_wave_sim_V01
 				}
 				ProbeGraphPainter.DrawMarkers(e.Graphics, probe, i, area.X, area.Y, sx, sy);
 				ProbeTrace trace = null;
-				if (i < this._probeTraces.Count)
+				if (i < _probeTraces.Count)
 				{
-					trace = this._probeTraces[i];
+					trace = _probeTraces[i];
 				}
-				Rectangle box = Form1.ToScreen(ProbeGraphPainter.BoxInCanvas(probe, this._runCanvas.Width, this._runCanvas.Height), area, sx, sy);
-				ProbeGraphPainter.DrawGraph(e.Graphics, box, probe.Title(i), probe, trace, this._runSteps);
+				Rectangle rect = Form1.ToScreen(ProbeGraphPainter.BoxInCanvas(probe, _runCanvas.Width, _runCanvas.Height), area, sx, sy);
+				ProbeGraphPainter.DrawGraph(e.Graphics, rect, probe.Title(i), probe, trace, _runSteps);
 			}
 		}
 
 		/// <summary>
 		/// Paint overlay for the probe picture on the Probes tab (scaled by <c>EffectiveCanvas()</c>,
-		/// falling back to the image size): for every active probe, and for the probe currently being
-		/// picked even if inactive, draws the position markers and a translucent dashed yellow placeholder
-		/// where the graph box will be, labelled with the probe title. During pick step 3 the placeholder
-		/// follows the hovered mouse position instead of the stored box position.
+		/// falling back to the image size): the markers of both probes, and the graph box outline of
+		/// whichever one is being edited or positioned, as a translucent dashed yellow placeholder
+		/// labelled with the probe title. A switched off probe ("On" unchecked) is hidden here too; the
+		/// only exception is while the user is actively picking its position or graph box, so they can
+		/// still see what they are placing. During pick step 3 the placeholder follows the hovered mouse
+		/// position instead of the stored box position.
 		/// </summary>
 		private void ProbePicture_Paint(object sender, PaintEventArgs e)
 		{
-			if (this._picProbe.Image == null)
+			if (_picProbe.Image == null)
 			{
 				return;
 			}
-			Size canvas = this.EffectiveCanvas();
+			Size canvas = EffectiveCanvas();
 			if (canvas.Width <= 0)
 			{
-				canvas = this._picProbe.Image.Size;
+				canvas = _picProbe.Image.Size;
 			}
-			RectangleF area = Form1.ZoomedImageRectangle(this._picProbe);
+			RectangleF area = Form1.ZoomedImageRectangle(_picProbe);
 			if (area.Width <= 0f)
 			{
 				return;
 			}
 			float sx = area.Width / canvas.Width;
 			float sy = area.Height / canvas.Height;
-			for (int i = 0; i < this._probes.Count; i++)
+			for (int i = 0; i < _probes.Count; i++)
 			{
-				ProbeSettings probe = this._probes[i];
-				bool picking = this._pickStep != 0 && this._pickIndex == i;
+				ProbeSettings probe = _probes[i];
+				bool picking = _pickStep != 0 && _pickIndex == i;
 				if (!probe.Active && !picking)
 				{
 					continue;
 				}
 				ProbeGraphPainter.DrawMarkers(e.Graphics, probe, i, area.X, area.Y, sx, sy);
+				// while the corner of this probe's box is being picked, the box follows the mouse
 				ProbeSettings shown = probe;
-				if (this._pickStep == 3 && this._pickIndex == i && this._pickHover != null)
+				if (_pickStep == 3 && _pickIndex == i && _pickHover != null)
 				{
 					int hoverX = 0;
 					int hoverY = 0;
-					if (this.TryPictureToCanvas(this._picProbe, this._pickHover.Value, ref hoverX, ref hoverY))
+					if (TryPictureToCanvas(_picProbe, _pickHover.Value, ref hoverX, ref hoverY))
 					{
 						shown = probe.Clone();
 						shown.BoxX = hoverX;
 						shown.BoxY = hoverY;
 					}
 				}
-				Rectangle box = Form1.ToScreen(ProbeGraphPainter.BoxInCanvas(shown, canvas.Width, canvas.Height), area, sx, sy);
+				Rectangle rect = Form1.ToScreen(ProbeGraphPainter.BoxInCanvas(shown, canvas.Width, canvas.Height), area, sx, sy);
 				using (SolidBrush fill = new SolidBrush(Color.FromArgb(40, 255, 208, 64)))
 				{
-					e.Graphics.FillRectangle(fill, box);
+					e.Graphics.FillRectangle(fill, rect);
 				}
 				using (Pen outline = new Pen(Color.FromArgb(230, 255, 208, 64), 1.5f))
 				{
 					outline.DashStyle = DashStyle.Dash;
-					e.Graphics.DrawRectangle(outline, box);
+					e.Graphics.DrawRectangle(outline, rect);
 				}
 				using (Font font = new Font("Segoe UI", 12f, FontStyle.Bold, GraphicsUnit.Pixel))
 				{
 					using (SolidBrush textBrush = new SolidBrush(Color.FromArgb(240, 255, 208, 64)))
 					{
-						e.Graphics.DrawString(probe.Title(i), font, textBrush, box.X + 4, box.Y + 3);
+						e.Graphics.DrawString(probe.Title(i), font, textBrush, rect.X + 4, rect.Y + 3);
 					}
 				}
 			}
@@ -1005,31 +1057,31 @@ namespace _2D_wave_sim_V01
 		/// <summary>Replaces <c>_probes</c> with the list from the current project's config (padded/truncated to <see cref="ProbeCount"/>) and shows it; no-op without a project.</summary>
 		private void LoadProbesFromProject()
 		{
-			if (this._project == null)
+			if (_project == null)
 			{
 				return;
 			}
-			this._probes = ProbeSettings.ListFromConfig(this._project.Config);
-			this.NormalizeProbeCount();
-			this.ShowProbesInControls();
+			_probes = ProbeSettings.ListFromConfig(_project.Config);
+			NormalizeProbeCount();
+			ShowProbesInControls();
 		}
 
 		/// <summary>Replaces <c>_probes</c> with defaults (new project) and shows them.</summary>
 		private void ResetProbes()
 		{
-			this._probes = Form1.NewProbeList();
-			this.ShowProbesInControls();
+			_probes = Form1.NewProbeList();
+			ShowProbesInControls();
 		}
 
 		/// <summary>Commits every control to <c>_probes</c> and returns independent copies for the <c>SimulationJob</c>, so the worker thread never reads the instances the user keeps editing.</summary>
 		private List<ProbeSettings> ProbesForRun()
 		{
-			foreach (Form1.ProbeControlSet ui in this._probeUi)
+			foreach (Form1.ProbeControlSet ui in _probeUi)
 			{
-				this.ReadProbeControls(ui);
+				ReadProbeControls(ui);
 			}
 			List<ProbeSettings> copies = new List<ProbeSettings>();
-			foreach (ProbeSettings probe in this._probes)
+			foreach (ProbeSettings probe in _probes)
 			{
 				copies.Add(probe.Clone());
 			}
@@ -1046,18 +1098,18 @@ namespace _2D_wave_sim_V01
 		/// <param name="steps">Total steps of the run, used for the full-scale X axis.</param>
 		private void BeginProbeRun(List<ProbeSettings> probes, Size canvas, int steps)
 		{
-			this._runProbes = probes;
-			this._runCanvas = canvas;
-			this._runSteps = steps;
-			this._probeTraces.Clear();
+			_runProbes = probes;
+			_runCanvas = canvas;
+			_runSteps = steps;
+			_probeTraces.Clear();
 			if (probes != null)
 			{
 				for (int i = 0; i < probes.Count; i++)
 				{
-					this._probeTraces.Add(new ProbeTrace());
+					_probeTraces.Add(new ProbeTrace());
 				}
 			}
-			this.InvalidateProbePictures();
+			InvalidateProbePictures();
 		}
 
 		/// <summary>
@@ -1069,27 +1121,27 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		private void ShowProbeSamples(SimulationRunner runner, ProbeUpdate update)
 		{
-			if (runner != this._runner || base.IsDisposed)
+			if (runner != _runner || base.IsDisposed)
 			{
 				return;
 			}
-			int count = Math.Min(update.Samples.Length, this._probeTraces.Count);
+			int count = Math.Min(update.Samples.Length, _probeTraces.Count);
 			for (int i = 0; i < count; i++)
 			{
-				this._probeTraces[i].Series.Add(update.Samples[i]);
+				_probeTraces[i].Series.Add(update.Samples[i]);
 				if (update.Profiles[i] != null)
 				{
-					this._probeTraces[i].SetProfile(update.Profiles[i], update.Lengths[i]);
+					_probeTraces[i].SetProfile(update.Profiles[i], update.Lengths[i]);
 				}
-				this._probeTraces[i].StepsSampled = update.StepsDone;
+				_probeTraces[i].StepsSampled = update.StepsDone;
 			}
-			if (this._picField != null)
+			if (_picField != null)
 			{
-				this._picField.Invalidate();
+				_picField.Invalidate();
 			}
-			if (this._picIntensity != null)
+			if (_picIntensity != null)
 			{
-				this._picIntensity.Invalidate();
+				_picIntensity.Invalidate();
 			}
 		}
 	}

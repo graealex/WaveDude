@@ -5,39 +5,83 @@ using System.Text;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// OpenCL implementation of <see cref="IWaveEngine"/>: the same leapfrog scheme as <see cref="WaveSimulator"/>
-	/// (padded grid, 9-point or sub-stepped 4th-order Laplacian, soft source blending, two-stage intensity
-	/// average), with the field, the scene maps, the source tables and the probe buffers all resident on the
-	/// device. Created through <see cref="TryCreate"/> by <see cref="WaveEngineFactory"/> and driven by
+	/// OpenCL implementation of <see cref="IWaveEngine"/>: the 2D wave equation on the graphics card, the same
+	/// algorithm as <see cref="WaveSimulator"/> (padded grid with a border of one cell, 9-point or sub-stepped
+	/// 4th-order Laplacian, soft source blending, two-stage intensity average), with the field, the scene maps,
+	/// the source tables and the probe buffers all resident on the device. Units are those of the CPU engine
+	/// (dx = dt = 1, c in cells per step, frequencies in radians per step, time in steps):
+	/// <code>
+	///   new u = u + (u - previous u) * d + laplacian * c^2     (3x3 kernel 0.066 / 0.184 / -1)
+	///   sources: u = u * 0.9 + sin(frequency * t) * amplitude * 0.1
+	///   intensity: two cascaded one-pole filters, I1 = I1 * alpha + u^2 * (1 - alpha), I2 = I2 * alpha + I1 * (1 - alpha),
+	///   blended (IntensityBlend) into what is shown/exported: Iout = (I1 * (1 - blend) + I2 * blend) * scale
+	/// </code>
+	/// alpha is derived once per simulation - see the <see cref="WaveSimulator"/> class summary (why two stages
+	/// and the blend, not a single, fixed-0.98 filter) and <see cref="SimulationSettings.TimeDecayFactor"/> (why
+	/// alpha); scale is <see cref="SimulationSettings.IntensityScale"/> (why it exists). The field, the previous
+	/// field, c², d and the intensity stay in the memory of the graphics card; only when a frame is drawn
+	/// (<see cref="PrepareFrame"/>) the field and/or intensity are copied back. The arrays have the same layout as
+	/// those of the CPU engine, so the same renderer draws both.
+	/// Created through <see cref="TryCreate"/> by <see cref="WaveEngineFactory"/> and driven by
 	/// <see cref="SimulationRunner"/> on its worker thread, which is the only thread that enqueues work; the UI
 	/// thread touches only <see cref="PrepareFrame"/>, <see cref="FieldData"/> and <see cref="IntensityData"/>
-	/// while the runner is paused.
+	/// while the runner is paused. Any single thread may drive the engine; it is not safe for concurrent use.
 	/// </summary>
 	/// <remarks>
-	/// The field lives in two ping-pong buffers (<see cref="_field"/>); every kernel that reads the field exists
-	/// twice (index 0/1) with the buffers bound in opposite order, so a step merely picks the kernel for
-	/// <see cref="_current"/> instead of re-binding arguments. Kernel launches and uploads are asynchronous;
-	/// read-backs are blocking. All OpenCL handles are owned by this instance and released by
-	/// <see cref="Dispose"/> (or by the constructor when building fails); the managed buffers
-	/// (<see cref="FieldData"/>, <see cref="IntensityData"/>) are plain host copies.
+	/// <para>
+	/// Optionally (<c>use4thOrderLaplacian</c>), the <c>wave_step</c> kernel instead computes the Laplacian with a
+	/// 4th order accurate, 5-point "cross" stencil wherever there is room for it, the same as
+	/// <see cref="WaveSimulator"/>'s <c>UpdateField</c> on the CPU (see that class's summary for why). Which form to
+	/// use is baked into the generated kernel source as a compile-time <c>#define</c>, not a runtime branch, so
+	/// there is no extra cost when it is off.
+	/// </para>
+	/// <para>
+	/// The 4th order stencil needs the same time sub-stepping as the CPU engine to stay stable, for the same
+	/// reason (see <see cref="WaveSimulator"/>'s class summary): <see cref="AdvanceOneStep"/> launches
+	/// <c>wave_step</c> <see cref="_subSteps"/> times instead of once when <see cref="_subSteps"/> &gt; 1, with c²
+	/// scaled by a <c>c2Scale</c> kernel argument (1 / <see cref="_subSteps"/>²) and the d buffer pre-scaled (on
+	/// the host, once, at <see cref="Build"/> time) to its 1 / <see cref="_subSteps"/>-th root, so
+	/// <see cref="_subSteps"/> kernel launches move the field by exactly the same physical time and damping as
+	/// one ordinary launch. The intensity buffer is only updated (via the kernel's <c>track</c> argument) on the
+	/// last of the <see cref="_subSteps"/> launches, so its own exponential averaging still runs once per
+	/// <see cref="AdvanceOneStep"/> call, matching the CPU engine and its own earlier calibration.
+	/// <see cref="_subSteps"/> is 1 (<c>c2Scale</c> exactly 1.0f, an exact no-op multiply, and the d buffer
+	/// unchanged) whenever the 3x3 kernel is used or this scene's highest c² does not need sub-stepping - see
+	/// <see cref="WaveSimulator.ComputeSubSteps"/>.
+	/// </para>
+	/// <para>
+	/// The field lives in two ping-pong buffers (<see cref="_field"/>) that take turns as "current field" and
+	/// "previous field"; every kernel that reads the field exists twice (index 0/1) with the buffers bound in
+	/// opposite order, so a step merely picks the kernel for <see cref="_current"/> instead of re-binding
+	/// arguments. Kernel launches are asynchronous; uploads and read-backs are blocking. Every OpenCL handle
+	/// created here is registered in <see cref="_scene"/> (the simulation program, kernels and buffers) or
+	/// <see cref="_probes"/> (everything <see cref="SetProbes"/> creates) and released by <see cref="Dispose"/>,
+	/// by the constructor when building fails, or — for the probe set — when probes are installed again. The
+	/// managed arrays (<see cref="FieldData"/>, <see cref="IntensityData"/>) are plain host copies.
+	/// </para>
+	/// <para>
+	/// Like <see cref="WaveSimulator"/>, portions of this engine are based on WaveSimulator2D by 0x23
+	/// (https://github.com/0x23/WaveSimulator2D).
+	/// </para>
 	/// </remarks>
-	internal sealed class GpuWaveSimulator : IWaveEngine
+	internal sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 	{
 		/// <summary>
-		/// Tries to build an engine on each OpenCL GPU reported by <see cref="GpuDeviceInfo.FindAll"/> in turn and
-		/// returns the first that succeeds. Parameters are those of the <see cref="WaveSimulator"/> constructor.
+		/// Tries the GPUs one after the other, the best first (<see cref="GpuDeviceInfo.FindAll"/>), and returns
+		/// the first that works. Parameters are those of the <see cref="WaveSimulator"/> constructor.
 		/// </summary>
 		/// <param name="scene">Per-cell c² and damping maps plus the image (green-channel) sources.</param>
-		/// <param name="sourceFrequencyScale">Multiplier in the level-to-angular-frequency mapping; see <see cref="_frequencyBuffer"/>.</param>
+		/// <param name="sourceFrequencyScale">Multiplier in the level-to-angular-frequency mapping (level/255 × 0.5 × scale, radians per step).</param>
 		/// <param name="sourceAmplitude">Peak amplitude of the image sources (object sources carry their own).</param>
 		/// <param name="trackIntensity">Whether to allocate and update the intensity buffers; when false <see cref="IntensityData"/> stays null.</param>
-		/// <param name="use4thOrderLaplacian">Use the 4th-order 5-point-per-axis stencil (with sub-stepping) instead of the 9-point one.</param>
-		/// <param name="timeDecayFactor">Intensity averaging time in units of 100/level steps; see <see cref="_intensityAlpha"/>.</param>
-		/// <param name="intensityScale">Multiplier applied to the intensity output.</param>
+		/// <param name="use4thOrderLaplacian">Use the 4th-order 5-point-per-axis stencil (with sub-stepping) instead of the 9-point one; see the class summary.</param>
+		/// <param name="timeDecayFactor"><see cref="SimulationSettings.TimeDecayFactor"/> - see that property's comment; the retention is derived by <see cref="WaveSimulator.IntensityRetention"/>.</param>
+		/// <param name="intensityScale"><see cref="SimulationSettings.IntensityScale"/> - see that property's comment; multiplier applied to the intensity output.</param>
 		/// <param name="problems">Receives "" on success, otherwise why no device worked ("no GPU found …" or the
 		/// per-device failure messages joined by "; ").</param>
-		/// <param name="objectSources">Interactive sources; those outside the canvas are dropped.</param>
+		/// <param name="objectSources">The generated elements of the object sources (Sources tab), or null/empty for none; those outside the canvas are dropped.</param>
 		/// <returns>The engine, or null when no device could be used (see <paramref name="problems"/>).</returns>
+		/// <exception cref="DllNotFoundException">There is no OpenCL driver (OpenCL.dll cannot be loaded).</exception>
 		public static GpuWaveSimulator TryCreate(SceneData scene, double sourceFrequencyScale, double sourceAmplitude, bool trackIntensity, bool use4thOrderLaplacian, double timeDecayFactor, double intensityScale, ref string problems, List<SourceElement> objectSources = null)
 		{
 			problems = "";
@@ -73,52 +117,46 @@ namespace _2D_wave_sim_V01
 		/// throws, everything allocated so far is released before the exception propagates.
 		/// </summary>
 		/// <exception cref="InvalidOperationException">The scene is too large for the device, or the OpenCL program could not be built.</exception>
-		private GpuWaveSimulator(GpuDeviceInfo device, SceneData scene, double sourceFrequencyScale, double sourceAmplitude, bool trackIntensity, bool use4thOrderLaplacian, double timeDecayFactor, double intensityScale, List<SourceElement> objectSources = null)
+		private GpuWaveSimulator(GpuDeviceInfo device, SceneData scene, double sourceFrequencyScale, double sourceAmplitude, bool trackIntensity, bool use4thOrderLaplacian, double timeDecayFactor, double intensityScale, List<SourceElement> objectSources)
 		{
-			this._field = new IntPtr[2];
-			this._stepKernel = new IntPtr[2];
-			this._sourceKernel = new IntPtr[2];
-			this._objSourceKernel = new IntPtr[2];
-			this._objGrid1D = new IntPtr[1];
-			this._grid2D = new IntPtr[2];
-			this._grid1D = new IntPtr[1];
-			this._probeKernel = new IntPtr[2];
-			this._probeGrid = new IntPtr[1];
-			this._probeValues = new List<List<float>>();
-			this._gatherKernel = new IntPtr[2];
-			this._profileGrid = new IntPtr[1];
-			this._description = "GPU: " + device.Name + " (OpenCL)";
-			this._width = scene.Width;
-			this._height = scene.Height;
-			this._stride = this._width + 2;
-			this._cells = this._stride * (this._height + 2);
-			this._track = trackIntensity;
-			this._sourceCount = scene.SourceCount;
-			this._amplitude = (float)sourceAmplitude;
-			this._use4thOrderLaplacian = use4thOrderLaplacian;
-			if (device.MaxAllocation > 0L && (long)this._cells * 4L > device.MaxAllocation)
+			Description = "GPU: " + device.Name + " (OpenCL)";
+			_device = device;
+			_width = scene.Width;
+			_height = scene.Height;
+			_stride = _width + 2;
+			_cells = _stride * (_height + 2);
+			_track = trackIntensity;
+			_sourceCount = scene.SourceCount;
+			if (device.MaxAllocation > 0L && (long)_cells * 4L > device.MaxAllocation)
 			{
 				throw new InvalidOperationException("the scene is too large for this GPU");
 			}
+			// object sources: keep only the elements whose position is inside the canvas (a randomized composite
+			// element can fall outside), same filtering as the CPU engine (WaveSimulator)
 			List<SourceElement> sourcesInScene = new List<SourceElement>();
 			if (objectSources != null)
 			{
 				foreach (SourceElement source in objectSources)
 				{
-					if (source.PosX >= 0 && source.PosX < this._width && source.PosY >= 0 && source.PosY < this._height)
+					if (source.PosX >= 0 && source.PosX < _width && source.PosY >= 0 && source.PosY < _height)
 					{
 						sourcesInScene.Add(source);
 					}
 				}
 			}
-			this._objSourceCount = sourcesInScene.Count;
+			_objSourceCount = sourcesInScene.Count;
+			_grid2D = new[] { new IntPtr(_width), new IntPtr(_height) };
+			_grid1D = new[] { new IntPtr(Math.Max(1, _sourceCount)) };
+			_objGrid1D = new[] { new IntPtr(Math.Max(1, _objSourceCount)) };
+			_hostField = new float[_cells];
+			_hostIntensity = trackIntensity ? new float[_cells] : null;
 			try
 			{
-				this.Build(device, scene, sourceFrequencyScale, timeDecayFactor, intensityScale, sourcesInScene);
+				Build(scene, sourceFrequencyScale, (float)sourceAmplitude, use4thOrderLaplacian, timeDecayFactor, (float)intensityScale, sourcesInScene);
 			}
 			catch
 			{
-				this.ReleaseAll();
+				ReleaseAll();
 				throw;
 			}
 		}
@@ -132,274 +170,222 @@ namespace _2D_wave_sim_V01
 		/// 1-float dummies so the kernel arguments are still valid. The kernel arguments that change per step
 		/// (time, per-sub-step track flag) are left to <see cref="AdvanceOneStep"/>.
 		/// </summary>
-		/// <param name="device">The OpenCL device (and its platform) to create the context on.</param>
 		/// <param name="scene">Per-cell c² and damping maps plus the image sources.</param>
-		/// <param name="sourceFrequencyScale">Multiplier in the level-to-angular-frequency mapping; see <see cref="_frequencyBuffer"/>.</param>
-		/// <param name="timeDecayFactor">Intensity averaging time in units of 100/level steps; see <see cref="_intensityAlpha"/>.</param>
+		/// <param name="sourceFrequencyScale">Multiplier in the level-to-angular-frequency mapping.</param>
+		/// <param name="sourceAmplitude">Peak amplitude of the image sources.</param>
+		/// <param name="use4thOrderLaplacian">Compile the program with <c>USE_4TH_ORDER</c> and sub-step accordingly.</param>
+		/// <param name="timeDecayFactor">Intensity averaging time in units of 100/level steps.</param>
 		/// <param name="intensityScale">Multiplier applied to the intensity output.</param>
 		/// <param name="objectSources">Object sources already filtered to those inside the canvas.</param>
 		/// <exception cref="InvalidOperationException">The OpenCL program could not be built (message includes the build log).</exception>
-		private void Build(GpuDeviceInfo device, SceneData scene, double sourceFrequencyScale, double timeDecayFactor, double intensityScale, List<SourceElement> objectSources)
+		private void Build(SceneData scene, double sourceFrequencyScale, float sourceAmplitude, bool use4thOrderLaplacian, double timeDecayFactor, float intensityScale, List<SourceElement> objectSources)
 		{
 			int err = 0;
-			this._deviceId = device.DeviceId;
-			IntPtr[] contextProperties = new IntPtr[]
-			{
-				new IntPtr(OpenClApi.ContextPlatformProperty),
-				device.PlatformId,
-				IntPtr.Zero
-			};
-			IntPtr[] deviceIds = new IntPtr[] { device.DeviceId };
-			this._context = OpenClApi.clCreateContext(contextProperties, 1U, deviceIds, IntPtr.Zero, IntPtr.Zero, ref err);
+			IntPtr[] contextProperties = { new IntPtr(OpenClApi.ContextPlatformProperty), _device.PlatformId, IntPtr.Zero };
+			IntPtr[] deviceIds = { _device.DeviceId };
+			_context = OpenClApi.clCreateContext(contextProperties, 1U, deviceIds, IntPtr.Zero, IntPtr.Zero, ref err);
 			OpenClApi.Check(err, "clCreateContext");
-			this._queue = OpenClApi.clCreateCommandQueue(this._context, device.DeviceId, 0UL, ref err);
+			_queue = OpenClApi.clCreateCommandQueue(_context, _device.DeviceId, 0UL, ref err);
 			OpenClApi.Check(err, "clCreateCommandQueue");
-			string[] sources = new string[] { GpuWaveSimulator.KernelSource(this._use4thOrderLaplacian) };
-			this._program = OpenClApi.clCreateProgramWithSource(this._context, 1U, sources, null, ref err);
-			OpenClApi.Check(err, "clCreateProgramWithSource");
-			string buildOptions = "";
-			err = OpenClApi.clBuildProgram(this._program, 1U, deviceIds, ref buildOptions, IntPtr.Zero, IntPtr.Zero);
-			if (err != 0)
+			_scene.Program = BuildProgram(KernelSource(use4thOrderLaplacian), "the program for the GPU");
+
+			// the scene, with a border of one cell like the CPU engine (padded layout)
+			float[] c2 = new float[_cells];
+			float[] damping = new float[_cells];
+			for (int y = 0; y < _height; y++)
 			{
-				string buildLog = OpenClApi.BuildLog(this._program, device.DeviceId);
-				throw new InvalidOperationException("the program for the GPU could not be built (" + OpenClApi.ErrorName(err) + ")" + ((buildLog.Length > 0) ? (": " + buildLog) : ""));
+				Array.Copy(scene.C2, y * _width, c2, (y + 1) * _stride + 1, _width);
+				Array.Copy(scene.D, y * _width, damping, (y + 1) * _stride + 1, _width);
 			}
-			float[] c2 = new float[this._cells];
-			float[] damping = new float[this._cells];
-			for (int y = 0; y < this._height; y++)
-			{
-				Array.Copy(scene.C2, y * this._width, c2, (y + 1) * this._stride + 1, this._width);
-				Array.Copy(scene.D, y * this._width, damping, (y + 1) * this._stride + 1, this._width);
-			}
-			float maxC2 = 0f;
-			if (this._use4thOrderLaplacian)
-			{
-				for (int i = 0; i < c2.Length; i++)
-				{
-					if (c2[i] > maxC2)
-					{
-						maxC2 = c2[i];
-					}
-				}
-			}
-			this._subSteps = (this._use4thOrderLaplacian ? GpuWaveSimulator.ComputeSubSteps(maxC2) : 1);
-			float[] dampingPerSubStep = damping;
-			if (this._subSteps > 1)
+			// see the class summary: sub-stepping keeps the 4th order stencil stable without changing the physical
+			// wave speed or damping - _subSteps stays 1 (no sub-stepping) unless the 4th order stencil is in use and
+			// this scene's highest c² actually needs it. The d buffer uploaded below is pre-scaled to match (its
+			// 1 / _subSteps-th root, or unchanged when _subSteps = 1), same as WaveSimulator's _dEffective on the CPU.
+			_subSteps = use4thOrderLaplacian ? WaveSimulator.ComputeSubSteps(WaveSimulator.MaxOf(c2)) : 1;
+			// 1 / _subSteps², or exactly 1f when _subSteps = 1 (a bit-for-bit no-op multiply in the kernel)
+			float c2Mult = 1f;
+			if (_subSteps > 1)
 			{
 				// Damping is applied once per sub-step, so take the sub-step root to keep the per-step decay unchanged.
-				float[] adjusted = new float[damping.Length];
-				double exponent = 1.0 / this._subSteps;
+				double exponent = 1.0 / _subSteps;
 				for (int i = 0; i < damping.Length; i++)
 				{
-					adjusted[i] = (float)Math.Pow(damping[i], exponent);
+					damping[i] = (float)Math.Pow(damping[i], exponent);
 				}
-				dampingPerSubStep = adjusted;
 				// A sub-step is 1/subSteps long, so c²·dt² shrinks by 1/subSteps².
-				this._c2Mult = 1f / (float)(this._subSteps * this._subSteps);
+				c2Mult = 1f / (_subSteps * _subSteps);
 			}
-			else
-			{
-				this._c2Mult = 1f;
-			}
-			this._c2Buffer = this.CreateFloatBuffer(c2);
-			this._dBuffer = this.CreateFloatBuffer(dampingPerSubStep);
-			float[] zeros = new float[this._cells];
-			this._field[0] = this.CreateFloatBuffer(zeros);
-			this._field[1] = this.CreateFloatBuffer(zeros);
-			if (this._track)
-			{
-				this._intensityBuffer = this.CreateFloatBuffer(zeros);
-				this._intensityStage1Buffer = this.CreateFloatBuffer(zeros);
-				this._intensityOutBuffer = this.CreateFloatBuffer(zeros);
-			}
-			else
-			{
-				// Not tracked: the kernels still need valid buffer arguments, and they never touch them.
-				this._intensityBuffer = this.CreateFloatBuffer(new float[1]);
-				this._intensityStage1Buffer = this.CreateFloatBuffer(new float[1]);
-				this._intensityOutBuffer = this.CreateFloatBuffer(new float[1]);
-			}
-			if (this._sourceCount > 0 || this._objSourceCount > 0)
+			IntPtr c2Buffer = CreateBuffer(c2, _scene);
+			IntPtr dBuffer = CreateBuffer(damping, _scene);
+			float[] zeros = new float[_cells];
+			_field[0] = CreateBuffer(zeros, _scene);
+			_field[1] = CreateBuffer(zeros, _scene);
+			// Not tracked: the kernels still need valid buffer arguments, and they never touch them.
+			float[] intensityInit = _track ? zeros : new float[1];
+			// the two cascaded exponential-filter stages that make up the intensity - see the class summary and
+			// WaveSimulator._intensity / _intensityStage1 (CPU engine); used only inside wave_step, never read back -
+			// what is read back/probed is their blend, _intensityOutBuffer (WaveSimulator._intensityOut on the CPU)
+			IntPtr intensityBuffer = CreateBuffer(intensityInit, _scene);
+			IntPtr intensityStage1Buffer = CreateBuffer(intensityInit, _scene);
+			_intensityOutBuffer = CreateBuffer(intensityInit, _scene);
+
+			// the level-to-frequency table (level 0-255 -> frequency), shared by the image sources and the object sources
+			IntPtr frequencyBuffer = IntPtr.Zero;
+			if (_sourceCount > 0 || _objSourceCount > 0)
 			{
 				float[] frequencies = new float[256];
 				for (int level = 0; level <= 255; level++)
 				{
 					frequencies[level] = (float)(level / 255.0 * 0.5 * sourceFrequencyScale);
 				}
-				this._frequencyBuffer = this.CreateFloatBuffer(frequencies);
+				frequencyBuffer = CreateBuffer(frequencies, _scene);
 			}
-			// The intensity decay time is scaled by the lowest (slowest) source level in use; 100 when none has a level.
-			int minLevel = 0;
-			for (int i = 0; i < this._sourceCount; i++)
+			// the image sources (from the green channel of the scene image)
+			bool[] levelUsed = new bool[256];
+			int[] indices = new int[_sourceCount];
+			int[] levels = new int[_sourceCount];
+			for (int i = 0; i < _sourceCount; i++)
 			{
-				int level = scene.SourceLevel[i];
-				if (level > 0 && (minLevel == 0 || level < minLevel))
-				{
-					minLevel = level;
-				}
+				indices[i] = (scene.SourceY[i] + 1) * _stride + scene.SourceX[i] + 1;
+				levels[i] = scene.SourceLevel[i];
+				levelUsed[scene.SourceLevel[i]] = true;
 			}
-			foreach (SourceElement source in objectSources)
-			{
-				if (source.Level > 0 && (minLevel == 0 || source.Level < minLevel))
-				{
-					minLevel = source.Level;
-				}
-			}
-			if (minLevel == 0)
-			{
-				minLevel = 100;
-			}
-			double decaySteps = Math.Max(1.0, timeDecayFactor * 100.0 / (double)minLevel);
-			this._intensityAlpha = (float)Math.Exp(-1.0 / decaySteps);
-			this._intensityScale = (float)intensityScale;
-			if (this._sourceCount > 0)
-			{
-				int[] indices = new int[this._sourceCount];
-				int[] levels = new int[this._sourceCount];
-				for (int i = 0; i < this._sourceCount; i++)
-				{
-					indices[i] = (scene.SourceY[i] + 1) * this._stride + scene.SourceX[i] + 1;
-					levels[i] = scene.SourceLevel[i];
-				}
-				this._indexBuffer = this.CreateIntBuffer(indices);
-				this._levelBuffer = this.CreateIntBuffer(levels);
-			}
-			if (this._objSourceCount > 0)
-			{
-				int[] objIndices = new int[this._objSourceCount];
-				int[] objLevels = new int[this._objSourceCount];
-				float[] objAmplitudes = new float[this._objSourceCount];
-				float[] objPhases = new float[this._objSourceCount];
-				int[] objModes = new int[this._objSourceCount];
-				int[] objPulseShapes = new int[this._objSourceCount];
-				int[] objOnWidths = new int[this._objSourceCount];
-				int[] objOffWidths = new int[this._objSourceCount];
-				int[] objDetachSteps = new int[this._objSourceCount];
-				int[] objOffWidthBases = new int[this._objSourceCount];
-				int[] objRandomizeOffWidthAmounts = new int[this._objSourceCount];
-				float[] objCycleAnchors = new float[this._objSourceCount];
-				int[] objRngStates = new int[this._objSourceCount];
-				Random random = new Random();
-				for (int i = 0; i < this._objSourceCount; i++)
-				{
-					SourceElement source = objectSources[i];
-					objIndices[i] = (source.PosY + 1) * this._stride + source.PosX + 1;
-					objLevels[i] = source.Level;
-					objAmplitudes[i] = (float)source.Amplitude;
-					objPhases[i] = (float)source.PhaseRad;
-					objModes[i] = ((source.Mode == SourceMode.Pulsed) ? 1 : 0);
-					objPulseShapes[i] = ((source.PulseShape == SourcePulseShape.SmoothedSquare) ? 1 : 0);
-					objOnWidths[i] = source.OnWidthCycles;
-					objOffWidths[i] = source.OffWidthCycles;
-					objDetachSteps[i] = source.DetachAfterStep;
-					objOffWidthBases[i] = source.OffWidthBase;
-					objRandomizeOffWidthAmounts[i] = source.RandomizeOffWidthAmount;
-					objCycleAnchors[i] = 0f;
-					// xorshift32 never leaves state 0, so a zero seed would make the off-width constant.
-					int seed = random.Next(int.MinValue, int.MaxValue);
-					if (seed == 0)
-					{
-						seed = 1;
-					}
-					objRngStates[i] = seed;
-				}
-				this._objIndexBuffer = this.CreateIntBuffer(objIndices);
-				this._objLevelBuffer = this.CreateIntBuffer(objLevels);
-				this._objAmplitudeBuffer = this.CreateFloatBuffer(objAmplitudes);
-				this._objPhaseBuffer = this.CreateFloatBuffer(objPhases);
-				this._objModeBuffer = this.CreateIntBuffer(objModes);
-				this._objPulseShapeBuffer = this.CreateIntBuffer(objPulseShapes);
-				this._objOnWidthBuffer = this.CreateIntBuffer(objOnWidths);
-				this._objOffWidthBuffer = this.CreateIntBuffer(objOffWidths);
-				this._objDetachStepBuffer = this.CreateIntBuffer(objDetachSteps);
-				this._objOffWidthBaseBuffer = this.CreateIntBuffer(objOffWidthBases);
-				this._objRandomizeOffWidthAmountBuffer = this.CreateIntBuffer(objRandomizeOffWidthAmounts);
-				this._objCycleAnchorBuffer = this.CreateFloatBuffer(objCycleAnchors);
-				this._objRngStateBuffer = this.CreateIntBuffer(objRngStates);
-			}
+			// the intensity's averaging time constant scales inversely with the frequency of the slowest active source
+			// (image or object; a level of 0 means "no source" and is excluded) - see WaveSimulator's identical
+			// computation (CPU engine) and SimulationSettings.TimeDecayFactor's comment for why. This exponential-
+			// average decay factor replaces the old fixed 0.98f in the kernel.
+			float intensityAlpha = WaveSimulator.IntensityRetention(timeDecayFactor, WaveSimulator.LowestSourceLevel(levelUsed, objectSources));
+
 			// Kernel k reads field[k] and writes field[1 - k]; argument 4 (sources) / 11 (object sources) is the
 			// time and argument 8 of wave_step the track flag, both set per launch in AdvanceOneStep.
 			for (int k = 0; k <= 1; k++)
 			{
-				this._stepKernel[k] = this.CreateKernel("wave_step");
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 0U, this._field[k]);
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 1U, this._field[1 - k]);
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 2U, this._c2Buffer);
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 3U, this._dBuffer);
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 4U, this._intensityBuffer);
-				GpuWaveSimulator.SetInt(this._stepKernel[k], 5U, this._width);
-				GpuWaveSimulator.SetInt(this._stepKernel[k], 6U, this._height);
-				GpuWaveSimulator.SetInt(this._stepKernel[k], 7U, this._stride);
-				GpuWaveSimulator.SetInt(this._stepKernel[k], 8U, this._track ? 1 : 0);
-				GpuWaveSimulator.SetFloat(this._stepKernel[k], 9U, this._c2Mult);
-				GpuWaveSimulator.SetFloat(this._stepKernel[k], 10U, this._intensityAlpha);
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 11U, this._intensityStage1Buffer);
-				GpuWaveSimulator.SetMem(this._stepKernel[k], 12U, this._intensityOutBuffer);
-				GpuWaveSimulator.SetFloat(this._stepKernel[k], 13U, this._intensityScale);
-				if (this._sourceCount > 0)
-				{
-					this._sourceKernel[k] = this.CreateKernel("apply_sources");
-					GpuWaveSimulator.SetMem(this._sourceKernel[k], 0U, this._field[k]);
-					GpuWaveSimulator.SetMem(this._sourceKernel[k], 1U, this._indexBuffer);
-					GpuWaveSimulator.SetMem(this._sourceKernel[k], 2U, this._levelBuffer);
-					GpuWaveSimulator.SetMem(this._sourceKernel[k], 3U, this._frequencyBuffer);
-					GpuWaveSimulator.SetFloat(this._sourceKernel[k], 5U, this._amplitude);
-					GpuWaveSimulator.SetInt(this._sourceKernel[k], 6U, this._sourceCount);
-				}
-				if (this._objSourceCount > 0)
-				{
-					this._objSourceKernel[k] = this.CreateKernel("apply_object_sources");
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 0U, this._field[k]);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 1U, this._objIndexBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 2U, this._objLevelBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 3U, this._objAmplitudeBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 4U, this._objPhaseBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 5U, this._objModeBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 6U, this._objPulseShapeBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 7U, this._objOnWidthBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 8U, this._objOffWidthBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 9U, this._objDetachStepBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 10U, this._frequencyBuffer);
-					GpuWaveSimulator.SetInt(this._objSourceKernel[k], 12U, this._objSourceCount);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 13U, this._objOffWidthBaseBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 14U, this._objRandomizeOffWidthAmountBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 15U, this._objCycleAnchorBuffer);
-					GpuWaveSimulator.SetMem(this._objSourceKernel[k], 16U, this._objRngStateBuffer);
-				}
+				IntPtr step = _stepKernel[k] = CreateKernel(_scene, "wave_step");
+				SetMem(step, 0U, _field[k]);
+				SetMem(step, 1U, _field[1 - k]);
+				SetMem(step, 2U, c2Buffer);
+				SetMem(step, 3U, dBuffer);
+				SetMem(step, 4U, intensityBuffer);
+				SetInt(step, 5U, _width);
+				SetInt(step, 6U, _height);
+				SetInt(step, 7U, _stride);
+				SetInt(step, 8U, _track ? 1 : 0);
+				SetFloat(step, 9U, c2Mult);
+				SetFloat(step, 10U, intensityAlpha);
+				SetMem(step, 11U, intensityStage1Buffer);
+				SetMem(step, 12U, _intensityOutBuffer);
+				SetFloat(step, 13U, intensityScale);
 			}
-			this._grid2D[0] = new IntPtr(this._width);
-			this._grid2D[1] = new IntPtr(this._height);
-			this._grid1D[0] = new IntPtr(Math.Max(1, this._sourceCount));
-			this._objGrid1D[0] = new IntPtr(Math.Max(1, this._objSourceCount));
-			this._hostField = new float[this._cells];
-			if (this._track)
+			if (_sourceCount > 0)
 			{
-				this._hostIntensity = new float[this._cells];
+				IntPtr indexBuffer = CreateBuffer(indices, _scene);
+				IntPtr levelBuffer = CreateBuffer(levels, _scene);
+				for (int k = 0; k <= 1; k++)
+				{
+					IntPtr kernel = _sourceKernel[k] = CreateKernel(_scene, "apply_sources");
+					SetMem(kernel, 0U, _field[k]);
+					SetMem(kernel, 1U, indexBuffer);
+					SetMem(kernel, 2U, levelBuffer);
+					SetMem(kernel, 3U, frequencyBuffer);
+					SetFloat(kernel, 5U, sourceAmplitude);
+					SetInt(kernel, 6U, _sourceCount);
+				}
 			}
-			this._current = 0;
+			if (_objSourceCount > 0)
+			{
+				BuildObjectSourceKernels(objectSources, frequencyBuffer);
+			}
 		}
 
 		/// <summary>
-		/// Number of sub-steps per step needed to keep the 4th-order stencil stable for the largest c² in the
-		/// scene: the smallest n with c²·λmax/n² ≤ 2, at least 1. Same formula as
-		/// <see cref="WaveSimulator"/> (λmax = 32/3 for the 2D 4th-order stencil, 2 leaves a margin below the
-		/// leapfrog bound of 4).
+		/// Object sources (Sources tab): the flat list of generated point-source elements that are within the
+		/// canvas, one entry per element. Uploads one table per <see cref="SourceElement"/> property (see the
+		/// <c>apply_object_sources</c> kernel comment for the layout) and binds the two
+		/// <c>apply_object_sources</c> kernels. The frequency table (<paramref name="frequencyBuffer"/>, indexed
+		/// by level) is shared with the image sources since both use the same level-to-frequency scale. The cycle
+		/// anchors start at 0 and every source gets a non-zero xorshift32 seed.
 		/// </summary>
-		private static int ComputeSubSteps(float maxC2)
+		private void BuildObjectSourceKernels(List<SourceElement> objectSources, IntPtr frequencyBuffer)
 		{
-			if (maxC2 <= 0f)
+			int n = _objSourceCount;
+			int[] index = new int[n], level = new int[n], mode = new int[n], pulseShape = new int[n];
+			int[] onWidth = new int[n], offWidth = new int[n], detachStep = new int[n];
+			int[] offWidthBase = new int[n], randomizeOffWidthAmount = new int[n], rngState = new int[n];
+			float[] amplitude = new float[n], phase = new float[n], cycleAnchor = new float[n];
+			// a local, host-side RNG just to seed each element's on-GPU xorshift32 generator - xorshift needs a
+			// nonzero starting state, so 0 is never allowed
+			Random seedRng = new Random();
+			for (int i = 0; i < n; i++)
 			{
-				return 1;
+				SourceElement source = objectSources[i];
+				index[i] = (source.PosY + 1) * _stride + source.PosX + 1;
+				level[i] = source.Level;
+				amplitude[i] = (float)source.Amplitude;
+				phase[i] = (float)source.PhaseRad;
+				mode[i] = source.Mode == SourceMode.Pulsed ? 1 : 0;
+				pulseShape[i] = source.PulseShape == SourcePulseShape.SmoothedSquare ? 1 : 0;
+				onWidth[i] = source.OnWidthCycles;
+				offWidth[i] = source.OffWidthCycles;
+				detachStep[i] = source.DetachAfterStep;
+				offWidthBase[i] = source.OffWidthBase;
+				randomizeOffWidthAmount[i] = source.RandomizeOffWidthAmount;
+				// xorshift32 never leaves state 0, so a zero seed would make the off-width constant.
+				int seed = seedRng.Next(int.MinValue, int.MaxValue);
+				rngState[i] = seed == 0 ? 1 : seed;
 			}
-			// 10.666666984558105 is (double)10.666667f, i.e. the CPU engine's FourthOrderLambdaMax.
-			double steps = Math.Ceiling(Math.Sqrt(maxC2 * 10.666666984558105 / 2.0));
-			return Math.Max(1, (int)Math.Round(steps));
+			// Buffer arguments by kernel argument index; 0 is the field (per kernel instance), 11 the time
+			// (per launch) and 12 the count (scalar), see the apply_object_sources signature.
+			IntPtr[] buffers = new IntPtr[17];
+			buffers[1] = CreateBuffer(index, _scene);
+			buffers[2] = CreateBuffer(level, _scene);
+			buffers[3] = CreateBuffer(amplitude, _scene);
+			buffers[4] = CreateBuffer(phase, _scene);
+			buffers[5] = CreateBuffer(mode, _scene);
+			buffers[6] = CreateBuffer(pulseShape, _scene);
+			buffers[7] = CreateBuffer(onWidth, _scene);
+			// the off-width currently in effect for each element, in cycles; read-write on the GPU (see
+			// apply_object_sources) since an element with RandomizeOffWidthAmount > 0 redraws it there each time it
+			// completes a cycle
+			buffers[8] = CreateBuffer(offWidth, _scene);
+			// "detach source": the step at which each element stops driving the field (releasing its hold on it), or -1 to never
+			buffers[9] = CreateBuffer(detachStep, _scene);
+			buffers[10] = frequencyBuffer;
+			// 13-16 were appended at the end rather than renumbering 0-12, so every SetMem/SetInt call (and the
+			// per-launch SetFloat for t at index 11 in AdvanceOneStep) kept its existing, already-correct index.
+			// Runtime state for off-width re-randomization (see SourceElement.RandomizeOffWidthAmount): the
+			// un-randomized anchor each redraw is centered on, the per-element +/- spread (0 = never redraw), the
+			// cycle-clock value at which each element's current off+on cycle started, and a per-element xorshift32
+			// PRNG seed (kernel-side reinterpreted as uint - only the entropy bits matter, not signedness)
+			buffers[13] = CreateBuffer(offWidthBase, _scene);
+			buffers[14] = CreateBuffer(randomizeOffWidthAmount, _scene);
+			buffers[15] = CreateBuffer(cycleAnchor, _scene);
+			buffers[16] = CreateBuffer(rngState, _scene);
+			for (int k = 0; k <= 1; k++)
+			{
+				IntPtr kernel = _objSourceKernel[k] = CreateKernel(_scene, "apply_object_sources");
+				SetMem(kernel, 0U, _field[k]);
+				for (uint a = 1; a < buffers.Length; a++)
+				{
+					if (buffers[a] != IntPtr.Zero)
+					{
+						SetMem(kernel, a, buffers[a]);
+					}
+				}
+				SetInt(kernel, 12U, n);
+			}
 		}
 
 		/// <summary>
 		/// OpenCL source of the simulation program: <c>wave_step</c>, <c>apply_sources</c> and
 		/// <c>apply_object_sources</c>, each a GPU transcription of the corresponding <see cref="WaveSimulator"/>
-		/// routine. The stencil is chosen at compile time through the <c>USE_4TH_ORDER</c> define.
+		/// routine. <paramref name="use4thOrderLaplacian"/> selects, at compile time (a <c>#define</c>, not a
+		/// runtime branch), which form of the Laplacian <c>wave_step</c> uses - see the class summary and
+		/// <see cref="WaveSimulator"/>'s <c>UpdateField</c>, whose CPU-side stencils and boundary logic this mirrors
+		/// exactly. <c>wave_step</c>'s <c>c2Scale</c> argument is the sub-stepping scale (see the class summary),
+		/// and its <c>intensityAlpha</c> argument is the intensity's exponential-average decay factor - both are
+		/// runtime kernel arguments rather than a <c>#define</c>, so they need no text formatting/locale handling
+		/// here. The only value spliced into the text is <see cref="SourceElement.DetachRampSteps"/>, an integer,
+		/// which formats the same in every locale; floats are deliberately never spliced.
 		/// </summary>
 		private static string KernelSource(bool use4thOrderLaplacian)
 		{
@@ -428,6 +414,9 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("    float uc = u[i];");
 			source.AppendLine("    float lap;");
 			source.AppendLine("#if USE_4TH_ORDER");
+			// the 4th order 5-point "cross" stencil (reaches 2 cells away along x and along y), only where the domain
+			// has that much room - the outermost ring (x = 0, x = w - 1, y = 0, y = h - 1) falls back to the 3x3
+			// kernel below, the same boundary rule as WaveSimulator.UpdateField on the CPU
 			source.AppendLine("    if (x >= 1 && x <= w - 2 && y >= 1 && y <= h - 2) {");
 			source.AppendLine("        lap = (-1.0f / 12.0f) * (u[i - 2] + u[i + 2] + u[i - 2 * stride] + u[i + 2 * stride])");
 			source.AppendLine("            + (4.0f / 3.0f) * (u[i - 1] + u[i + 1] + u[i - stride] + u[i + stride])");
@@ -442,6 +431,8 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("#endif");
 			source.AppendLine("    float nv = uc + (uc - up[i]) * d[i] + lap * c2[i] * c2Scale;");
 			source.AppendLine("    up[i] = nv;");
+			// two cascaded one-pole stages, blended (0.5f - see WaveSimulator.IntensityBlend, CPU engine) into what is
+			// read back/probed (intenOut) instead of using the full 2-stage cascade outright - see the class summary
 			source.AppendLine("    if (track != 0) {");
 			source.AppendLine("        float s1 = inten1[i] * intensityAlpha + nv * nv * (1.0f - intensityAlpha);");
 			source.AppendLine("        inten1[i] = s1;");
@@ -464,7 +455,10 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("    u[p] = u[p] * 0.9f + sin(freq[level[k]] * t) * amp * 0.1f;");
 			source.AppendLine("}");
 			source.AppendLine();
-			// xorshift32: the per-source random generator for randomized off-widths (state must never be 0).
+			// xorshift32: OpenCL has no built-in RNG, so object sources that re-randomize their off-width (see
+			// SourceElement.RandomizeOffWidthAmount) carry their own per-element state (rngState, seeded host-side,
+			// nonzero) through this. Matches WaveSimulator's use of SourceSettings.RandomInt only in spirit (a uniform
+			// draw in [-amount, amount]), not bit-for-bit - the two engines are not expected to reproduce each other.
 			source.AppendLine("inline uint xorshift32(uint x)");
 			source.AppendLine("{");
 			source.AppendLine("    x ^= x << 13;");
@@ -473,18 +467,28 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("    return x;");
 			source.AppendLine("}");
 			source.AppendLine();
-			// apply_object_sources: soft-blends the object sources into the field, one work item per source k < n.
+			// apply_object_sources (Sources tab): soft-blends the object sources into the field, one element per
+			// work item k < n, same math as WaveSimulator.ApplySources/ComputePulsePosition/PulseEnvelope on the CPU.
 			// All per-source tables are indexed by k:
 			//   idx, level, amp, phase       cell index, frequency level (into freq), amplitude, phase (radians)
-			//   mode (0 continuous/1 pulsed), pulseShape (0 Gaussian/1 smoothed square), onWidth (cycles)
-			//   offWidth                     off-width in effect; rewritten here when it is randomized
-			//   detachStep                   step after which the source fades out linearly over 30 steps (-1 = never);
-			//                                work items past the fade return without writing
+			//   mode                         0 = continuous (envelope always 1), 1 = pulsed (Gaussian or smoothed-square
+			//                                envelope, "off" preceding "on" within each onWidth/offWidth cycle of the
+			//                                element's own frequency)
+			//   pulseShape (0 Gaussian/1 smoothed square), onWidth (cycles)
+			//   offWidth                     off-width in effect; read-write: for an element with
+			//                                offWidthRandomizeAmount[k] > 0 this kernel redraws it (uniformly within
+			//                                +/- offWidthRandomizeAmount of offWidthBase) every time that element
+			//                                completes a full off+on cycle, advancing its own cycleAnchor[k] to mark
+			//                                where the new cycle started
+			//   detachStep                   step after which the source fades out linearly over
+			//                                SourceElement.DetachRampSteps steps (-1 = never); work items past the
+			//                                fade return without writing
 			//   offWidthBase ± offWidthRandomizeAmount   range of a randomized off-width (amount <= 0 = fixed)
 			//   cycleAnchor, rngState        kernel-owned state for the randomized mode: start (cycles) of the
-			//                                current period and the xorshift32 state
-			// The envelope logic is WaveSimulator.ComputePulsePosition + PulseEnvelope; the result is
-			//   u[idx] = 0.9·u + 0.1·sin(phase + f·t)·amp·envelope·detachFade.
+			//                                current period and the xorshift32 state - so, unlike the other
+			//                                object-source buffers, offWidth/cycleAnchor/rngState are genuinely
+			//                                mutated by the GPU across steps
+			// The result is u[idx] = 0.9·u + 0.1·sin(phase + f·t)·amp·envelope·detachFade.
 			source.AppendLine("__kernel void apply_object_sources(__global float* u, __global const int* idx, __global const int* level,");
 			source.AppendLine("                                   __global const float* amp, __global const float* phase, __global const int* mode,");
 			source.AppendLine("                                   __global const int* pulseShape, __global const int* onWidth, __global int* offWidth,");
@@ -495,12 +499,16 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("{");
 			source.AppendLine("    int k = get_global_id(0);");
 			source.AppendLine("    if (k >= n) return;");
+			// "detach source": once the run reaches the element's detach step, its drive is faded out linearly over the
+			// next DetachRampSteps steps (rather than cut instantly), then it stops driving the field entirely (not even
+			// writing towards 0) so it releases its hold and stops diffracting waves through that point - matching
+			// WaveSimulator.ApplySources exactly (SourceElement.DetachRampSteps is the single shared constant, spliced
+			// into the kernel text).
 			source.AppendLine("    float detachFade = 1.0f;");
 			source.AppendLine("    if (detachStep[k] >= 0) {");
-			// The 30 below is SourceElement.DetachRampSteps, spliced into the kernel text.
 			source.AppendLine("        float stepsSinceDetach = t - (float)detachStep[k];");
-			source.AppendLine("        if (stepsSinceDetach >= " + 30.ToString() + ".0f) return;");
-			source.AppendLine("        if (stepsSinceDetach > 0.0f) detachFade = 1.0f - stepsSinceDetach / " + 30.ToString() + ".0f;");
+			source.AppendLine("        if (stepsSinceDetach >= " + SourceElement.DetachRampSteps.ToString() + ".0f) return;");
+			source.AppendLine("        if (stepsSinceDetach > 0.0f) detachFade = 1.0f - stepsSinceDetach / " + SourceElement.DetachRampSteps.ToString() + ".0f;");
 			source.AppendLine("    }");
 			source.AppendLine("    float f = freq[level[k]];");
 			source.AppendLine("    float envelope = 1.0f;");
@@ -512,6 +520,9 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("            float pos;");
 			source.AppendLine("            int isFirstCycle;");
 			source.AppendLine("            if (offWidthRandomizeAmount[k] <= 0) {");
+			// shifted so t = 0 lands at pos = ow (the start of the "on" span), not pos = 0 (the start of an "off" span) -
+			// a single/non-randomized source starting silent for its off-width was never the intent (see
+			// WaveSimulator.ComputePulsePosition, kept in exact agreement with this kernel)
 			source.AppendLine("                float adjustedClock = cycleClock + (float)ow;");
 			source.AppendLine("                isFirstCycle = (floor(adjustedClock / (float)period) == 0.0f) ? 1 : 0;");
 			source.AppendLine("                pos = adjustedClock - period * floor(adjustedClock / (float)period);");
@@ -533,6 +544,8 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("                    guard++;");
 			source.AppendLine("                }");
 			source.AppendLine("                if (pos < 0.0f) pos = 0.0f;");
+			// the anchor only ever advances (above) once a cycle has actually completed, so it still reading its initial
+			// 0 means no cycle has completed yet - we are still in the element's very first (off-first) cycle
 			source.AppendLine("                isFirstCycle = (cycleAnchor[k] == 0.0f) ? 1 : 0;");
 			source.AppendLine("            }");
 			source.AppendLine("            if (pulseShape[k] == 0) {");
@@ -551,6 +564,13 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("                // sits at (very close to) 0 for nearly all of it instead of lingering. The math is");
 			source.AppendLine("                // exactly the on-first formula, fed a coordinate shifted so the on span starts at 0.");
 			source.AppendLine("                float shifted = pos - (float)ow;");
+			// wrapping shifted forward by a full period makes it continue the falling tail of the on-span that JUST
+			// ended - correct from the second off-span onward, where that on-span really happened. The very first
+			// off-span (isFirstCycle) has no real preceding on-emission to continue from, so wrapping there would
+			// fabricate one: pos = 0 would land exactly on that phantom falling edge and start the run at envelope ~0.5
+			// instead of ~0, emitting a spurious one-cycle "blip" before the source actually goes quiet. Left un-wrapped
+			// (deeply negative) instead, dRise/dFall below correctly place it far from both edges, keeping the envelope
+			// at (very close to) 0 until the real rising edge - matching WaveSimulator.PulseEnvelope exactly.
 			source.AppendLine("                if (shifted < 0.0f && !isFirstCycle) shifted += (float)period;");
 			source.AppendLine("                float edgeWidth = 0.35f;");
 			source.AppendLine("                float dFall = shifted - (float)onWidth[k];");
@@ -569,40 +589,60 @@ namespace _2D_wave_sim_V01
 			return source.ToString();
 		}
 
-		/// <summary>Creates a read/write device buffer the size of <paramref name="data"/> and uploads it (blocking). The caller owns the handle and must release it with <see cref="ReleaseMem"/>.</summary>
-		private IntPtr CreateFloatBuffer(float[] data)
+		/// <summary>Compiles <paramref name="source"/> for <see cref="_device"/>; <paramref name="what"/> names the program in the error message.</summary>
+		/// <exception cref="InvalidOperationException">The build failed; the message carries the OpenCL error and the build log.</exception>
+		private IntPtr BuildProgram(string source, string what)
 		{
-			IntPtr size = new IntPtr((long)data.Length * 4L);
 			int err = 0;
-			IntPtr buffer = OpenClApi.clCreateBuffer(this._context, OpenClApi.MemReadWrite, size, IntPtr.Zero, ref err);
+			IntPtr program = OpenClApi.clCreateProgramWithSource(_context, 1U, new[] { source }, null, ref err);
+			OpenClApi.Check(err, "clCreateProgramWithSource");
+			string buildOptions = "";
+			IntPtr[] deviceIds = { _device.DeviceId };
+			err = OpenClApi.clBuildProgram(program, 1U, deviceIds, ref buildOptions, IntPtr.Zero, IntPtr.Zero);
+			if (err != 0)
+			{
+				string buildLog = OpenClApi.BuildLog(program, _device.DeviceId);
+				OpenClApi.clReleaseProgram(program);
+				throw new InvalidOperationException(what + " could not be built (" + OpenClApi.ErrorName(err) + ")" + (buildLog.Length > 0 ? ": " + buildLog : ""));
+			}
+			return program;
+		}
+
+		/// <summary>Creates a read/write device buffer of <paramref name="bytes"/> bytes, registered in <paramref name="owner"/> for release.</summary>
+		private IntPtr CreateBuffer(long bytes, Resources owner)
+		{
+			int err = 0;
+			IntPtr buffer = OpenClApi.clCreateBuffer(_context, OpenClApi.MemReadWrite, new IntPtr(bytes), IntPtr.Zero, ref err);
 			OpenClApi.Check(err, "clCreateBuffer");
-			OpenClApi.Check(OpenClApi.clEnqueueWriteBufferFloat(this._queue, buffer, 1U, IntPtr.Zero, size, data, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueWriteBuffer");
+			owner.Buffers.Add(buffer);
 			return buffer;
 		}
 
-		/// <summary>Int counterpart of <see cref="CreateFloatBuffer"/>.</summary>
-		private IntPtr CreateIntBuffer(int[] data)
+		/// <summary>Creates a device buffer the size of <paramref name="data"/>, uploads it (blocking) and registers it in <paramref name="owner"/>.</summary>
+		private IntPtr CreateBuffer(float[] data, Resources owner)
 		{
 			IntPtr size = new IntPtr((long)data.Length * 4L);
-			int err = 0;
-			IntPtr buffer = OpenClApi.clCreateBuffer(this._context, OpenClApi.MemReadWrite, size, IntPtr.Zero, ref err);
-			OpenClApi.Check(err, "clCreateBuffer");
-			OpenClApi.Check(OpenClApi.clEnqueueWriteBufferInt(this._queue, buffer, 1U, IntPtr.Zero, size, data, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueWriteBuffer");
+			IntPtr buffer = CreateBuffer(size.ToInt64(), owner);
+			OpenClApi.Check(OpenClApi.clEnqueueWriteBufferFloat(_queue, buffer, 1U, IntPtr.Zero, size, data, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueWriteBuffer");
 			return buffer;
 		}
 
-		/// <summary>Creates a kernel of the simulation program (<see cref="_program"/>).</summary>
-		private IntPtr CreateKernel(string name)
+		/// <summary>Int counterpart of <see cref="CreateBuffer(float[], Resources)"/>.</summary>
+		private IntPtr CreateBuffer(int[] data, Resources owner)
 		{
-			return this.CreateKernelFrom(this._program, name);
+			IntPtr size = new IntPtr((long)data.Length * 4L);
+			IntPtr buffer = CreateBuffer(size.ToInt64(), owner);
+			OpenClApi.Check(OpenClApi.clEnqueueWriteBufferInt(_queue, buffer, 1U, IntPtr.Zero, size, data, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueWriteBuffer");
+			return buffer;
 		}
 
-		/// <summary>Creates the kernel <paramref name="name"/> from <paramref name="program"/>; the caller releases it with <see cref="ReleaseKernel"/>.</summary>
-		private IntPtr CreateKernelFrom(IntPtr program, string name)
+		/// <summary>Creates the kernel <paramref name="name"/> from <paramref name="owner"/>'s program and registers it there for release.</summary>
+		private static IntPtr CreateKernel(Resources owner, string name)
 		{
 			int err = 0;
-			IntPtr kernel = OpenClApi.clCreateKernel(program, ref name, ref err);
+			IntPtr kernel = OpenClApi.clCreateKernel(owner.Program, ref name, ref err);
 			OpenClApi.Check(err, "clCreateKernel " + name);
+			owner.Kernels.Add(kernel);
 			return kernel;
 		}
 
@@ -624,62 +664,39 @@ namespace _2D_wave_sim_V01
 			OpenClApi.Check(OpenClApi.clSetKernelArgFloat(kernel, index, new IntPtr(4), ref value), "clSetKernelArg");
 		}
 
-		/// <summary>Engine label for the UI/result: "GPU: &lt;device name&gt; (OpenCL)".</summary>
-		public string Description
+		/// <summary>Enqueues <paramref name="kernel"/> with the given global work size; <paramref name="what"/> names the launch in the error message.</summary>
+		private void Enqueue(IntPtr kernel, IntPtr[] globalSize, string what)
 		{
-			get
-			{
-				return this._description;
-			}
+			OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(_queue, kernel, (uint)globalSize.Length, null, globalSize, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (" + what + ")");
 		}
+
+		/// <summary>Blocking device-to-host copy of <paramref name="target"/>.Length floats from <paramref name="buffer"/>; resets the clFinish counter since the read drains the queue.</summary>
+		private void ReadBack(IntPtr buffer, float[] target, string what)
+		{
+			OpenClApi.Check(OpenClApi.clEnqueueReadBufferFloat(_queue, buffer, 1U, IntPtr.Zero, new IntPtr((long)target.Length * 4L), target, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueReadBuffer (" + what + ")");
+			_sinceFinish = 0;
+		}
+
+		/// <summary>Engine label for the UI/result: "GPU: &lt;device name&gt; (OpenCL)".</summary>
+		public string Description { get; }
 
 		/// <summary>Scene width in cells (canvas pixels), excluding the padding.</summary>
-		public int Width
-		{
-			get
-			{
-				return this._width;
-			}
-		}
+		public int Width => _width;
 
 		/// <summary>Scene height in cells (canvas pixels), excluding the padding.</summary>
-		public int Height
-		{
-			get
-			{
-				return this._height;
-			}
-		}
+		public int Height => _height;
 
 		/// <summary>Row pitch of the padded buffers: <see cref="Width"/> + 2.</summary>
-		public int Stride
-		{
-			get
-			{
-				return this._stride;
-			}
-		}
+		public int Stride => _stride;
 
 		/// <summary>
 		/// Host copy of the field (padded layout). Unlike the CPU engine the array instance never changes, but
 		/// its contents are only as fresh as the last <see cref="PrepareFrame"/> with <c>needField</c>.
 		/// </summary>
-		public float[] FieldData
-		{
-			get
-			{
-				return this._hostField;
-			}
-		}
+		public float[] FieldData => _hostField;
 
 		/// <summary>Host copy of the scaled intensity (padded layout) as of the last <see cref="PrepareFrame"/> with <c>needIntensity</c>; null when the engine was created without intensity tracking.</summary>
-		public float[] IntensityData
-		{
-			get
-			{
-				return this._hostIntensity;
-			}
-		}
+		public float[] IntensityData => _hostIntensity;
 
 		/// <summary>
 		/// Enqueues one simulation step (nothing is waited for): the source kernels bound to the current field
@@ -688,64 +705,60 @@ namespace _2D_wave_sim_V01
 		/// (the leapfrog "previous" field). The track flag is set so only the last sub-step updates the intensity
 		/// (with a single sub-step the flag keeps the value bound in <see cref="Build"/>). Afterwards
 		/// <see cref="_current"/> points at the newest buffer and <see cref="_time"/> advances by one step.
-		/// Every 16 steps the queue is drained with <c>clFinish</c> so unbounded asynchronous enqueueing cannot
-		/// exhaust the driver.
+		/// Every <see cref="FinishInterval"/> steps the queue is drained with <c>clFinish</c>, so that the commands
+		/// do not pile up and errors show up in time.
 		/// </summary>
 		public void AdvanceOneStep()
 		{
-			int current = this._current;
-			if (this._sourceCount > 0)
+			int current = _current;
+			if (_sourceCount > 0)
 			{
-				GpuWaveSimulator.SetFloat(this._sourceKernel[current], 4U, (float)this._time);
-				OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._sourceKernel[current], 1U, null, this._grid1D, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (sources)");
+				SetFloat(_sourceKernel[current], 4U, (float)_time);
+				Enqueue(_sourceKernel[current], _grid1D, "sources");
 			}
-			if (this._objSourceCount > 0)
+			if (_objSourceCount > 0)
 			{
-				GpuWaveSimulator.SetFloat(this._objSourceKernel[current], 11U, (float)this._time);
-				OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._objSourceKernel[current], 1U, null, this._objGrid1D, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (object sources)");
+				SetFloat(_objSourceKernel[current], 11U, (float)_time);
+				Enqueue(_objSourceKernel[current], _objGrid1D, "object sources");
 			}
-			if (this._subSteps <= 1)
+			// _subSteps smaller launches (see the class summary); only the last one updates the intensity buffer, so
+			// its own exponential averaging still runs once per AdvanceOneStep call, not _subSteps times. On the
+			// single-launch path the "track" argument keeps the value bound once, at Build time.
+			for (int subStep = 1; subStep <= _subSteps; subStep++)
 			{
-				OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._stepKernel[current], 2U, null, this._grid2D, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (step)");
+				if (_subSteps > 1)
+				{
+					SetInt(_stepKernel[current], 8U, subStep == _subSteps && _track ? 1 : 0);
+				}
+				Enqueue(_stepKernel[current], _grid2D, "step");
 				current = 1 - current;
 			}
-			else
+			// the buffer that received the new values is now the current field
+			_current = current;
+			_time += 1.0;
+			// now and then wait for the card, so that the commands do not pile up and errors show up in time
+			if (++_sinceFinish >= FinishInterval)
 			{
-				for (int i = 1; i <= this._subSteps; i++)
-				{
-					int trackThisSubStep = ((i == this._subSteps && this._track) ? 1 : 0);
-					GpuWaveSimulator.SetInt(this._stepKernel[current], 8U, trackThisSubStep);
-					OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._stepKernel[current], 2U, null, this._grid2D, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (step)");
-					current = 1 - current;
-				}
-			}
-			this._current = current;
-			this._time += 1.0;
-			this._sinceFinish++;
-			if (this._sinceFinish >= 16)
-			{
-				this._sinceFinish = 0;
-				OpenClApi.Check(OpenClApi.clFinish(this._queue), "clFinish");
+				_sinceFinish = 0;
+				OpenClApi.Check(OpenClApi.clFinish(_queue), "clFinish");
 			}
 		}
 
 		/// <summary>
 		/// Blocking device-to-host copies of the newest field into <see cref="FieldData"/> and/or of the intensity
 		/// into <see cref="IntensityData"/> (the latter only when tracked). Called by the runner before rendering,
-		/// and from the UI thread while paused. As the reads drain the queue, the clFinish counter is reset.
+		/// and from the UI thread while paused.
 		/// </summary>
 		public void PrepareFrame(bool needField, bool needIntensity)
 		{
-			IntPtr size = new IntPtr((long)this._cells * 4L);
 			if (needField)
 			{
-				OpenClApi.Check(OpenClApi.clEnqueueReadBufferFloat(this._queue, this._field[this._current], 1U, IntPtr.Zero, size, this._hostField, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueReadBuffer");
+				ReadBack(_field[_current], _hostField, "field");
 			}
-			if (needIntensity && this._track)
+			if (needIntensity && _track)
 			{
-				OpenClApi.Check(OpenClApi.clEnqueueReadBufferFloat(this._queue, this._intensityOutBuffer, 1U, IntPtr.Zero, size, this._hostIntensity, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueReadBuffer");
+				ReadBack(_intensityOutBuffer, _hostIntensity, "intensity");
 			}
-			this._sinceFinish = 0;
 		}
 
 		/// <summary>
@@ -756,7 +769,8 @@ namespace _2D_wave_sim_V01
 		private static string ProbeKernelSource()
 		{
 			StringBuilder source = new StringBuilder();
-			// probe_sample: one work item per probe p < n (n = all probes, line probes included).
+			// probe_sample (point probes): the value of the pixel of every probe, into row "row" of the history;
+			// one work item per probe p < n (n = all probes, line probes included).
 			//   u, inten   newest field and the intensity output, padded layout
 			//   pix        pixel index lists of all point probes concatenated
 			//   info       4 ints per probe: [start in pix, count, 1 = sample inten instead of u, 1 = divide by count];
@@ -781,9 +795,12 @@ namespace _2D_wave_sim_V01
 			source.AppendLine("    hist[row * n + p] = s;");
 			source.AppendLine("}");
 			source.AppendLine();
-			// profile_accumulate: one work item per line-probe pixel k < n (all line probes flattened):
-			//   ppix[k]  padded cell index; pmode[k] 0 = field, 1 = intensity, 2 = integrated intensity
+			// profile_accumulate (line probes): one work item per line-probe pixel k < n (all line probes flattened):
+			//   ppix[k]  padded cell index; pmode[k] 0 = field, 1 = intensity, 2 = intensity totals over the steps
 			//   total[k] += inten[ppix[k]] for mode 2 only, and only once step >= pStartStep[k] when pStartFlag[k] is set
+			// pStartFlag/pStartStep are the probe's "start recording at step #" (0/1 and the step): before that step
+			// the total is left at zero, so intensity that arrived earlier is purged rather than baked into the total
+			// once recording starts
 			source.AppendLine("__kernel void profile_accumulate(__global const float* inten, __global const int* ppix,");
 			source.AppendLine("                                 __global const int* pmode, __global const int* pStartFlag, __global const int* pStartStep,");
 			source.AppendLine("                                 __global float* total, const int step, const int n)");
@@ -813,63 +830,56 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Installs the probe layout: builds the probe program (<see cref="ProbeKernelSource"/>), then uploads the
-		/// pixel tables and creates the kernels for point probes (<see cref="SetUpSeriesProbes"/>) and line probes
-		/// (<see cref="SetUpProfileProbes"/>). A null or empty sampler installs nothing and leaves a previously
-		/// installed one in place. Meant to be called once per engine: a second call overwrites the probe handles
-		/// without releasing the earlier ones.
+		/// Installs the probe layout, replacing any previously installed one (whose device resources are released
+		/// first): builds the probe program (<see cref="ProbeKernelSource"/>), then uploads the pixel tables and
+		/// creates the kernels for point probes (<see cref="SetUpSeriesProbes"/>) and line probes
+		/// (<see cref="SetUpProfileProbes"/>). A null or empty sampler just clears the probes.
 		/// </summary>
 		/// <exception cref="InvalidOperationException">The sampler needs intensity but this engine does not track it, or the probe program / buffers could not be created (inner exception has the OpenCL error).</exception>
 		public void SetProbes(ProbeSampler sampler)
 		{
+			_probes.Release();
+			_probeSampler = null;
+			_probeValues.Clear();
+			_probeRow = 0;
+			_profileIntegrates = false;
 			if (sampler == null || sampler.Count == 0)
 			{
 				return;
 			}
+			if (sampler.NeedsIntensity && !_track)
+			{
+				throw new InvalidOperationException("the intensity is not tracked");
+			}
 			try
 			{
-				if (sampler.NeedsIntensity && !this._track)
-				{
-					throw new InvalidOperationException("the intensity is not tracked");
-				}
-				int err = 0;
-				IntPtr[] deviceIds = new IntPtr[] { this._deviceId };
-				string[] sources = new string[] { GpuWaveSimulator.ProbeKernelSource() };
-				this._probeProgram = OpenClApi.clCreateProgramWithSource(this._context, 1U, sources, null, ref err);
-				OpenClApi.Check(err, "clCreateProgramWithSource (probes)");
-				string buildOptions = "";
-				err = OpenClApi.clBuildProgram(this._probeProgram, 1U, deviceIds, ref buildOptions, IntPtr.Zero, IntPtr.Zero);
-				if (err != 0)
-				{
-					string buildLog = OpenClApi.BuildLog(this._probeProgram, this._deviceId);
-					throw new InvalidOperationException("the probe program for the GPU could not be built (" + OpenClApi.ErrorName(err) + ")" + ((buildLog.Length > 0) ? (": " + buildLog) : ""));
-				}
+				_probes.Program = BuildProgram(ProbeKernelSource(), "the probe program for the GPU");
 				if (sampler.HasSeries)
 				{
-					this.SetUpSeriesProbes(sampler);
+					SetUpSeriesProbes(sampler);
 				}
 				if (sampler.HasProfiles)
 				{
-					this.SetUpProfileProbes(sampler);
+					SetUpProfileProbes(sampler);
 				}
-				this._probeSampler = sampler;
+				_probeSampler = sampler;
 			}
 			catch (Exception ex)
 			{
+				_probes.Release();
 				throw new InvalidOperationException("the probes could not be set up on the GPU: " + ex.Message, ex);
 			}
 		}
 
 		/// <summary>
-		/// Packs the pixel lists of all point (non-profile) probes into <see cref="_pixelBuffer"/>, describes each
-		/// probe in <see cref="_infoBuffer"/> (point probes average their pixels, so a single-pixel probe yields
-		/// that pixel's value like <see cref="ProbeSampler.Compute"/>), allocates the <see cref="ProbeRows"/>-row
-		/// history buffer and creates the two <c>probe_sample</c> kernels. Resets the host-side sample lists.
+		/// Packs the pixel lists of all point (non-profile) probes into one buffer, describes each probe in an info
+		/// table (point probes average their pixels, so a single-pixel probe yields that pixel's value like
+		/// <see cref="ProbeSampler.Compute"/>), allocates the <see cref="ProbeRows"/>-row history buffer and creates
+		/// the two <c>probe_sample</c> kernels.
 		/// </summary>
 		private void SetUpSeriesProbes(ProbeSampler sampler)
 		{
 			int count = sampler.Count;
-			int err = 0;
 			int totalPixels = 0;
 			for (int i = 0; i < count; i++)
 			{
@@ -889,35 +899,31 @@ namespace _2D_wave_sim_V01
 					Array.Copy(probePixels, 0, pixels, offset, probePixels.Length);
 					info[i * 4] = offset;
 					info[i * 4 + 1] = probePixels.Length;
-					info[i * 4 + 2] = (sampler.UseIntensity[i] ? 1 : 0);
+					info[i * 4 + 2] = sampler.UseIntensity[i] ? 1 : 0;
 					info[i * 4 + 3] = 1;
 					offset += probePixels.Length;
 				}
 			}
-			this._pixelBuffer = this.CreateIntBuffer(pixels);
-			this._infoBuffer = this.CreateIntBuffer(info);
+			IntPtr pixelBuffer = CreateBuffer(pixels, _probes);
+			IntPtr infoBuffer = CreateBuffer(info, _probes);
 			// Never uploaded: the kernel writes every row before ReadProbeHistory reads it.
-			IntPtr historySize = new IntPtr((long)GpuWaveSimulator.ProbeRows * count * 4L);
-			this._historyBuffer = OpenClApi.clCreateBuffer(this._context, OpenClApi.MemReadWrite, historySize, IntPtr.Zero, ref err);
-			OpenClApi.Check(err, "clCreateBuffer (probes)");
+			_historyBuffer = CreateBuffer((long)ProbeRows * count * 4L, _probes);
 			for (int k = 0; k <= 1; k++)
 			{
-				this._probeKernel[k] = this.CreateKernelFrom(this._probeProgram, "probe_sample");
-				GpuWaveSimulator.SetMem(this._probeKernel[k], 0U, this._field[k]);
-				GpuWaveSimulator.SetMem(this._probeKernel[k], 1U, this._intensityOutBuffer);
-				GpuWaveSimulator.SetMem(this._probeKernel[k], 2U, this._pixelBuffer);
-				GpuWaveSimulator.SetMem(this._probeKernel[k], 3U, this._infoBuffer);
-				GpuWaveSimulator.SetMem(this._probeKernel[k], 4U, this._historyBuffer);
-				GpuWaveSimulator.SetInt(this._probeKernel[k], 5U, 0);
-				GpuWaveSimulator.SetInt(this._probeKernel[k], 6U, count);
+				IntPtr kernel = _probeKernel[k] = CreateKernel(_probes, "probe_sample");
+				SetMem(kernel, 0U, _field[k]);
+				SetMem(kernel, 1U, _intensityOutBuffer);
+				SetMem(kernel, 2U, pixelBuffer);
+				SetMem(kernel, 3U, infoBuffer);
+				SetMem(kernel, 4U, _historyBuffer);
+				SetInt(kernel, 5U, 0);
+				SetInt(kernel, 6U, count);
 			}
-			this._probeGrid[0] = new IntPtr(count);
-			this._probeValues.Clear();
+			_probeGrid[0] = new IntPtr(count);
 			for (int i = 0; i < count; i++)
 			{
-				this._probeValues.Add(new List<float>());
+				_probeValues.Add(new List<float>());
 			}
-			this._probeRow = 0;
 		}
 
 		/// <summary>
@@ -941,62 +947,62 @@ namespace _2D_wave_sim_V01
 			int[] modes = new int[totalPixels];
 			int[] startFlags = new int[totalPixels];
 			int[] startSteps = new int[totalPixels];
-			this._profileStart = new int[count];
-			this._profileIntegrates = false;
+			_profileStart = new int[count];
 			int offset = 0;
 			for (int i = 0; i < count; i++)
 			{
-				this._profileStart[i] = offset;
-				if (sampler.IsProfile[i])
+				_profileStart[i] = offset;
+				if (!sampler.IsProfile[i])
 				{
-					int[] probePixels = sampler.Pixels[i];
-					int mode = (sampler.Integrate[i] ? 2 : (sampler.UseIntensity[i] ? 1 : 0));
-					if (mode == 2)
-					{
-						this._profileIntegrates = true;
-					}
-					int startFlag = (sampler.UseStartAfterStep[i] ? 1 : 0);
-					int startStep = sampler.StartAfterStep[i];
-					for (int k = 0; k < probePixels.Length; k++)
-					{
-						pixels[offset + k] = probePixels[k];
-						modes[offset + k] = mode;
-						startFlags[offset + k] = startFlag;
-						startSteps[offset + k] = startStep;
-					}
-					offset += probePixels.Length;
+					continue;
 				}
+				int[] probePixels = sampler.Pixels[i];
+				int mode = sampler.Integrate[i] ? 2 : (sampler.UseIntensity[i] ? 1 : 0);
+				if (mode == 2)
+				{
+					_profileIntegrates = true;
+				}
+				int startFlag = sampler.UseStartAfterStep[i] ? 1 : 0;
+				int startStep = sampler.StartAfterStep[i];
+				for (int k = 0; k < probePixels.Length; k++)
+				{
+					pixels[offset + k] = probePixels[k];
+					modes[offset + k] = mode;
+					startFlags[offset + k] = startFlag;
+					startSteps[offset + k] = startStep;
+				}
+				offset += probePixels.Length;
 			}
-			this._profileCount = totalPixels;
-			this._profilePixelBuffer = this.CreateIntBuffer(pixels);
-			this._profileModeBuffer = this.CreateIntBuffer(modes);
-			this._profileTotalBuffer = this.CreateFloatBuffer(new float[totalPixels]);
-			this._profileOutBuffer = this.CreateFloatBuffer(new float[totalPixels]);
+			_profileCount = totalPixels;
+			IntPtr pixelBuffer = CreateBuffer(pixels, _probes);
+			IntPtr modeBuffer = CreateBuffer(modes, _probes);
+			IntPtr totalBuffer = CreateBuffer(new float[totalPixels], _probes);
+			_profileOutBuffer = CreateBuffer(new float[totalPixels], _probes);
 			for (int k = 0; k <= 1; k++)
 			{
-				this._gatherKernel[k] = this.CreateKernelFrom(this._probeProgram, "profile_gather");
-				GpuWaveSimulator.SetMem(this._gatherKernel[k], 0U, this._field[k]);
-				GpuWaveSimulator.SetMem(this._gatherKernel[k], 1U, this._intensityOutBuffer);
-				GpuWaveSimulator.SetMem(this._gatherKernel[k], 2U, this._profilePixelBuffer);
-				GpuWaveSimulator.SetMem(this._gatherKernel[k], 3U, this._profileModeBuffer);
-				GpuWaveSimulator.SetMem(this._gatherKernel[k], 4U, this._profileTotalBuffer);
-				GpuWaveSimulator.SetMem(this._gatherKernel[k], 5U, this._profileOutBuffer);
-				GpuWaveSimulator.SetInt(this._gatherKernel[k], 6U, totalPixels);
+				IntPtr kernel = _gatherKernel[k] = CreateKernel(_probes, "profile_gather");
+				SetMem(kernel, 0U, _field[k]);
+				SetMem(kernel, 1U, _intensityOutBuffer);
+				SetMem(kernel, 2U, pixelBuffer);
+				SetMem(kernel, 3U, modeBuffer);
+				SetMem(kernel, 4U, totalBuffer);
+				SetMem(kernel, 5U, _profileOutBuffer);
+				SetInt(kernel, 6U, totalPixels);
 			}
-			if (this._profileIntegrates)
+			if (_profileIntegrates)
 			{
-				this._profileStartFlagBuffer = this.CreateIntBuffer(startFlags);
-				this._profileStartStepBuffer = this.CreateIntBuffer(startSteps);
-				this._accumulateKernel = this.CreateKernelFrom(this._probeProgram, "profile_accumulate");
-				GpuWaveSimulator.SetMem(this._accumulateKernel, 0U, this._intensityOutBuffer);
-				GpuWaveSimulator.SetMem(this._accumulateKernel, 1U, this._profilePixelBuffer);
-				GpuWaveSimulator.SetMem(this._accumulateKernel, 2U, this._profileModeBuffer);
-				GpuWaveSimulator.SetMem(this._accumulateKernel, 3U, this._profileStartFlagBuffer);
-				GpuWaveSimulator.SetMem(this._accumulateKernel, 4U, this._profileStartStepBuffer);
-				GpuWaveSimulator.SetMem(this._accumulateKernel, 5U, this._profileTotalBuffer);
-				GpuWaveSimulator.SetInt(this._accumulateKernel, 7U, totalPixels);
+				IntPtr kernel = _accumulateKernel = CreateKernel(_probes, "profile_accumulate");
+				SetMem(kernel, 0U, _intensityOutBuffer);
+				SetMem(kernel, 1U, pixelBuffer);
+				SetMem(kernel, 2U, modeBuffer);
+				// "start recording at step #" for the integrated line probes: one entry per pixel (same layout as the
+				// pixel/mode buffers), so profile_accumulate can skip a pixel's contribution before its probe's start step
+				SetMem(kernel, 3U, CreateBuffer(startFlags, _probes));
+				SetMem(kernel, 4U, CreateBuffer(startSteps, _probes));
+				SetMem(kernel, 5U, totalBuffer);
+				SetInt(kernel, 7U, totalPixels);
 			}
-			this._profileGrid[0] = new IntPtr(totalPixels);
+			_profileGrid[0] = new IntPtr(totalPixels);
 		}
 
 		/// <summary>
@@ -1007,88 +1013,88 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public void SampleProbes()
 		{
-			if (this._probeSampler == null)
+			if (_probeSampler == null)
 			{
 				return;
 			}
-			int current = this._current;
-			if (this._probeSampler.HasSeries)
+			if (_probeSampler.HasSeries)
 			{
-				if (this._probeRow >= GpuWaveSimulator.ProbeRows)
+				if (_probeRow >= ProbeRows)
 				{
-					this.ReadProbeHistory();
+					ReadProbeHistory();
 				}
-				GpuWaveSimulator.SetInt(this._probeKernel[current], 5U, this._probeRow);
-				OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._probeKernel[current], 1U, null, this._probeGrid, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (probes)");
-				this._probeRow++;
+				SetInt(_probeKernel[_current], 5U, _probeRow);
+				Enqueue(_probeKernel[_current], _probeGrid, "probes");
+				_probeRow++;
 			}
-			if (this._profileIntegrates)
+			// the intensity totals of the lines that are integrated: add the intensity of this step (unless it is before
+			// that probe's "start recording at step #", in which case the kernel leaves the total at zero)
+			if (_profileIntegrates)
 			{
-				GpuWaveSimulator.SetInt(this._accumulateKernel, 6U, (int)Math.Round(this._time));
-				OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._accumulateKernel, 1U, null, this._profileGrid, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (totals)");
+				SetInt(_accumulateKernel, 6U, (int)Math.Round(_time));
+				Enqueue(_accumulateKernel, _profileGrid, "totals");
 			}
 		}
 
 		/// <summary>
 		/// Blocking download of the <see cref="_probeRow"/> rows sampled so far from <see cref="_historyBuffer"/>,
 		/// appending each row's point-probe values to <see cref="_probeValues"/> (line-probe columns are skipped)
-		/// and rewinding the row counter. No-op when no probes are set or no row is pending.
+		/// and rewinding the row counter. No-op when no row is pending.
 		/// </summary>
 		private void ReadProbeHistory()
 		{
-			if (this._probeSampler == null || this._probeRow == 0)
+			if (_probeRow == 0)
 			{
 				return;
 			}
-			int count = this._probeSampler.Count;
-			float[] history = new float[this._probeRow * count];
-			OpenClApi.Check(OpenClApi.clEnqueueReadBufferFloat(this._queue, this._historyBuffer, 1U, IntPtr.Zero, new IntPtr((long)history.Length * 4L), history, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueReadBuffer (probes)");
-			for (int row = 0; row < this._probeRow; row++)
+			int count = _probeSampler.Count;
+			float[] history = new float[_probeRow * count];
+			ReadBack(_historyBuffer, history, "probes");
+			for (int row = 0; row < _probeRow; row++)
 			{
 				for (int p = 0; p < count; p++)
 				{
-					if (!this._probeSampler.IsProfile[p])
+					if (!_probeSampler.IsProfile[p])
 					{
-						this._probeValues[p].Add(history[row * count + p]);
+						_probeValues[p].Add(history[row * count + p]);
 					}
 				}
 			}
-			this._probeRow = 0;
-			this._sinceFinish = 0;
+			_probeRow = 0;
 		}
 
 		/// <summary>Drains the pending history rows from the device, then returns and clears the point-probe values collected since the previous call.</summary>
 		/// <returns>One array per probe, one value per step (empty for line probes); an empty outer array when no sampler is set.</returns>
 		public float[][] TakeProbeSamples()
 		{
-			if (this._probeSampler == null)
+			if (_probeSampler == null)
 			{
 				return new float[0][];
 			}
-			int count = this._probeSampler.Count;
+			int count = _probeSampler.Count;
 			float[][] samples = new float[count][];
-			if (this._probeSampler.HasSeries)
+			if (_probeSampler.HasSeries)
 			{
-				this.ReadProbeHistory();
+				ReadProbeHistory();
 			}
 			for (int i = 0; i < count; i++)
 			{
-				if (this._probeSampler.IsProfile[i])
+				if (_probeSampler.IsProfile[i])
 				{
 					samples[i] = new float[0];
 				}
 				else
 				{
-					samples[i] = this._probeValues[i].ToArray();
-					this._probeValues[i].Clear();
+					samples[i] = _probeValues[i].ToArray();
+					_probeValues[i].Clear();
 				}
 			}
 			return samples;
 		}
 
 		/// <summary>
-		/// Runs <c>profile_gather</c> on the newest field and reads the flat result back (blocking), then slices it
-		/// per line probe; nothing is cleared.
+		/// Runs <c>profile_gather</c> on the newest field and reads the flat result back (blocking: this waits for
+		/// the card, so do not call it every step), then slices it per line probe; nothing is cleared.
 		/// </summary>
 		/// <returns>
 		/// One array per probe in pixel order along the line, holding the integrated intensity totals or the live
@@ -1096,28 +1102,26 @@ namespace _2D_wave_sim_V01
 		/// </returns>
 		public float[][] ReadProbeProfiles()
 		{
-			if (this._probeSampler == null)
+			if (_probeSampler == null)
 			{
 				return new float[0][];
 			}
-			int count = this._probeSampler.Count;
+			int count = _probeSampler.Count;
 			float[][] profiles = new float[count][];
-			if (!this._probeSampler.HasProfiles)
+			if (!_probeSampler.HasProfiles)
 			{
 				return profiles;
 			}
-			int current = this._current;
-			OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(this._queue, this._gatherKernel[current], 1U, null, this._profileGrid, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (profiles)");
-			float[] values = new float[this._profileCount];
-			OpenClApi.Check(OpenClApi.clEnqueueReadBufferFloat(this._queue, this._profileOutBuffer, 1U, IntPtr.Zero, new IntPtr((long)this._profileCount * 4L), values, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueReadBuffer (profiles)");
-			this._sinceFinish = 0;
+			Enqueue(_gatherKernel[_current], _profileGrid, "profiles");
+			float[] values = new float[_profileCount];
+			ReadBack(_profileOutBuffer, values, "profiles");
 			for (int i = 0; i < count; i++)
 			{
-				if (this._probeSampler.IsProfile[i])
+				if (_probeSampler.IsProfile[i])
 				{
-					int length = this._probeSampler.Pixels[i].Length;
+					int length = _probeSampler.Pixels[i].Length;
 					float[] profile = new float[length];
-					Array.Copy(values, this._profileStart[i], profile, 0, length);
+					Array.Copy(values, _profileStart[i], profile, 0, length);
 					profiles[i] = profile;
 				}
 			}
@@ -1127,134 +1131,91 @@ namespace _2D_wave_sim_V01
 		/// <summary>Releases every OpenCL handle; called by the runner when the run ends. Safe to call more than once.</summary>
 		public void Dispose()
 		{
-			this.ReleaseAll();
+			ReleaseAll();
 		}
 
 		/// <summary>
-		/// Releases all device resources exactly once (guarded by <see cref="_released"/>): drains the queue, then
-		/// frees kernels and buffers (including the probe ones, if any), the two programs, the queue and finally
-		/// the context, zeroing every handle. Unset handles are skipped and OpenCL failures are swallowed, so the
-		/// method is also usable from the constructor after a partial <see cref="Build"/>.
+		/// Releases all device resources: drains the queue, then the probe set, the scene set, the queue and
+		/// finally the context. OpenCL failures are swallowed, so the method is also usable from the constructor
+		/// after a partial <see cref="Build"/>, and a second call finds nothing left to release.
 		/// </summary>
 		private void ReleaseAll()
 		{
-			if (this._released)
+			if (_queue != IntPtr.Zero)
 			{
-				return;
+				// if this fails the driver is gone or in trouble; release what can be released
+				Quietly(() => OpenClApi.clFinish(_queue));
 			}
-			this._released = true;
-			try
+			_probes.Release();
+			_scene.Release();
+			if (_queue != IntPtr.Zero)
 			{
-				if (this._queue != IntPtr.Zero)
-				{
-					OpenClApi.clFinish(this._queue);
-				}
+				Quietly(() => OpenClApi.clReleaseCommandQueue(_queue));
+				_queue = IntPtr.Zero;
 			}
-			catch
+			if (_context != IntPtr.Zero)
 			{
+				Quietly(() => OpenClApi.clReleaseContext(_context));
+				_context = IntPtr.Zero;
 			}
-			for (int k = 0; k <= 1; k++)
-			{
-				GpuWaveSimulator.ReleaseKernel(ref this._stepKernel[k]);
-				GpuWaveSimulator.ReleaseKernel(ref this._sourceKernel[k]);
-				GpuWaveSimulator.ReleaseKernel(ref this._objSourceKernel[k]);
-				GpuWaveSimulator.ReleaseKernel(ref this._probeKernel[k]);
-				GpuWaveSimulator.ReleaseKernel(ref this._gatherKernel[k]);
-				GpuWaveSimulator.ReleaseMem(ref this._field[k]);
-			}
-			GpuWaveSimulator.ReleaseKernel(ref this._accumulateKernel);
-			GpuWaveSimulator.ReleaseMem(ref this._pixelBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._infoBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._historyBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._profilePixelBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._profileModeBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._profileStartFlagBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._profileStartStepBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._profileTotalBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._profileOutBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._c2Buffer);
-			GpuWaveSimulator.ReleaseMem(ref this._dBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._intensityBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._intensityStage1Buffer);
-			GpuWaveSimulator.ReleaseMem(ref this._intensityOutBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._indexBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._levelBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._frequencyBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objIndexBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objLevelBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objAmplitudeBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objPhaseBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objModeBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objPulseShapeBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objOnWidthBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objOffWidthBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objDetachStepBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objOffWidthBaseBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objRandomizeOffWidthAmountBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objCycleAnchorBuffer);
-			GpuWaveSimulator.ReleaseMem(ref this._objRngStateBuffer);
-			try
-			{
-				if (this._probeProgram != IntPtr.Zero)
-				{
-					OpenClApi.clReleaseProgram(this._probeProgram);
-				}
-				if (this._program != IntPtr.Zero)
-				{
-					OpenClApi.clReleaseProgram(this._program);
-				}
-				if (this._queue != IntPtr.Zero)
-				{
-					OpenClApi.clReleaseCommandQueue(this._queue);
-				}
-				if (this._context != IntPtr.Zero)
-				{
-					OpenClApi.clReleaseContext(this._context);
-				}
-			}
-			catch
-			{
-			}
-			this._probeProgram = IntPtr.Zero;
-			this._program = IntPtr.Zero;
-			this._queue = IntPtr.Zero;
-			this._context = IntPtr.Zero;
 		}
 
-		/// <summary>Releases a buffer handle unless it is <see cref="IntPtr.Zero"/>, ignoring errors, and zeroes it.</summary>
-		private static void ReleaseMem(ref IntPtr handle)
+		/// <summary>Runs an OpenCL release call, ignoring any failure (nothing more can be done; the handle is gone either way).</summary>
+		private static void Quietly(Action release)
 		{
 			try
 			{
-				if (handle != IntPtr.Zero)
-				{
-					OpenClApi.clReleaseMemObject(handle);
-				}
+				release();
 			}
 			catch
 			{
 			}
-			handle = IntPtr.Zero;
 		}
 
-		/// <summary>Releases a kernel handle unless it is <see cref="IntPtr.Zero"/>, ignoring errors, and zeroes it.</summary>
-		private static void ReleaseKernel(ref IntPtr handle)
+		/// <summary>
+		/// A program with the kernels and buffers created from/for it, released together: the scene set lives as
+		/// long as the engine, the probe set is replaced by every <see cref="SetProbes"/> call.
+		/// </summary>
+		private sealed class Resources
 		{
-			try
+			/// <summary>The compiled program, or <see cref="IntPtr.Zero"/> when not (yet) built.</summary>
+			public IntPtr Program;
+
+			/// <summary>Kernels created from <see cref="Program"/>.</summary>
+			public readonly List<IntPtr> Kernels = new List<IntPtr>();
+
+			/// <summary>Device buffers bound to those kernels.</summary>
+			public readonly List<IntPtr> Buffers = new List<IntPtr>();
+
+			/// <summary>Releases kernels, buffers and the program (in that order) and forgets them; failures are ignored.</summary>
+			public void Release()
 			{
-				if (handle != IntPtr.Zero)
+				foreach (IntPtr kernel in Kernels)
 				{
-					OpenClApi.clReleaseKernel(handle);
+					Quietly(() => OpenClApi.clReleaseKernel(kernel));
+				}
+				Kernels.Clear();
+				foreach (IntPtr buffer in Buffers)
+				{
+					Quietly(() => OpenClApi.clReleaseMemObject(buffer));
+				}
+				Buffers.Clear();
+				if (Program != IntPtr.Zero)
+				{
+					Quietly(() => OpenClApi.clReleaseProgram(Program));
+					Program = IntPtr.Zero;
 				}
 			}
-			catch
-			{
-			}
-			handle = IntPtr.Zero;
 		}
 
-		/// <summary>Engine label: "GPU: &lt;device name&gt; (OpenCL)".</summary>
-		private readonly string _description;
+		/// <summary>Steps enqueued between two <c>clFinish</c> calls in <see cref="AdvanceOneStep"/>.</summary>
+		private const int FinishInterval = 16;
+
+		/// <summary>Rows (steps) the probe history buffer holds before it must be read back to the host.</summary>
+		private const int ProbeRows = 2048;
+
+		/// <summary>The device the context lives on; needed again to build the probe program.</summary>
+		private readonly GpuDeviceInfo _device;
 
 		/// <summary>Scene width in cells (canvas pixels), without padding.</summary>
 		private readonly int _width;
@@ -1274,116 +1235,56 @@ namespace _2D_wave_sim_V01
 		/// <summary>Number of image (green-channel) sources in the scene.</summary>
 		private readonly int _sourceCount;
 
-		/// <summary>Peak amplitude of the image sources (object sources carry their own).</summary>
-		private readonly float _amplitude;
+		/// <summary>Number of object sources that lie inside the canvas.</summary>
+		private readonly int _objSourceCount;
 
-		/// <summary>Whether the program was compiled with the 4th-order stencil (<c>USE_4TH_ORDER</c>), which implies sub-stepping.</summary>
-		private readonly bool _use4thOrderLaplacian;
-
-		/// <summary>Leapfrog sub-steps per simulation step; 1 unless the 4th-order stencil is on. Set in <see cref="Build"/>.</summary>
+		/// <summary>
+		/// Leapfrog sub-steps per simulation step - see the class summary; 1 (no sub-stepping) unless the 4th-order
+		/// stencil is on and this scene's highest c² needs it. Set once, in <see cref="Build"/>.
+		/// </summary>
 		private int _subSteps;
-
-		/// <summary>1/<see cref="_subSteps"/>², scaling c² for the shorter sub-step (kernel argument <c>c2Scale</c>).</summary>
-		private float _c2Mult;
-
-		/// <summary>Per-step retention of the two intensity averaging stages: exp(-1/decaySteps) with decaySteps = timeDecayFactor·100/lowest source level.</summary>
-		private float _intensityAlpha;
-
-		/// <summary>Multiplier on the intensity output.</summary>
-		private float _intensityScale;
 
 		/// <summary>OpenCL context on the chosen device; released last in <see cref="ReleaseAll"/>.</summary>
 		private IntPtr _context;
 
-		/// <summary>In-order command queue; every launch and transfer goes through it, from the worker thread.</summary>
+		/// <summary>In-order command queue; every launch and transfer goes through it.</summary>
 		private IntPtr _queue;
 
-		/// <summary>Program built from <see cref="KernelSource"/> (<c>wave_step</c>, <c>apply_sources</c>, <c>apply_object_sources</c>).</summary>
-		private IntPtr _program;
+		/// <summary>Simulation program (<c>wave_step</c>, <c>apply_sources</c>, <c>apply_object_sources</c>) with its kernels and scene buffers.</summary>
+		private readonly Resources _scene = new Resources();
+
+		/// <summary>
+		/// The probes: a second small program (<c>probe_sample</c>, <c>profile_accumulate</c>, <c>profile_gather</c>)
+		/// measures them on the card, with its kernels and buffers; empty until probes are set. Point probes: one
+		/// value per step; the values wait in <see cref="_historyBuffer"/> until the next
+		/// <see cref="TakeProbeSamples"/> (or until the buffer is full). Line probes: the pixels of all lines in one
+		/// list; the totals (integrated intensity) are kept on the card, the profiles are gathered into
+		/// <see cref="_profileOutBuffer"/> and copied back when they are asked for (<see cref="ReadProbeProfiles"/>).
+		/// </summary>
+		private readonly Resources _probes = new Resources();
 
 		/// <summary>The two ping-pong field buffers (padded, <see cref="_cells"/> floats each); the one at <see cref="_current"/> holds the newest field, the other the previous one.</summary>
-		private readonly IntPtr[] _field;
+		private readonly IntPtr[] _field = new IntPtr[2];
+
+		/// <summary>
+		/// The blend of the two cascaded filter stages (the <c>inten1</c>/<c>inten</c> buffers, which live only
+		/// inside <c>wave_step</c>), scaled - see the class summary and <c>WaveSimulator._intensityOut</c> (CPU
+		/// engine). Padded; this is what is actually read back into <see cref="_hostIntensity"/> and sampled by the
+		/// probe kernels; a 1-float dummy when not tracking.
+		/// </summary>
+		private IntPtr _intensityOutBuffer;
 
 		/// <summary><c>wave_step</c> kernel per field index k: reads <see cref="_field"/>[k], writes <see cref="_field"/>[1 - k].</summary>
-		private readonly IntPtr[] _stepKernel;
+		private readonly IntPtr[] _stepKernel = new IntPtr[2];
 
-		/// <summary><c>apply_sources</c> kernel per field index k, bound to <see cref="_field"/>[k]; <see cref="IntPtr.Zero"/> when the scene has no image sources.</summary>
-		private readonly IntPtr[] _sourceKernel;
+		/// <summary><c>apply_sources</c> kernel per field index k, bound to <see cref="_field"/>[k]; unset when the scene has no image sources.</summary>
+		private readonly IntPtr[] _sourceKernel = new IntPtr[2];
+
+		/// <summary><c>apply_object_sources</c> kernel per field index k, bound to <see cref="_field"/>[k]; unset when there are no object sources.</summary>
+		private readonly IntPtr[] _objSourceKernel = new IntPtr[2];
 
 		/// <summary>Index (0/1) of the field buffer holding the newest field; flips after every sub-step.</summary>
 		private int _current;
-
-		/// <summary>Per-cell c² = 1/n² (padded; border cells 0).</summary>
-		private IntPtr _c2Buffer;
-
-		/// <summary>Per-cell damping (padded), 1 = lossless; already raised to 1/<see cref="_subSteps"/> when sub-stepping.</summary>
-		private IntPtr _dBuffer;
-
-		/// <summary>Second-stage running average of u² (padded), or a 1-float dummy when not tracking.</summary>
-		private IntPtr _intensityBuffer;
-
-		/// <summary>First-stage running average of u² (padded), or a 1-float dummy when not tracking.</summary>
-		private IntPtr _intensityStage1Buffer;
-
-		/// <summary>Blended and scaled intensity (padded): read back into <see cref="_hostIntensity"/> and sampled by the probe kernels; a 1-float dummy when not tracking.</summary>
-		private IntPtr _intensityOutBuffer;
-
-		/// <summary>Padded cell index of every image source; unset when there are none.</summary>
-		private IntPtr _indexBuffer;
-
-		/// <summary>Green level (1..255) of every image source, indexing <see cref="_frequencyBuffer"/>; unset when there are none.</summary>
-		private IntPtr _levelBuffer;
-
-		/// <summary>256 angular frequencies in radians per step, one per level: level/255 × 0.5 × sourceFrequencyScale. Shared by both source kernels; unset when there are no sources at all.</summary>
-		private IntPtr _frequencyBuffer;
-
-		/// <summary>Number of object sources that lie inside the canvas.</summary>
-		private readonly int _objSourceCount;
-
-		/// <summary><c>apply_object_sources</c> kernel per field index k, bound to <see cref="_field"/>[k]; <see cref="IntPtr.Zero"/> when there are no object sources.</summary>
-		private readonly IntPtr[] _objSourceKernel;
-
-		/// <summary>Per object source: padded cell index.</summary>
-		private IntPtr _objIndexBuffer;
-
-		/// <summary>Per object source: level, indexing <see cref="_frequencyBuffer"/>.</summary>
-		private IntPtr _objLevelBuffer;
-
-		/// <summary>Per object source: peak amplitude.</summary>
-		private IntPtr _objAmplitudeBuffer;
-
-		/// <summary>Per object source: phase offset in radians.</summary>
-		private IntPtr _objPhaseBuffer;
-
-		/// <summary>Per object source: 0 = continuous, 1 = pulsed.</summary>
-		private IntPtr _objModeBuffer;
-
-		/// <summary>Per object source: 0 = Gaussian pulse, 1 = smoothed square.</summary>
-		private IntPtr _objPulseShapeBuffer;
-
-		/// <summary>Per object source: on-width of the pulse in cycles.</summary>
-		private IntPtr _objOnWidthBuffer;
-
-		/// <summary>Per object source: off-width in cycles currently in effect; rewritten by the kernel when the off-width is randomized.</summary>
-		private IntPtr _objOffWidthBuffer;
-
-		/// <summary>Per object source: step after which it detaches and fades out over <see cref="SourceElement.DetachRampSteps"/> steps, or -1 (never).</summary>
-		private IntPtr _objDetachStepBuffer;
-
-		/// <summary>Per object source: base off-width (cycles) a randomized off-width is drawn around.</summary>
-		private IntPtr _objOffWidthBaseBuffer;
-
-		/// <summary>Per object source: ± range (cycles) of the off-width randomization; 0 or less = fixed off-width.</summary>
-		private IntPtr _objRandomizeOffWidthAmountBuffer;
-
-		/// <summary>Per object source: start (in cycles) of its current period in randomized mode; kernel-owned state, uploaded as 0.</summary>
-		private IntPtr _objCycleAnchorBuffer;
-
-		/// <summary>Per object source: xorshift32 state for drawing off-widths; seeded on the host with a non-zero random int, advanced by the kernel.</summary>
-		private IntPtr _objRngStateBuffer;
-
-		/// <summary>Global work size of <c>apply_object_sources</c>: max(1, <see cref="_objSourceCount"/>).</summary>
-		private readonly IntPtr[] _objGrid1D;
 
 		/// <summary>Global work size of <c>wave_step</c>: <see cref="_width"/> × <see cref="_height"/> work items, one per interior cell.</summary>
 		private readonly IntPtr[] _grid2D;
@@ -1391,41 +1292,26 @@ namespace _2D_wave_sim_V01
 		/// <summary>Global work size of <c>apply_sources</c>: max(1, <see cref="_sourceCount"/>).</summary>
 		private readonly IntPtr[] _grid1D;
 
+		/// <summary>Global work size of <c>apply_object_sources</c>: max(1, <see cref="_objSourceCount"/>).</summary>
+		private readonly IntPtr[] _objGrid1D;
+
 		/// <summary>Host copy of the newest field, refreshed by <see cref="PrepareFrame"/>; exposed as <see cref="FieldData"/>.</summary>
-		private float[] _hostField;
+		private readonly float[] _hostField;
 
 		/// <summary>Host copy of <see cref="_intensityOutBuffer"/>, refreshed by <see cref="PrepareFrame"/>; null when not tracking.</summary>
-		private float[] _hostIntensity;
+		private readonly float[] _hostIntensity;
 
 		/// <summary>Elapsed time in steps; passed to the source kernels as the float argument <c>t</c>.</summary>
 		private double _time;
 
-		/// <summary>Steps enqueued since the queue was last drained; <see cref="AdvanceOneStep"/> calls clFinish at 16. Reset by every blocking read, which drains the queue anyway.</summary>
+		/// <summary>Steps enqueued since the queue was last drained; reset by every blocking read, which drains the queue anyway.</summary>
 		private int _sinceFinish;
-
-		/// <summary>Set by <see cref="ReleaseAll"/> so a second release is a no-op.</summary>
-		private bool _released;
-
-		/// <summary>Rows (steps) the probe history buffer holds before it must be read back to the host.</summary>
-		private const int ProbeRows = 2048;
-
-		/// <summary>Device the context was created on; needed again to build the probe program.</summary>
-		private IntPtr _deviceId;
 
 		/// <summary>Probe layout installed by <see cref="SetProbes"/>, or null when no probes are set.</summary>
 		private ProbeSampler _probeSampler;
 
-		/// <summary>Program built from <see cref="ProbeKernelSource"/>; <see cref="IntPtr.Zero"/> until probes are set.</summary>
-		private IntPtr _probeProgram;
-
 		/// <summary><c>probe_sample</c> kernel per field index k, bound to <see cref="_field"/>[k]; unset without point probes.</summary>
-		private readonly IntPtr[] _probeKernel;
-
-		/// <summary>Pixel index lists of all point probes, concatenated (at least 1 int).</summary>
-		private IntPtr _pixelBuffer;
-
-		/// <summary>Per probe (all probes, 4 ints each): start offset in <see cref="_pixelBuffer"/>, pixel count, sample-intensity flag, average flag; all 0 for line probes.</summary>
-		private IntPtr _infoBuffer;
+		private readonly IntPtr[] _probeKernel = new IntPtr[2];
 
 		/// <summary>Sample history, <see cref="ProbeRows"/> rows × probe count floats, row-major; row r holds the samples of the r-th step since the last read-back.</summary>
 		private IntPtr _historyBuffer;
@@ -1434,31 +1320,16 @@ namespace _2D_wave_sim_V01
 		private int _probeRow;
 
 		/// <summary>Global work size of <c>probe_sample</c>: one work item per probe.</summary>
-		private readonly IntPtr[] _probeGrid;
+		private readonly IntPtr[] _probeGrid = new IntPtr[1];
 
 		/// <summary>Point-probe samples read back from the device and not yet taken by <see cref="TakeProbeSamples"/>, one list per probe (stays empty for line probes).</summary>
-		private readonly List<List<float>> _probeValues;
+		private readonly List<List<float>> _probeValues = new List<List<float>>();
 
 		/// <summary><c>profile_gather</c> kernel per field index k, bound to <see cref="_field"/>[k]; unset without line probes.</summary>
-		private readonly IntPtr[] _gatherKernel;
+		private readonly IntPtr[] _gatherKernel = new IntPtr[2];
 
 		/// <summary><c>profile_accumulate</c> kernel; created only when some line probe integrates (<see cref="_profileIntegrates"/>).</summary>
 		private IntPtr _accumulateKernel;
-
-		/// <summary>Padded cell index of every line-probe pixel, all line probes concatenated (<see cref="_profileCount"/> ints).</summary>
-		private IntPtr _profilePixelBuffer;
-
-		/// <summary>Per line-probe pixel: 0 = field, 1 = intensity, 2 = integrated intensity.</summary>
-		private IntPtr _profileModeBuffer;
-
-		/// <summary>Per line-probe pixel: whether integration only starts at <see cref="_profileStartStepBuffer"/>; created only when integrating.</summary>
-		private IntPtr _profileStartFlagBuffer;
-
-		/// <summary>Per line-probe pixel: step from which integration counts; created only when integrating.</summary>
-		private IntPtr _profileStartStepBuffer;
-
-		/// <summary>Per line-probe pixel: running intensity total, added to by <c>profile_accumulate</c>.</summary>
-		private IntPtr _profileTotalBuffer;
 
 		/// <summary>Per line-probe pixel: value written by <c>profile_gather</c> and read back by <see cref="ReadProbeProfiles"/>.</summary>
 		private IntPtr _profileOutBuffer;
@@ -1473,6 +1344,6 @@ namespace _2D_wave_sim_V01
 		private int[] _profileStart;
 
 		/// <summary>Global work size of the profile kernels: one work item per line-probe pixel.</summary>
-		private readonly IntPtr[] _profileGrid;
+		private readonly IntPtr[] _profileGrid = new IntPtr[1];
 	}
 }

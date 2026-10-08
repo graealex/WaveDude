@@ -10,14 +10,17 @@ using System.Web.Script.Serialization;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// Reads and writes <see cref="ColorScheme"/> objects as JSON files in the scheme folder.
+	/// Reads and writes <see cref="ColorScheme"/> objects as JSON files (one file per scheme, e.g. in the
+	/// scheme folder).
 	/// </summary>
 	/// <remarks>
-	/// Static-only helper (private constructor). File layout: an object with "name", "origin", optional
-	/// "category" and "scheme_type", "bits_per_channel" (always 8), "entry_count" (255), an optional "stops"
-	/// list of 9 <c>[r,g,b]</c> triplets and a "colors" list of triplets. Reading uses
-	/// <see cref="JavaScriptSerializer"/>; writing emits the text by hand so the file stays human-readable.
-	/// Called only from the UI thread (color scheme tab and start-up).
+	/// Static-only helper (private constructor). File format, the same as the files exported from Python
+	/// (e.g. in its <c>color_schemes</c> folder): an object with "name", "origin", optional "category" and
+	/// "scheme_type" ("field" or "intensity"), "bits_per_channel" (always 8), "entry_count"
+	/// (<see cref="ColorScheme.EntryCount"/>) and a "colors" list of <c>[r,g,b]</c> triplets, plus, only
+	/// for schemes made in the stop editor, a "stops" list of <see cref="ColorScheme.StopCount"/> triplets.
+	/// Reading uses <see cref="JavaScriptSerializer"/>; writing emits the text by hand so the file stays
+	/// human-readable. Called only from the UI thread (color scheme tab and start-up).
 	/// </remarks>
 	public sealed class ColorSchemeStore
 	{
@@ -27,13 +30,18 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Returns the ColorSchemeList folder next to the executable, or the one next to the project
-		/// file when running from the build output. The folder is created if it does not exist.
+		/// The program's own color scheme folder. While developing (the exe runs from <c>bin\Debug</c>
+		/// inside the solution) this is the <see cref="SchemeFolderName"/> folder of the repository itself,
+		/// so edits end up in the project; in a deployed program it is the <see cref="SchemeFolderName"/>
+		/// folder next to the exe. The folder is created when it does not exist.
 		/// </summary>
 		/// <returns>
 		/// The folder path. It walks up to five directory levels from the base directory looking for a
-		/// <c>*.vbproj</c> (the original VB.NET project file) and prefers a <see cref="SchemeFolderName"/>
-		/// folder beside it. Any I/O error is swallowed and the default path is returned uncreated.
+		/// <c>*.sln</c> (the solution file at the repository root, which is where the tracked
+		/// <see cref="SchemeFolderName"/> lives; the original looked for its <c>*.vbproj</c>, which no
+		/// longer exists above the C# exe) and prefers a <see cref="SchemeFolderName"/> folder beside it.
+		/// From <c>Wave_Dude_2D\bin\Debug</c> that is three levels up. Any I/O error is swallowed and the
+		/// default path is returned, possibly uncreated: the caller checks whether the folder exists.
 		/// </returns>
 		public static string FindDefaultFolder()
 		{
@@ -41,19 +49,19 @@ namespace _2D_wave_sim_V01
 			string folder = Path.Combine(baseDirectory, SchemeFolderName);
 			try
 			{
-				DirectoryInfo dir = new DirectoryInfo(baseDirectory);
-				for (int level = 0; level <= 4 && dir != null; level++)
+				DirectoryInfo probe = new DirectoryInfo(baseDirectory);
+				for (int level = 0; level <= 4 && probe != null; level++)
 				{
-					if (dir.GetFiles("*.vbproj").Length > 0)
+					if (probe.GetFiles("*.sln").Length > 0)
 					{
-						string candidate = Path.Combine(dir.FullName, SchemeFolderName);
+						string candidate = Path.Combine(probe.FullName, SchemeFolderName);
 						if (Directory.Exists(candidate))
 						{
 							folder = candidate;
 						}
 						break;
 					}
-					dir = dir.Parent;
+					probe = probe.Parent;
 				}
 				if (!Directory.Exists(folder))
 				{
@@ -62,6 +70,7 @@ namespace _2D_wave_sim_V01
 			}
 			catch
 			{
+				// the caller checks whether the folder exists
 			}
 			return folder;
 		}
@@ -86,7 +95,7 @@ namespace _2D_wave_sim_V01
 			{
 				throw new InvalidDataException("Not a color scheme file (a JSON object was expected).");
 			}
-			string name = ColorSchemeStore.GetString(root, "name", Path.GetFileNameWithoutExtension(filePath));
+			string schemeName = ColorSchemeStore.GetString(root, "name", Path.GetFileNameWithoutExtension(filePath));
 			List<Color> colors = null;
 			if (root.ContainsKey("colors"))
 			{
@@ -104,11 +113,11 @@ namespace _2D_wave_sim_V01
 			ColorScheme scheme;
 			if (colors != null && colors.Count >= 2)
 			{
-				scheme = new ColorScheme(name, colors);
+				scheme = new ColorScheme(schemeName, colors);
 			}
 			else if (stops != null)
 			{
-				scheme = ColorScheme.FromStops(name, stops);
+				scheme = ColorScheme.FromStops(schemeName, stops);
 			}
 			else
 			{
@@ -221,6 +230,7 @@ namespace _2D_wave_sim_V01
 			{
 				Directory.CreateDirectory(directoryName);
 			}
+			// write to a temporary file first so a failed save never leaves a half-written scheme behind
 			string tempPath = filePath + ".tmp";
 			File.WriteAllText(tempPath, json.ToString(), new UTF8Encoding(false));
 			if (File.Exists(filePath))
@@ -387,7 +397,7 @@ namespace _2D_wave_sim_V01
 			return quoted.ToString();
 		}
 
-		/// <summary>Name of the scheme folder looked for next to the executable / project: "ColorSchemeList".</summary>
+		/// <summary>Name of the folder with the color schemes that belongs to the program, looked for next to the executable / solution: "ColorSchemeList".</summary>
 		public const string SchemeFolderName = "ColorSchemeList";
 	}
 }

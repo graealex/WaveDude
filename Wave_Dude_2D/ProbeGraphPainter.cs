@@ -8,7 +8,11 @@ using System.Globalization;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// GDI+ rendering of probe graphs (time series / line profiles) and of the probe position markers.
+	/// GDI+ rendering of probe graphs (a little box with axes and the measured curve) and of the probe position markers:
+	/// <list type="bullet">
+	/// <item><description>Point probe: value (Y) against the simulation step (X).</description></item>
+	/// <item><description>Line probe: value (Y) against the position on the line A-B in pixels (X), at the current step.</description></item>
+	/// </list>
 	/// Stateless: every call draws onto the <see cref="Graphics"/> it is given. Used on the UI thread by the
 	/// main form's paint handlers (painting the form's own copies of the traces onto the picture boxes) and on
 	/// the simulation worker thread by <see cref="ProbeOverlay"/> (painting the collector's traces into an
@@ -97,6 +101,9 @@ namespace _2D_wave_sim_V01
 		/// (AutoScaleX) or to the run length. Running mode shows a window of <c>RunningWindow</c> (at least 10)
 		/// steps that slides with the data; with AutoScaleX it starts narrow and grows to full width, otherwise it
 		/// is full width from the start. With AutoScaleY the y range is fitted to the samples inside the x range.
+		/// When "start after step" is used, the values from before that step are trimmed off: xMin never goes
+		/// below it, so the visible range starts there (with more room for the data that follows, especially with
+		/// the full scale, which would otherwise show mostly empty space before the data starts).
 		/// </summary>
 		/// <param name="probe">Settings that select scale mode, running window, fixed y range and auto-scaling.</param>
 		/// <param name="series">Sampled values; null is treated as empty.</param>
@@ -135,7 +142,8 @@ namespace _2D_wave_sim_V01
 			}
 			yMin = probe.YMin;
 			yMax = probe.YMax;
-			if (yMax <= yMin)
+			// written this way round so a NaN limit also falls back
+			if (!(yMax > yMin))
 			{
 				yMin = -1.0;
 				yMax = 1.0;
@@ -193,7 +201,8 @@ namespace _2D_wave_sim_V01
 			xMax = (profileLength > 0.0) ? profileLength : 1.0;
 			yMin = probe.YMin;
 			yMax = probe.YMax;
-			if (yMax <= yMin)
+			// written this way round so a NaN limit also falls back
+			if (!(yMax > yMin))
 			{
 				yMin = -1.0;
 				yMax = 1.0;
@@ -219,6 +228,7 @@ namespace _2D_wave_sim_V01
 				}
 				if (lo <= hi)
 				{
+					// an intensity starts at zero
 					ProbeGraphPainter.FitRange(lo, hi, probe.Measurement != ProbeMeasurement.Amplitude && lo >= 0.0, ref yMin, ref yMax);
 				}
 			}
@@ -258,7 +268,8 @@ namespace _2D_wave_sim_V01
 		{
 			List<double> ticks = new List<double>();
 			double span = hi - lo;
-			if (span <= 0.0 || double.IsInfinity(span))
+			// written this way round so a NaN span also yields no ticks
+			if (!(span > 0.0) || double.IsInfinity(span))
 			{
 				return ticks;
 			}
@@ -284,12 +295,12 @@ namespace _2D_wave_sim_V01
 			}
 			step *= magnitude;
 			double tick = Math.Ceiling(lo / step) * step;
-			int tickCount = 0;
-			while (tick <= hi + step * 1E-09 && tickCount < 40)
+			int guard = 0;
+			while (tick <= hi + step * 1E-09 && guard < 40)
 			{
 				ticks.Add((Math.Abs(tick) < step * 1E-09) ? 0.0 : tick);
 				tick += step;
-				tickCount++;
+				guard++;
 			}
 			return ticks;
 		}
@@ -350,27 +361,34 @@ namespace _2D_wave_sim_V01
 					{
 						return;
 					}
+					// a line probe (a profile of the current instant) has nothing meaningful to show before the start step is
+					// reached, so it stays blank until then; a point probe (a series) is trimmed instead, see SeriesRanges
 					bool isLine = probe.Kind == ProbeKind.Line;
-					ProbeTrace gatedTrace = (!probe.UseStartAfterStep || trace == null || trace.StepsSampled >= probe.StartAfterStep) ? trace : null;
+					bool started = !probe.UseStartAfterStep || trace == null || trace.StepsSampled >= probe.StartAfterStep;
+					ProbeTrace shownTrace = started ? trace : null;
+					// a point probe's own range/autoscale must see the real trace (it is trimmed by "start after step" inside
+					// ComputeRanges/SeriesRanges, not hidden); only a line probe uses shownTrace, to stay blank until it starts
 					double xMin = 0.0;
 					double xMax = 0.0;
 					double yMin = 0.0;
 					double yMax = 0.0;
-					ProbeGraphPainter.ComputeRanges(probe, isLine ? gatedTrace : trace, totalSteps, ref xMin, ref xMax, ref yMin, ref yMax);
+					ProbeGraphPainter.ComputeRanges(probe, isLine ? shownTrace : trace, totalSteps, ref xMin, ref xMax, ref yMin, ref yMax);
 					ProbeGraphPainter.DrawAxes(g, font, fontPx, bounds, plot, xMin, xMax, yMin, yMax);
 					float lineWidth = Math.Max(1.2f, bounds.Height / 110f);
 					if (isLine)
 					{
-						if (gatedTrace != null)
+						if (shownTrace != null)
 						{
-							ProbeGraphPainter.DrawProfile(g, plot, gatedTrace.Profile, yMin, yMax, lineWidth);
+							ProbeGraphPainter.DrawProfile(g, plot, shownTrace.Profile, yMin, yMax, lineWidth);
 						}
 					}
 					else if (trace != null)
 					{
+						// a point probe is trimmed (xMin), not hidden: its curve is drawn up to the current value even before
+						// the start step is reached (the range is then just very small)
 						ProbeGraphPainter.DrawCurve(g, plot, trace.Series, xMin, xMax, yMin, yMax, lineWidth);
 					}
-					ProbeGraphPainter.DrawTitle(g, font, bounds, title, ProbeGraphPainter.ValueText(isLine, isLine ? gatedTrace : trace), fontPx);
+					ProbeGraphPainter.DrawTitle(g, font, bounds, title, ProbeGraphPainter.ValueText(isLine, isLine ? shownTrace : trace), fontPx);
 				}
 			}
 			finally
@@ -450,12 +468,14 @@ namespace _2D_wave_sim_V01
 								yLabelFormat.FormatFlags = StringFormatFlags.NoWrap;
 								xLabelFormat.Alignment = StringAlignment.Center;
 								xLabelFormat.FormatFlags = StringFormatFlags.NoWrap;
+								// value axis
 								foreach (double tick in ProbeGraphPainter.NiceTicks(yMin, yMax, 4))
 								{
 									float py = ProbeGraphPainter.ToPixelY(tick, plot, yMin, yMax);
 									g.DrawLine((tick == 0.0) ? zeroPen : gridPen, (float)plot.Left, py, (float)plot.Right, py);
 									g.DrawString(ProbeGraphPainter.FormatTick(tick), font, labelBrush, new RectangleF(bounds.X + 1, py - fontPx * 0.7f, plot.Left - bounds.X - 4, fontPx * 1.4f), yLabelFormat);
 								}
+								// step axis (point probe) or position on the line (line probe)
 								foreach (double tick in ProbeGraphPainter.NiceTicks(xMin, xMax, 5))
 								{
 									float px = (float)(plot.Left + (tick - xMin) / (xMax - xMin) * plot.Width);
@@ -523,6 +543,7 @@ namespace _2D_wave_sim_V01
 			double xScale = plot.Width / (xMax - xMin);
 			if (visibleCount <= plot.Width * 2)
 			{
+				// every value gets its own point (value i belongs to step i + 1)
 				for (int i = firstIndex; i <= lastIndex; i++)
 				{
 					float value = values[i];
@@ -597,8 +618,8 @@ namespace _2D_wave_sim_V01
 					float value = profile[i];
 					if (!float.IsNaN(value) && !float.IsInfinity(value))
 					{
-						double t = (count > 1) ? (i / (count - 1.0)) : 0.0;
-						points.Add(new PointF((float)(plot.Left + t * plot.Width), ProbeGraphPainter.ToPixelY(value, plot, yMin, yMax)));
+						double fraction = (count > 1) ? (i / (count - 1.0)) : 0.0;
+						points.Add(new PointF((float)(plot.Left + fraction * plot.Width), ProbeGraphPainter.ToPixelY(value, plot, yMin, yMax)));
 					}
 				}
 			}
@@ -762,6 +783,7 @@ namespace _2D_wave_sim_V01
 					{
 						using (SolidBrush textBrush = new SolidBrush(Color.White))
 						{
+							// a line probe has two ends, so each is labelled with the probe number and which end it is
 							if (isLine)
 							{
 								ProbeGraphPainter.DrawNumber(g, font, shadowBrush, textBrush, label + "A", ax, ay);
@@ -781,13 +803,14 @@ namespace _2D_wave_sim_V01
 			}
 		}
 
-		/// <summary>Draws a plus-shaped cross with 7-pixel arms centred on (x, y): the wide dark pen first as outline, then the thin light pen on top.</summary>
+		/// <summary>Draws a plus-shaped cross with arm-length arms centred on (x, y): the wide dark pen first as outline, then the thin light pen on top.</summary>
 		private static void DrawCross(Graphics g, Pen dark, Pen light, float x, float y)
 		{
-			g.DrawLine(dark, x - 7f, y, x + 7f, y);
-			g.DrawLine(dark, x, y - 7f, x, y + 7f);
-			g.DrawLine(light, x - 7f, y, x + 7f, y);
-			g.DrawLine(light, x, y - 7f, x, y + 7f);
+			const float arm = 7f;
+			g.DrawLine(dark, x - arm, y, x + arm, y);
+			g.DrawLine(dark, x, y - arm, x, y + arm);
+			g.DrawLine(light, x - arm, y, x + arm, y);
+			g.DrawLine(light, x, y - arm, x, y + arm);
 		}
 
 		/// <summary>Draws a marker label above and to the right of (x, y) with a 1-pixel dark drop shadow.</summary>

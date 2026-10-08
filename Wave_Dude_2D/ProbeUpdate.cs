@@ -10,10 +10,10 @@ namespace _2D_wave_sim_V01
 	{
 		public ProbeUpdate(float[][] samples, float[][] profiles, double[] lengths, int stepsDone)
 		{
-			this.Samples = samples;
-			this.Profiles = profiles;
-			this.Lengths = lengths;
-			this.StepsDone = stepsDone;
+			Samples = samples;
+			Profiles = profiles;
+			Lengths = lengths;
+			StepsDone = stepsDone;
 		}
 
 		/// <summary>

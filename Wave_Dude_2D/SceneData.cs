@@ -7,10 +7,15 @@ using System.Runtime.InteropServices;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// Per-pixel simulation input derived from a scene image: squared wave speed (<see cref="C2"/>),
-	/// damping factor (<see cref="D"/>) and the positions / levels of image-defined sources.
-	/// Red channel = refractive index * 100 (clamped to 0.9..10), green = source level (0 = none),
-	/// blue = damping strength (0 = none, 255 = full; stored as <c>D = 1 - blue / 255</c>).
+	/// Per-pixel simulation input derived from a scene image: squared wave speed (<see cref="C2"/>,
+	/// <c>(1 / refractive index)^2</c>; the time step is 1), damping factor (<see cref="D"/>, the factor on the
+	/// velocity: 1 = no damping, 0 = the wave is stopped) and the positions / levels of image-defined sources
+	/// (the value of the green channel sets the frequency).
+	/// The rules are those of the Python classes <c>StaticImageScene</c>, <c>StaticRefractiveIndex</c> and
+	/// <c>StaticDampening</c>: red channel = refractive index * 100 (clamped to 0.9..10), green = every pixel
+	/// above 0 is a sinusoidal source whose level is the green value, blue = damping strength (0 = none,
+	/// 255 = full; stored as <c>D = 1 - blue / 255</c>), damping edge = a border of the given thickness with
+	/// damping factor <c>sqrt(i / thickness)</c> at i pixels from the edge.
 	/// Created by <see cref="SimulationRunner"/> on its worker thread
 	/// via <see cref="FromImage"/> or <see cref="Empty"/> and then copied into the padded grids of
 	/// <see cref="WaveSimulator"/> / <see cref="GpuWaveSimulator"/>. The arrays are row-major
@@ -20,23 +25,17 @@ namespace _2D_wave_sim_V01
 	{
 		private SceneData(int w, int h, float[] c2, float[] d, int[] srcX, int[] srcY, byte[] srcLevel)
 		{
-			this.Width = w;
-			this.Height = h;
-			this.C2 = c2;
-			this.D = d;
-			this.SourceX = srcX;
-			this.SourceY = srcY;
-			this.SourceLevel = srcLevel;
+			Width = w;
+			Height = h;
+			C2 = c2;
+			D = d;
+			SourceX = srcX;
+			SourceY = srcY;
+			SourceLevel = srcLevel;
 		}
 
 		/// <summary>Number of image-defined source pixels (length of <see cref="SourceX"/>, <see cref="SourceY"/> and <see cref="SourceLevel"/>).</summary>
-		public int SourceCount
-		{
-			get
-			{
-				return this.SourceX.Length;
-			}
-		}
+		public int SourceCount => SourceX.Length;
 
 		/// <summary>
 		/// Decodes <paramref name="image"/> (any pixel format; read as 32bpp ARGB) into per-pixel squared
@@ -67,6 +66,7 @@ namespace _2D_wave_sim_V01
 					for (int x = 0; x < width; x++)
 					{
 						int offset = x * 4;
+						// Format32bppArgb is stored as B, G, R, A
 						int blue = row[offset];
 						int green = row[offset + 1];
 						int red = row[offset + 2];
@@ -101,14 +101,14 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Creates a uniform <paramref name="w"/> x <paramref name="h"/> scene without sources: the
+		/// Creates a uniform, user defined <paramref name="w"/> x <paramref name="h"/> scene without sources: the
 		/// speed is derived from <paramref name="refractiveIndex"/> (clamped to 0.9..10) and the damping
 		/// factor is 1 (none) everywhere except in the <paramref name="dampingEdge"/> border.
 		/// </summary>
 		/// <param name="w">Canvas width in pixels.</param>
 		/// <param name="h">Canvas height in pixels.</param>
 		/// <param name="dampingEdge">Thickness of the absorbing border in pixels; 0 or less for none.</param>
-		/// <param name="refractiveIndex">Background refractive index (1 = vacuum speed).</param>
+		/// <param name="refractiveIndex">Background refractive index (1.0 by default, the same rule as a scene image's red channel: index = red / 100).</param>
 		public static SceneData Empty(int w, int h, int dampingEdge, double refractiveIndex = 1.0)
 		{
 			double clampedIndex = refractiveIndex;
@@ -166,10 +166,11 @@ namespace _2D_wave_sim_V01
 		}
 
 		/// <summary>
-		/// Overwrites the damping factor in a frame of <paramref name="thickness"/> pixels (capped at
-		/// half the smaller side) around the edge of the <paramref name="w"/> x <paramref name="h"/>
-		/// grid with <c>sqrt(i / border)</c>, where i is the distance from the edge: 0 on the outermost
-		/// ring, rising towards 1 at the inner edge of the frame. Does nothing for a thickness of 0 or less.
+		/// Damping edge, as in <c>StaticDampening</c>: overwrites the damping factor in a frame of
+		/// <paramref name="thickness"/> pixels (capped at half the smaller side) around the edge of the
+		/// <paramref name="w"/> x <paramref name="h"/> grid with <c>sqrt(i / thickness)</c>, where i is the
+		/// distance from the edge, so the outermost ring stops the wave completely and the factor rises to 1
+		/// inside. Does nothing for a thickness of 0 or less.
 		/// </summary>
 		/// <param name="d">Damping array, row-major, modified in place.</param>
 		/// <param name="w">Grid width in pixels.</param>

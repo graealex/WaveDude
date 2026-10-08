@@ -5,12 +5,20 @@ using System.Drawing;
 namespace _2D_wave_sim_V01
 {
 	/// <summary>
-	/// A 255-entry color table, optionally backed by 9 editable gradient stops.
+	/// A color scheme: a lookup table of exactly <see cref="EntryCount"/> (255) RGB colors, the same table
+	/// size the Python simulator uses, optionally backed by <see cref="StopCount"/> editable gradient stops.
+	/// A scheme can be used for the field view or for the intensity view.
 	/// </summary>
 	/// <remarks>
 	/// Entry 0 is the start of the scale (field -1 / intensity 0), entry 254 the end (+1 / max), entry 127
-	/// the centre of a field scheme. Instances are created by <see cref="ColorSchemeStore.Load"/> and the
-	/// editor on the color scheme tab, live on the UI thread, and are turned into an <c>int[]</c> palette by
+	/// the centre of a field scheme. Schemes made in the stop editor also keep their anchor colors
+	/// ("stops") so they can be edited again. The stops sit at fixed, equally spaced positions on the
+	/// scale: stop 1 is the first entry, the last stop is the last entry and, with an odd number of stops,
+	/// the middle stop is exactly the centre entry 127 (the zero-field color); with 9 stops that is
+	/// Color 5. All other entries are interpolated linearly in RGB between neighbouring stops. Imported
+	/// schemes (matplotlib, seaborn, Python tables) have no stops and are used as they are.
+	/// Instances are created by <see cref="ColorSchemeStore.Load"/> and the editor on the color scheme
+	/// tab, live on the UI thread, and are turned into an <c>int[]</c> palette by
 	/// <see cref="ColorLut.Build"/> before a simulation starts; the worker thread never touches them.
 	/// The <see cref="Entries"/> and <see cref="Stops"/> getters return defensive copies, so the only way to
 	/// change the table is <see cref="SetStop"/>. All colors are opaque RGB; alpha is ignored.
@@ -27,8 +35,9 @@ namespace _2D_wave_sim_V01
 		public string Category { get; set; }
 
 		/// <summary>
-		/// What the scheme is meant to color: <see cref="SchemeTypeField"/>, <see cref="SchemeTypeIntensity"/>
-		/// or "" when not specified. Decides which combo box on the simulation tab offers the scheme.
+		/// What the scheme is meant for: <see cref="SchemeTypeField"/>, <see cref="SchemeTypeIntensity"/>
+		/// or "" when not specified. This is only a label saved in the file (it decides which combo box on
+		/// the simulation tab offers the scheme); any scheme can technically be used for either.
 		/// </summary>
 		public string SchemeType { get; set; }
 
@@ -49,46 +58,28 @@ namespace _2D_wave_sim_V01
 			{
 				throw new ArgumentNullException("colors");
 			}
-			this.Name = schemeName;
-			this.Origin = "";
-			this.Category = "";
-			this.SchemeType = "";
-			this.FilePath = "";
-			this._entries = ColorScheme.Resample(colors, EntryCount);
+			Name = schemeName;
+			Origin = "";
+			Category = "";
+			SchemeType = "";
+			FilePath = "";
+			_entries = ColorScheme.Resample(colors, EntryCount);
 		}
 
 		/// <summary>A fresh copy of the full <see cref="EntryCount"/>-entry table (allocates on every call; use <see cref="GetEntry"/> in loops).</summary>
-		public Color[] Entries
-		{
-			get
-			{
-				return (Color[])this._entries.Clone();
-			}
-		}
+		public Color[] Entries => (Color[])_entries.Clone();
 
 		/// <summary>Returns table entry <paramref name="index"/> (0..254) without copying the table.</summary>
 		public Color GetEntry(int index)
 		{
-			return this._entries[index];
+			return _entries[index];
 		}
 
 		/// <summary>True when the scheme carries <see cref="StopCount"/> editable stops, i.e. <see cref="SetStop"/> may be called.</summary>
-		public bool HasStops
-		{
-			get
-			{
-				return this._stops != null;
-			}
-		}
+		public bool HasStops => _stops != null;
 
 		/// <summary>A fresh copy of the <see cref="StopCount"/> stops, or null for a table-only scheme.</summary>
-		public Color[] Stops
-		{
-			get
-			{
-				return this._stops == null ? null : (Color[])this._stops.Clone();
-			}
-		}
+		public Color[] Stops => _stops == null ? null : (Color[])_stops.Clone();
 
 		/// <summary>Linearly interpolates between the table entries at a fractional position 0..254.</summary>
 		/// <param name="position">Position on the entry scale; clamped to the first/last entry outside 0..254.</param>
@@ -96,25 +87,26 @@ namespace _2D_wave_sim_V01
 		{
 			if (position <= 0.0)
 			{
-				return this._entries[0];
+				return _entries[0];
 			}
 			if (position >= EntryCount - 1)
 			{
-				return this._entries[EntryCount - 1];
+				return _entries[EntryCount - 1];
 			}
 			int index = (int)Math.Floor(position);
-			return ColorScheme.Lerp(this._entries[index], this._entries[index + 1], position - index);
+			return ColorScheme.Lerp(_entries[index], _entries[index + 1], position - index);
 		}
 
 		/// <summary>Returns <see cref="Name"/>, which is what the scheme combo boxes display.</summary>
 		public override string ToString()
 		{
-			return this.Name;
+			return Name;
 		}
 
 		/// <summary>
-		/// Creates a stop scheme from exactly <see cref="StopCount"/> stops: the table is interpolated from
-		/// them, <see cref="Origin"/> says it was made in the editor and <see cref="Category"/> is "custom".
+		/// Creates a stop scheme from exactly <see cref="StopCount"/> stops, given in scale order (stop 1
+		/// first, the middle stop in the centre, the last stop last): the table is interpolated from them,
+		/// <see cref="Origin"/> says it was made in the editor and <see cref="Category"/> is "custom".
 		/// </summary>
 		/// <exception cref="ArgumentException"><paramref name="stops"/> is null or not <see cref="StopCount"/> long.</exception>
 		public static ColorScheme FromStops(string schemeName, IList<Color> stops)
@@ -140,7 +132,7 @@ namespace _2D_wave_sim_V01
 			}
 			Color[] copy = new Color[StopCount];
 			stops.CopyTo(copy, 0);
-			this._stops = copy;
+			_stops = copy;
 		}
 
 		/// <summary>
@@ -150,10 +142,10 @@ namespace _2D_wave_sim_V01
 		/// <param name="stopIndex">0..<see cref="StopCount"/>-1.</param>
 		/// <param name="value">New stop color; only R, G and B are used.</param>
 		/// <exception cref="InvalidOperationException">The scheme has no stops (<see cref="HasStops"/> is false).</exception>
-		/// <exception cref="ArgumentOutOfRangeException"><paramref name="stopIndex"/> is outside 0..8.</exception>
+		/// <exception cref="ArgumentOutOfRangeException"><paramref name="stopIndex"/> is outside 0..<see cref="StopCount"/>-1.</exception>
 		public void SetStop(int stopIndex, Color value)
 		{
-			if (this._stops == null)
+			if (_stops == null)
 			{
 				throw new InvalidOperationException("This scheme has no editable stops. Use ToStopScheme first.");
 			}
@@ -161,13 +153,14 @@ namespace _2D_wave_sim_V01
 			{
 				throw new ArgumentOutOfRangeException("stopIndex");
 			}
-			this._stops[stopIndex] = Color.FromArgb(value.R, value.G, value.B);
-			this._entries = ColorScheme.InterpolateStops(this._stops);
+			_stops[stopIndex] = Color.FromArgb(value.R, value.G, value.B);
+			_entries = ColorScheme.InterpolateStops(_stops);
 		}
 
 		/// <summary>
-		/// Creates a 9-stop approximation of this scheme by sampling it at evenly spaced positions
-		/// (k/8 of the 0..254 range). The result keeps this <see cref="SchemeType"/>, gets an
+		/// Makes an editable <see cref="StopCount"/>-stop scheme from any scheme by sampling it at the stop
+		/// positions (k/(StopCount-1) of the 0..254 range). This is lossy: the copy is a smooth
+		/// approximation of the original. The result keeps this <see cref="SchemeType"/>, gets an
 		/// <see cref="Origin"/> naming this scheme, <see cref="Category"/> "custom" and no file path.
 		/// </summary>
 		public ColorScheme ToStopScheme(string newName)
@@ -175,11 +168,11 @@ namespace _2D_wave_sim_V01
 			Color[] stops = new Color[StopCount];
 			for (int i = 0; i < StopCount; i++)
 			{
-				stops[i] = this.SampleAt((i * 254) / 8.0);
+				stops[i] = SampleAt((i * (EntryCount - 1)) / (double)(StopCount - 1));
 			}
 			ColorScheme scheme = ColorScheme.FromStops(newName, stops);
-			scheme.Origin = StopCount.ToString() + "-stop copy of scheme '" + this.Name + "'";
-			scheme.SchemeType = this.SchemeType;
+			scheme.Origin = StopCount.ToString() + "-stop copy of scheme '" + Name + "'";
+			scheme.SchemeType = SchemeType;
 			return scheme;
 		}
 
@@ -189,18 +182,21 @@ namespace _2D_wave_sim_V01
 		/// </summary>
 		public ColorScheme Clone(string newName)
 		{
-			ColorScheme scheme = new ColorScheme(newName, this._entries);
-			scheme.Origin = this.Origin;
-			scheme.Category = this.Category;
-			scheme.SchemeType = this.SchemeType;
-			if (this._stops != null)
+			ColorScheme scheme = new ColorScheme(newName, _entries);
+			scheme.Origin = Origin;
+			scheme.Category = Category;
+			scheme.SchemeType = SchemeType;
+			if (_stops != null)
 			{
-				scheme.AttachStops(this._stops);
+				scheme.AttachStops(_stops);
 			}
 			return scheme;
 		}
 
-		/// <summary>Expands 9 stops into the full 255-entry table by linear RGB interpolation; stop k lands on entry k*254/8.</summary>
+		/// <summary>
+		/// Builds the <see cref="EntryCount"/> entries from the <see cref="StopCount"/> stops at fixed, equally
+		/// spaced positions (linear in RGB); stop k lands on entry k*(EntryCount-1)/(StopCount-1).
+		/// </summary>
 		/// <exception cref="ArgumentException"><paramref name="stops"/> is null or not <see cref="StopCount"/> long.</exception>
 		public static Color[] InterpolateStops(IList<Color> stops)
 		{
@@ -211,12 +207,14 @@ namespace _2D_wave_sim_V01
 			Color[] entries = new Color[EntryCount];
 			for (int i = 0; i < EntryCount; i++)
 			{
-				// Position of entry i in stop units (0..8); the last entry must stay in segment 7.
-				double position = (i * 8) / 254.0;
+				// position on the stop scale: 0.0 (first stop) to StopCount - 1 (last stop);
+				// with 9 stops entry 127 is exactly 4.0, the middle stop.
+				// The last entry must stay in the last segment (StopCount - 2).
+				double position = (i * (StopCount - 1)) / (double)(EntryCount - 1);
 				int segment = (int)Math.Floor(position);
-				if (segment > 7)
+				if (segment > StopCount - 2)
 				{
-					segment = 7;
+					segment = StopCount - 2;
 				}
 				entries[i] = ColorScheme.Lerp(stops[segment], stops[segment + 1], position - segment);
 			}
@@ -282,7 +280,12 @@ namespace _2D_wave_sim_V01
 		/// <summary>Number of entries in the color table (indices 0..254).</summary>
 		public const int EntryCount = 255;
 
-		/// <summary>Number of editable gradient stops of a stop scheme (8 segments).</summary>
+		/// <summary>
+		/// Number of fixed anchor colors in the stop editor (one Color button each, so this is tied to the
+		/// <c>btnColorN</c> buttons in the Form1 Designer): 9 since the Color 8/9 buttons were added to the
+		/// Designer (previously upgraded from 5 to 7 the same way). Odd on purpose, so the middle stop is
+		/// exactly the centre entry 127; see the class remarks.
+		/// </summary>
 		public const int StopCount = 9;
 
 		/// <summary>The <see cref="EntryCount"/> table entries; replaced wholesale by <see cref="SetStop"/>, never null.</summary>
