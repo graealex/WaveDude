@@ -1,0 +1,91 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+	<!-- list views with grid columns, Visual Studio tool-window look -->
+
+	<Style TargetType="{x:Type ListView}">
+		<Setter Property="Background" Value="{DynamicResource ToolWindowBackground}" />
+		<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Padding" Value="0" />
+		<Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+	</Style>
+
+	<Style TargetType="{x:Type ListViewItem}">
+		<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+		<Setter Property="Padding" Value="2,1" />
+		<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type ListViewItem}">
+					<Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+						<GridViewRowPresenter Content="{TemplateBinding Content}" Columns="{TemplateBinding GridView.ColumnCollection}" />
+					</Border>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="Bd" Property="Background" Value="{DynamicResource TreeViewItemHover}" />
+						</Trigger>
+						<Trigger Property="IsSelected" Value="True">
+							<Setter TargetName="Bd" Property="Background" Value="{DynamicResource TreeViewItemSelectedInactive}" />
+						</Trigger>
+						<MultiTrigger>
+							<MultiTrigger.Conditions>
+								<Condition Property="IsSelected" Value="True" />
+								<Condition Property="Selector.IsSelectionActive" Value="True" />
+							</MultiTrigger.Conditions>
+							<Setter TargetName="Bd" Property="Background" Value="{DynamicResource TreeViewItemSelected}" />
+							<Setter Property="Foreground" Value="{DynamicResource TreeViewItemSelectedForeground}" />
+						</MultiTrigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<Style TargetType="{x:Type GridViewColumnHeader}">
+		<Setter Property="Background" Value="{DynamicResource ToolWindowBackground}" />
+		<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
+		<Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+		<Setter Property="Padding" Value="4,2" />
+		<Setter Property="HorizontalContentAlignment" Value="Left" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type GridViewColumnHeader}">
+					<Grid>
+						<Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+						        BorderThickness="0,0,1,1" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+							<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"
+							                  RecognizesAccessKey="True" />
+						</Border>
+						<!-- the resize handle WPF looks for -->
+						<Thumb x:Name="PART_HeaderGripper" HorizontalAlignment="Right" Width="6" Margin="0,0,-3,0" Cursor="SizeWE">
+							<Thumb.Template>
+								<ControlTemplate TargetType="{x:Type Thumb}">
+									<Border Background="Transparent" />
+								</ControlTemplate>
+							</Thumb.Template>
+						</Thumb>
+					</Grid>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+		<Style.Triggers>
+			<!-- the filler header after the last column: no border, no gripper -->
+			<Trigger Property="Role" Value="Padding">
+				<Setter Property="Template">
+					<Setter.Value>
+						<ControlTemplate TargetType="{x:Type GridViewColumnHeader}">
+							<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0,0,0,1" />
+						</ControlTemplate>
+					</Setter.Value>
+				</Setter>
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
+</ResourceDictionary>

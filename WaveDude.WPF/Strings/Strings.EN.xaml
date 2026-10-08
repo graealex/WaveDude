@@ -1,0 +1,97 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:s="clr-namespace:System;assembly=mscorlib">
+
+	<!-- user-visible text; menu headers carry their mnemonic underscore -->
+
+	<s:String x:Key="Title">Wave Dude</s:String>
+
+	<s:String x:Key="MenuFile">_File</s:String>
+	<s:String x:Key="MenuFileNew">_New Project</s:String>
+	<s:String x:Key="MenuFileOpen">_Open Project...</s:String>
+	<s:String x:Key="MenuFileRecent">_Recent Projects</s:String>
+	<s:String x:Key="MenuFileSave">_Save</s:String>
+	<s:String x:Key="MenuFileSaveAs">Save _As...</s:String>
+	<s:String x:Key="MenuFileClose">_Close Project</s:String>
+	<s:String x:Key="MenuFileExit">E_xit</s:String>
+	<s:String x:Key="MenuView">_View</s:String>
+	<s:String x:Key="MenuViewPanes">_Panes</s:String>
+	<s:String x:Key="MenuViewTheme">_Theme</s:String>
+	<s:String x:Key="MenuHelp">_Help</s:String>
+	<s:String x:Key="MenuHelpAbout">_About Wave Dude</s:String>
+
+	<s:String x:Key="MenuProjectAddSource">Add _source</s:String>
+	<s:String x:Key="MenuProjectAddProbe">Add _probe</s:String>
+	<s:String x:Key="MenuProjectDuplicate">_Duplicate</s:String>
+	<s:String x:Key="MenuProjectRemove">_Remove</s:String>
+	<s:String x:Key="MenuProjectMoveUp">Move _up</s:String>
+	<s:String x:Key="MenuProjectMoveDown">Move _down</s:String>
+	<s:String x:Key="ToolAddSource">+ Source</s:String>
+	<s:String x:Key="ToolAddProbe">+ Probe</s:String>
+	<s:String x:Key="TipAddSource">Add a source (appended at the end)</s:String>
+	<s:String x:Key="TipAddProbe">Add a probe (appended at the end)</s:String>
+	<s:String x:Key="TipAdd">Add an item to this folder</s:String>
+	<s:String x:Key="TipRemove">Remove (Del)</s:String>
+	<s:String x:Key="TipMoveUp">Move up (Alt+Up); drag to reorder</s:String>
+	<s:String x:Key="TipMoveDown">Move down (Alt+Down); drag to reorder</s:String>
+
+	<s:String x:Key="PaneMessages">Messages</s:String>
+	<s:String x:Key="MessagesSearchHint">Search</s:String>
+	<s:String x:Key="MessagesRegex">Regex</s:String>
+	<s:String x:Key="MessagesAutoScroll">Auto-scroll</s:String>
+	<s:String x:Key="MessagesCopy">_Copy</s:String>
+	<s:String x:Key="MessagesCopyAll">Copy _all</s:String>
+	<s:String x:Key="MessagesClear">C_lear</s:String>
+	<s:String x:Key="MessagesColumnTime">Time</s:String>
+	<s:String x:Key="MessagesColumnLevel">Level</s:String>
+	<s:String x:Key="MessagesColumnLogger">Source</s:String>
+	<s:String x:Key="MessagesColumnMessage">Message</s:String>
+	<s:String x:Key="TipMessagesLevel">Show or hide this level</s:String>
+	<s:String x:Key="TipMessagesRegex">Treat the search text as a regular expression</s:String>
+	<s:String x:Key="TipMessagesAutoScroll">Follow new messages</s:String>
+	<s:String x:Key="TipMessagesClear">Clear all messages</s:String>
+	<s:String x:Key="TipStatusBar">Double-click to open the Messages pane</s:String>
+	<s:String x:Key="PaneProject">Project</s:String>
+	<s:String x:Key="PaneProperties">Properties</s:String>
+	<s:String x:Key="PanePreview">Preview</s:String>
+	<s:String x:Key="TipPreviewPlay">Play (Space)</s:String>
+	<s:String x:Key="TipPreviewPause">Pause (Space)</s:String>
+	<s:String x:Key="TipPreviewScrub">Drag to scrub through the frames</s:String>
+	<s:String x:Key="TipPreviewFrame">Frame shown / last frame</s:String>
+	<s:String x:Key="LabelPreviewSpeed">Speed</s:String>
+	<s:String x:Key="TipPreviewSpeed">Playback speed: pick a factor or type one</s:String>
+	<s:String x:Key="TipPreviewSideBySide">Field and intensity side by side</s:String>
+	<s:String x:Key="TipPreviewStacked">Field above intensity</s:String>
+	<s:String x:Key="TipPreviewSplitter">Drag or use the arrow keys to resize; double-click or Enter resets to half</s:String>
+	<s:String x:Key="Ready">Ready</s:String>
+	<s:String x:Key="NoSelection">No selection</s:String>
+
+	<s:String x:Key="TreeProject">Project</s:String>
+	<s:String x:Key="TreeScene">Scene</s:String>
+	<s:String x:Key="TreeSimulation">Simulation</s:String>
+	<s:String x:Key="TreeDisplay">Display</s:String>
+
+	<s:String x:Key="SectionGeneral">General</s:String>
+	<s:String x:Key="SectionCanvas">Canvas</s:String>
+	<s:String x:Key="SectionImageSources">Sources from the image</s:String>
+	<s:String x:Key="SectionRun">Run</s:String>
+	<s:String x:Key="SectionSolver">Solver</s:String>
+	<s:String x:Key="SectionField">Field</s:String>
+	<s:String x:Key="SectionIntensity">Intensity</s:String>
+	<s:String x:Key="SectionVideo">Video export</s:String>
+	<s:String x:Key="SectionPosition">Position</s:String>
+	<s:String x:Key="SectionWave">Wave</s:String>
+	<s:String x:Key="SectionTiming">Timing</s:String>
+	<s:String x:Key="SectionArray">Array</s:String>
+	<s:String x:Key="SectionMeasurement">Measurement</s:String>
+	<s:String x:Key="SectionGraph">Graph</s:String>
+	<s:String x:Key="SectionAxes">Axes</s:String>
+	<s:String x:Key="ButtonNewSeed">_New seed</s:String>
+	<s:String x:Key="ItemCountFormat">{0} items</s:String>
+
+	<s:String x:Key="OpenFileDialogFilter">Wave Dude projects (*.wdproj)|*.wdproj|XML files (*.xml)|*.xml|All files (*.*)|*.*</s:String>
+	<s:String x:Key="SaveFileDialogFilter">Wave Dude projects (*.wdproj)|*.wdproj|XML files (*.xml)|*.xml</s:String>
+	<s:String x:Key="OpenError">Could not open '{0}'.</s:String>
+	<s:String x:Key="SaveError">Could not save '{0}'.</s:String>
+
+</ResourceDictionary>

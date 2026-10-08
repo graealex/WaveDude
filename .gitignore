@@ -10,3 +10,6 @@ TestResults/
 # local scratch
 _tools/smoke.png
 _tools/*.txt
+
+# Claude Code local permissions
+.claude/settings.local.json

@@ -1,0 +1,165 @@
+<Window x:Class="WaveDude.WPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:docking="clr-namespace:WaveDude.WPF.Docking"
+        xmlns:theming="clr-namespace:WaveDude.WPF.Theming"
+        xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
+        xmlns:panes="clr-namespace:WaveDude.WPF.Panes"
+        xmlns:commands="clr-namespace:WaveDude.WPF.Commands"
+        xmlns:p="clr-namespace:WaveDude.WPF.Properties"
+        Icon="App.ico"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Width="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Width, Mode=TwoWay}"
+        Height="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Height, Mode=TwoWay}"
+        Left="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Left, Mode=TwoWay}"
+        Top="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Top, Mode=TwoWay}"
+        WindowState="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_State, Mode=TwoWay}"
+        MinWidth="800" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        AllowDrop="True" Drop="OnDrop">
+
+	<Window.Resources>
+		<converters:EqualityConverter x:Key="Equality" />
+		<converters:TitleConverter x:Key="TitleConverter" />
+
+		<RoutedUICommand x:Key="FileOpenRecent" />
+		<RoutedUICommand x:Key="ShowMessages" Text="Show messages" />
+		<RoutedUICommand x:Key="FileExit" Text="{StaticResource MenuFileExit}">
+			<RoutedUICommand.InputGestures>
+				<KeyGesture>Alt+F4</KeyGesture>
+			</RoutedUICommand.InputGestures>
+		</RoutedUICommand>
+
+		<!-- one entry per recent file: the path as plain text (no mnemonics), click opens it -->
+		<Style x:Key="RecentFileMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding}" />
+			<Setter Property="HeaderTemplate">
+				<Setter.Value>
+					<DataTemplate>
+						<TextBlock Text="{Binding}" />
+					</DataTemplate>
+				</Setter.Value>
+			</Setter>
+			<Setter Property="Command" Value="{StaticResource FileOpenRecent}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+		</Style>
+
+		<!-- one entry per registered pane: check mark follows IsShown, click toggles -->
+		<Style x:Key="PaneMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding Title}" />
+			<Setter Property="IsChecked" Value="{Binding IsShown, Mode=OneWay}" />
+			<Setter Property="Command" Value="{Binding ToggleCommand, ElementName=dockHost}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+		</Style>
+
+		<!-- one entry per theme: check mark follows the current theme, click selects -->
+		<Style x:Key="ThemeMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding}" />
+			<Setter Property="Command" Value="{Binding SelectCommand, Source={x:Static theming:ThemeController.Instance}}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+			<Setter Property="IsChecked">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource Equality}" Mode="OneWay">
+						<Binding Path="Current" Source="{x:Static theming:ThemeController.Instance}" />
+						<Binding />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+		</Style>
+	</Window.Resources>
+
+	<!-- "Wave Dude - <file>", just the name while no file is open -->
+	<Window.Title>
+		<MultiBinding Converter="{StaticResource TitleConverter}">
+			<Binding Source="{StaticResource Title}" />
+			<Binding Path="Filename" />
+		</MultiBinding>
+	</Window.Title>
+
+	<Window.CommandBindings>
+		<CommandBinding Command="ApplicationCommands.New" Executed="OnFileNew" />
+		<CommandBinding Command="ApplicationCommands.Open" Executed="OnFileOpen" />
+		<CommandBinding Command="{StaticResource FileOpenRecent}" Executed="OnFileOpen" />
+		<CommandBinding Command="ApplicationCommands.Save" Executed="OnFileSave" />
+		<CommandBinding Command="ApplicationCommands.SaveAs" Executed="OnFileSaveAs" />
+		<CommandBinding Command="ApplicationCommands.Close" CanExecute="CanFileClose" Executed="OnFileClose" />
+		<CommandBinding Command="{StaticResource FileExit}" Executed="OnFileExit" />
+		<CommandBinding Command="{StaticResource ShowMessages}" Executed="OnShowMessages" />
+
+		<!-- project structure; handlers in MainWindow.Project.cs -->
+		<CommandBinding Command="{x:Static commands:ProjectCommands.AddSource}" Executed="OnAddSource" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.AddProbe}" Executed="OnAddProbe" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.Add}" CanExecute="CanAdd" Executed="OnAdd" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.Duplicate}" CanExecute="CanEditItem" Executed="OnDuplicate" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.Remove}" CanExecute="CanEditItem" Executed="OnRemove" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveUp}" CanExecute="CanMoveUp" Executed="OnMoveUp" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveDown}" CanExecute="CanMoveDown" Executed="OnMoveDown" />
+	</Window.CommandBindings>
+
+	<!-- SaveAs has no default gesture -->
+	<Window.InputBindings>
+		<KeyBinding Command="ApplicationCommands.SaveAs" Key="S" Modifiers="Ctrl+Shift" />
+	</Window.InputBindings>
+
+	<DockPanel>
+
+		<Menu DockPanel.Dock="Top">
+			<MenuItem Header="{DynamicResource MenuFile}">
+				<MenuItem Command="ApplicationCommands.New" Header="{DynamicResource MenuFileNew}" />
+				<MenuItem Command="ApplicationCommands.Open" Header="{DynamicResource MenuFileOpen}" />
+				<MenuItem Header="{DynamicResource MenuFileRecent}"
+				          ItemsSource="{Binding RecentFiles, Source={x:Static p:Settings.Default}}"
+				          ItemContainerStyle="{StaticResource RecentFileMenuItemStyle}" />
+				<Separator />
+				<MenuItem Command="ApplicationCommands.Save" Header="{DynamicResource MenuFileSave}" />
+				<MenuItem Command="ApplicationCommands.SaveAs" Header="{DynamicResource MenuFileSaveAs}" InputGestureText="Ctrl+Shift+S" />
+				<Separator />
+				<MenuItem Command="ApplicationCommands.Close" Header="{DynamicResource MenuFileClose}" />
+				<Separator />
+				<MenuItem Command="{StaticResource FileExit}" Header="{DynamicResource MenuFileExit}" />
+			</MenuItem>
+			<MenuItem Header="{DynamicResource MenuView}">
+				<MenuItem Header="{DynamicResource MenuViewPanes}"
+				          ItemsSource="{Binding Items, ElementName=dockHost}"
+				          ItemContainerStyle="{StaticResource PaneMenuItemStyle}" />
+				<MenuItem Header="{DynamicResource MenuViewTheme}"
+				          ItemsSource="{Binding Options, Source={x:Static theming:ThemeController.Instance}}"
+				          ItemContainerStyle="{StaticResource ThemeMenuItemStyle}" />
+			</MenuItem>
+			<MenuItem Header="{DynamicResource MenuHelp}">
+				<MenuItem Header="{DynamicResource MenuHelpAbout}" />
+			</MenuItem>
+		</Menu>
+
+		<!-- double-click opens or focuses the Messages pane, like the log window in the reference apps -->
+		<StatusBar DockPanel.Dock="Bottom" ToolTip="{DynamicResource TipStatusBar}">
+			<StatusBar.InputBindings>
+				<MouseBinding Gesture="LeftDoubleClick" Command="{StaticResource ShowMessages}" />
+			</StatusBar.InputBindings>
+			<StatusBarItem>
+				<TextBlock x:Name="txtStatus" Text="{DynamicResource Ready}" />
+			</StatusBarItem>
+		</StatusBar>
+
+		<docking:DockHost x:Name="dockHost">
+			<docking:DockHost.Items>
+				<docking:DockItem x:Name="projectDock" Id="project" Title="{StaticResource PaneProject}" DefaultSide="Left">
+					<panes:ProjectTree x:Name="projectTree" Project="{Binding Project}" SelectedItemChanged="OnTreeSelectionChanged" />
+				</docking:DockItem>
+				<docking:DockItem x:Name="propertiesDock" Id="properties" Title="{StaticResource PaneProperties}" DefaultSide="Right">
+					<panes:PropertiesPane x:Name="propertiesPane" SelectedObject="{Binding SelectedItem}" />
+				</docking:DockItem>
+				<docking:DockItem x:Name="messagesDock" Id="messages" Title="{StaticResource PaneMessages}" DefaultSide="Bottom">
+					<panes:MessagesPane x:Name="messagesPane" TargetName="messages" />
+				</docking:DockItem>
+			</docking:DockHost.Items>
+			<docking:DockHost.DocumentContent>
+				<Border BorderThickness="1" BorderBrush="{DynamicResource ToolWindowBorder}">
+					<panes:PreviewPane x:Name="previewPane" Project="{Binding Project}" />
+				</Border>
+			</docking:DockHost.DocumentContent>
+		</docking:DockHost>
+
+	</DockPanel>
+</Window>

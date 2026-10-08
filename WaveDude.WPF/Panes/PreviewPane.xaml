@@ -1,0 +1,241 @@
+<UserControl x:Class="WaveDude.WPF.Panes.PreviewPane" x:Name="pane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WaveDude.WPF.Panes"
+             xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
+             Background="{DynamicResource DocumentBackground}" Focusable="True" IsTabStop="False">
+
+	<UserControl.Resources>
+		<converters:EnumBooleanConverter x:Key="EnumBoolean" />
+		<converters:DoubleTextConverter x:Key="DoubleText" />
+
+		<StreamGeometry x:Key="PlayGeometry">M0,0 L9,5 L0,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="PauseGeometry">M0,0 L3,0 L3,10 L0,10 Z M6,0 L9,0 L9,10 L6,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="SideBySideGeometry">M0,0 L5,0 L5,10 L0,10 Z M7,0 L12,0 L12,10 L7,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="StackedGeometry">M0,0 L12,0 L12,4 L0,4 Z M0,6 L12,6 L12,10 L0,10 Z</StreamGeometry>
+
+		<!-- filled-glyph transport button; Content is the geometry. A tab stop: keyboard focus shows as an accent border -->
+		<Style x:Key="TransportButton" TargetType="{x:Type Button}">
+			<Setter Property="Width" Value="22" />
+			<Setter Property="Height" Value="22" />
+			<Setter Property="Margin" Value="1,0" />
+			<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type Button}">
+						<Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" SnapsToDevicePixels="True">
+							<Path Data="{TemplateBinding Content}" Fill="{TemplateBinding Foreground}"
+							      HorizontalAlignment="Center" VerticalAlignment="Center" />
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
+							</Trigger>
+							<Trigger Property="IsKeyboardFocused" Value="True">
+								<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+							</Trigger>
+							<Trigger Property="IsPressed" Value="True">
+								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonPressed}" />
+								<Setter Property="Foreground" Value="White" />
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
+								<Setter Property="Opacity" Value="0.5" />
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<!-- glyph radio button for a choice shown as a row of buttons; the chosen one stays pressed.
+		     The group is one tab stop; Left/Right move within it (see the StackPanel below) -->
+		<Style x:Key="TransportRadio" TargetType="{x:Type RadioButton}">
+			<Setter Property="Width" Value="22" />
+			<Setter Property="Height" Value="22" />
+			<Setter Property="Margin" Value="1,0" />
+			<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type RadioButton}">
+						<Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" SnapsToDevicePixels="True">
+							<Path Data="{TemplateBinding Content}" Fill="{TemplateBinding Foreground}"
+							      HorizontalAlignment="Center" VerticalAlignment="Center" />
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
+							</Trigger>
+							<Trigger Property="IsKeyboardFocused" Value="True">
+								<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+							</Trigger>
+							<Trigger Property="IsChecked" Value="True">
+								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonPressed}" />
+								<Setter Property="Foreground" Value="White" />
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+	</UserControl.Resources>
+
+	<UserControl.CommandBindings>
+		<CommandBinding Command="MediaCommands.Play" CanExecute="CanPlay" Executed="OnPlay" />
+		<CommandBinding Command="MediaCommands.Pause" CanExecute="CanPause" Executed="OnPause" />
+		<CommandBinding Command="MediaCommands.TogglePlayPause" CanExecute="CanTogglePlayPause" Executed="OnTogglePlayPause" />
+	</UserControl.CommandBindings>
+	<UserControl.InputBindings>
+		<KeyBinding Key="Space" Command="MediaCommands.TogglePlayPause" />
+	</UserControl.InputBindings>
+
+	<DockPanel>
+
+		<!-- transport bar: play, pause, scrubber, frame readout, speed, split.
+		     Tab order (TabIndex) is left to right: play, pause, scrubber, speed, split; the DockPanel
+		     declares the right-docked items first, so it cannot be the declaration order. -->
+		<Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource ToolWindowBorder}" BorderThickness="0,1,0,0" Padding="4,3">
+			<DockPanel KeyboardNavigation.TabNavigation="Local">
+				<Button x:Name="playButton" DockPanel.Dock="Left" TabIndex="1" Style="{StaticResource TransportButton}" Content="{StaticResource PlayGeometry}"
+				        Command="MediaCommands.Play" ToolTip="{DynamicResource TipPreviewPlay}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewPlay}" AutomationProperties.AutomationId="PreviewPlay" />
+				<Button x:Name="pauseButton" DockPanel.Dock="Left" TabIndex="2" Style="{StaticResource TransportButton}" Content="{StaticResource PauseGeometry}"
+				        Command="MediaCommands.Pause" ToolTip="{DynamicResource TipPreviewPause}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewPause}" AutomationProperties.AutomationId="PreviewPause" />
+				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
+
+				<!-- right-docked items: the first declared is the rightmost -->
+				<!-- one tab stop, the checked radio (IsTabStop follows IsChecked); the arrow keys move to the
+				     neighbour and check it, in code, since WPF's directional navigation skips non-tab-stops -->
+				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="5"
+				            KeyDown="OnSplitGroupKeyDown">
+					<RadioButton Style="{StaticResource TransportRadio}" Content="{StaticResource SideBySideGeometry}" GroupName="Split"
+					             ToolTip="{DynamicResource TipPreviewSideBySide}"
+					             AutomationProperties.Name="{DynamicResource TipPreviewSideBySide}" AutomationProperties.AutomationId="PreviewSideBySide"
+					             IsChecked="{Binding Orientation, ElementName=pane, Converter={StaticResource EnumBoolean}, ConverterParameter={x:Static Orientation.Horizontal}}"
+					             IsTabStop="{Binding IsChecked, RelativeSource={RelativeSource Self}, Mode=OneWay}" />
+					<RadioButton Style="{StaticResource TransportRadio}" Content="{StaticResource StackedGeometry}" GroupName="Split"
+					             ToolTip="{DynamicResource TipPreviewStacked}"
+					             AutomationProperties.Name="{DynamicResource TipPreviewStacked}" AutomationProperties.AutomationId="PreviewStacked"
+					             IsChecked="{Binding Orientation, ElementName=pane, Converter={StaticResource EnumBoolean}, ConverterParameter={x:Static Orientation.Vertical}}"
+					             IsTabStop="{Binding IsChecked, RelativeSource={RelativeSource Self}, Mode=OneWay}" />
+				</StackPanel>
+				<Rectangle DockPanel.Dock="Right" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
+				<ComboBox x:Name="speedBox" DockPanel.Dock="Right" TabIndex="4" Width="64" IsEditable="True" ItemsSource="{x:Static local:PreviewPane.SpeedPresets}"
+				          Text="{Binding Speed, ElementName=pane, Mode=TwoWay, Converter={StaticResource DoubleText}}" ToolTip="{DynamicResource TipPreviewSpeed}"
+				          AutomationProperties.Name="{DynamicResource LabelPreviewSpeed}" AutomationProperties.AutomationId="PreviewSpeed"
+				          PreviewKeyDown="OnSpeedBoxPreviewKeyDown" />
+				<TextBlock DockPanel.Dock="Right" Style="{StaticResource FormLabel}" Margin="8,0,4,0" Text="{DynamicResource LabelPreviewSpeed}" />
+				<TextBlock DockPanel.Dock="Right" Style="{StaticResource FormValue}" MinWidth="90" TextAlignment="Right" ToolTip="{DynamicResource TipPreviewFrame}"
+				           AutomationProperties.AutomationId="PreviewFrame">
+					<TextBlock.Text>
+						<MultiBinding StringFormat="{}{0} / {1}">
+							<Binding Path="Position" ElementName="pane" />
+							<Binding Path="LastFrame" ElementName="pane" />
+						</MultiBinding>
+					</TextBlock.Text>
+				</TextBlock>
+
+				<!-- the scrubber takes what is left; Left/Right step a frame, PageUp/PageDown ten, Home/End to the ends -->
+				<Slider TabIndex="3" Margin="4,0" Minimum="0" Maximum="{Binding LastFrame, ElementName=pane}" Value="{Binding Position, ElementName=pane}"
+				        SmallChange="1" LargeChange="10" ToolTip="{DynamicResource TipPreviewScrub}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewScrub}" AutomationProperties.AutomationId="PreviewScrub" />
+			</DockPanel>
+		</Border>
+
+		<!-- the two pictures, side by side (columns 0 and 2) or stacked (rows 0 and 2), with a splitter in
+		     the middle definition. The unused dimension is bridged by spanning all three of its
+		     definitions, so a drag in one orientation survives a switch to the other. Each picture is
+		     centred in its cell. A click here focuses the pane so that Space works. -->
+		<Grid x:Name="pictures" Margin="4" Background="Transparent" MouseDown="OnPicturesMouseDown">
+			<Grid.Resources>
+				<!-- a picture with its section header; Content is the ImageSource, Tag the automation id of the image -->
+				<Style x:Key="PictureCell" TargetType="{x:Type HeaderedContentControl}">
+					<Setter Property="HorizontalAlignment" Value="Center" />
+					<Setter Property="VerticalAlignment" Value="Center" />
+					<Setter Property="Focusable" Value="False" />
+					<Setter Property="Margin" Value="4" />
+					<Setter Property="Grid.RowSpan" Value="3" />
+					<Setter Property="Template">
+						<Setter.Value>
+							<ControlTemplate TargetType="{x:Type HeaderedContentControl}">
+								<DockPanel>
+									<TextBlock DockPanel.Dock="Top" Style="{StaticResource FormSection}" Margin="0,0,0,4" Text="{TemplateBinding Header}" />
+									<Image Source="{TemplateBinding Content}" Stretch="Uniform" AutomationProperties.AutomationId="{TemplateBinding Tag}" />
+								</DockPanel>
+							</ControlTemplate>
+						</Setter.Value>
+					</Setter>
+					<Style.Triggers>
+						<DataTrigger Binding="{Binding Orientation, ElementName=pane}" Value="{x:Static Orientation.Vertical}">
+							<Setter Property="Grid.RowSpan" Value="1" />
+							<Setter Property="Grid.ColumnSpan" Value="3" />
+						</DataTrigger>
+					</Style.Triggers>
+				</Style>
+				<Style x:Key="SecondPictureCell" TargetType="{x:Type HeaderedContentControl}" BasedOn="{StaticResource PictureCell}">
+					<Setter Property="Grid.Column" Value="2" />
+					<Style.Triggers>
+						<DataTrigger Binding="{Binding Orientation, ElementName=pane}" Value="{x:Static Orientation.Vertical}">
+							<Setter Property="Grid.RowSpan" Value="1" />
+							<Setter Property="Grid.ColumnSpan" Value="3" />
+							<Setter Property="Grid.Column" Value="0" />
+							<Setter Property="Grid.Row" Value="2" />
+						</DataTrigger>
+					</Style.Triggers>
+				</Style>
+				<!-- the splitter: a tab stop, arrows move it, Enter or a double-click puts it back in the middle -->
+				<Style x:Key="PictureSplitter" TargetType="{x:Type GridSplitter}" BasedOn="{StaticResource {x:Type GridSplitter}}">
+					<Setter Property="Grid.Column" Value="1" />
+					<Setter Property="Grid.RowSpan" Value="3" />
+					<Setter Property="Width" Value="4" />
+					<Setter Property="HorizontalAlignment" Value="Center" />
+					<Setter Property="VerticalAlignment" Value="Stretch" />
+					<Setter Property="ResizeDirection" Value="Columns" />
+					<Setter Property="ResizeBehavior" Value="PreviousAndNext" />
+					<Setter Property="KeyboardIncrement" Value="10" />
+					<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+					<Style.Triggers>
+						<DataTrigger Binding="{Binding Orientation, ElementName=pane}" Value="{x:Static Orientation.Vertical}">
+							<Setter Property="Grid.Column" Value="0" />
+							<Setter Property="Grid.Row" Value="1" />
+							<Setter Property="Grid.RowSpan" Value="1" />
+							<Setter Property="Grid.ColumnSpan" Value="3" />
+							<Setter Property="Width" Value="Auto" />
+							<Setter Property="Height" Value="4" />
+							<Setter Property="HorizontalAlignment" Value="Stretch" />
+							<Setter Property="VerticalAlignment" Value="Center" />
+							<Setter Property="ResizeDirection" Value="Rows" />
+						</DataTrigger>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter Property="Background" Value="{DynamicResource ButtonHover}" />
+						</Trigger>
+						<Trigger Property="IsKeyboardFocused" Value="True">
+							<Setter Property="Background" Value="{DynamicResource Accent}" />
+						</Trigger>
+					</Style.Triggers>
+				</Style>
+			</Grid.Resources>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="*" />
+				<ColumnDefinition Width="Auto" />
+				<ColumnDefinition Width="*" />
+			</Grid.ColumnDefinitions>
+			<Grid.RowDefinitions>
+				<RowDefinition Height="*" />
+				<RowDefinition Height="Auto" />
+				<RowDefinition Height="*" />
+			</Grid.RowDefinitions>
+			<HeaderedContentControl Style="{StaticResource PictureCell}" Header="{DynamicResource SectionField}"
+			                        Content="{Binding FieldImage, ElementName=pane}" Tag="PreviewFieldImage" />
+			<GridSplitter Style="{StaticResource PictureSplitter}" ToolTip="{DynamicResource TipPreviewSplitter}"
+			              AutomationProperties.Name="{DynamicResource TipPreviewSplitter}" AutomationProperties.AutomationId="PreviewSplitter"
+			              MouseDoubleClick="OnSplitterMouseDoubleClick" KeyDown="OnSplitterKeyDown" />
+			<HeaderedContentControl Style="{StaticResource SecondPictureCell}" Header="{DynamicResource SectionIntensity}"
+			                        Content="{Binding IntensityImage, ElementName=pane}" Tag="PreviewIntensityImage" />
+		</Grid>
+
+	</DockPanel>
+</UserControl>

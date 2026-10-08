@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="WaveDude.WPF.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="UpgradeRequired" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="MainWindow_Width" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">1280</Value>
+    </Setting>
+    <Setting Name="MainWindow_Height" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">800</Value>
+    </Setting>
+    <Setting Name="MainWindow_Left" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">NaN</Value>
+    </Setting>
+    <Setting Name="MainWindow_Top" Type="System.Double" Scope="User">
+      <Value Profile="(Default)">NaN</Value>
+    </Setting>
+    <Setting Name="MainWindow_State" Type="System.Windows.WindowState" Scope="User">
+      <Value Profile="(Default)">Normal</Value>
+    </Setting>
+    <Setting Name="Layout" Type="WaveDude.WPF.Docking.DockLayout" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
+    <Setting Name="Theme" Type="WaveDude.WPF.Theming.AppTheme" Scope="User">
+      <Value Profile="(Default)">System</Value>
+    </Setting>
+    <Setting Name="RecentFiles" Type="System.Collections.Specialized.StringCollection" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
+  </Settings>
+</SettingsFile>

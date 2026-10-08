@@ -1,69 +1,191 @@
 # Wave Dude 2D — project notes for Claude
 
-Analysis snapshot: 2026-10-06. Update this file when the facts below change.
+Last updated 2026-10-07. Update this file when the facts below change.
 
 ## What this is
 
 **Wave Dude 2D v0.29** — a 2D wave-equation simulator (field + accumulated intensity views,
 refractive-index scenes from images, point/composite sources, probes with live graphs, video export).
 Educational tool by Huygens Optics (`info@huygensoptics.com`, patreon `huygens_optics`).
+Licence: **GPL-3.0-or-later, Copyright (C) 2026 JJM Vleggaar (Huygens Optics)** per the headers in the
+author's VB source; the C# files do not carry the header yet (see `_tools/VB_SOURCE_AUDIT.md`).
 
-- WinForms, **.NET Framework 4.6.1**, legacy (non-SDK) `.csproj`, root namespace `_2D_wave_sim_V01`,
-  assembly `Wave_Dude_2D`. Single project in `Wave_Dude_2D.sln`.
-- **The C# in this repo started life as ILSpy-decompiled output of a VB.NET build.** As of
-  2026-10-07 it has been cleaned up to read like hand-written C#: closure artifacts, VB `WithEvents`
-  wrappers, `// Token` comments, `checked {}` blocks, `bool flag = …` temps, VB runtime helper
-  calls and placeholder locals (`num2`, `text3`, …) are gone from all hand-maintained files.
-  What still betrays the origin: the `My/` namespace + `WindowsFormsApplicationBase` startup, the
-  `*.Designer.cs` files (left verbatim apart from the field/event-wiring block), `ref` parameters
-  that are really `out`, and `this.` on every member access.
-- Git: repo was just initialised; **nothing is committed yet** and there is **no `.gitignore`**
-  (`.vs/` is untracked junk that must not be committed).
-- No tests. No CI. No README besides this file.
+`2D_wave_sim_V01/` is the **author's original VB.NET source**, supplied after the C# port was made. It
+is newer than the binary that was decompiled (GPL headers and a GPL Help disclaimer were added after
+that build). Treat it as the authority for intent, comments and constant names; `_tools/VB_SOURCE_AUDIT.md`
+(2026-10-08) lists everything the decompile lost, file by file, with the C# line each item belongs at.
+
+`Wave_Dude_2D.sln` holds three projects:
+
+| project | what | state |
+|---|---|---|
+| `Wave_Dude_2D/` | the original WinForms app, **.NET Framework 4.6.1**, legacy csproj, namespace `_2D_wave_sim_V01` | all the real code; builds and runs; **reference implementation, not the future** |
+| `WaveDude/` | SDK class library, `net10.0`, nullable + implicit usings | empty; intended home for the UI-independent engine/model code |
+| `WaveDude.WPF/` | SDK WPF app, `net10.0-windows`, references `WaveDude` | **the replacement UI**; layout shell only, builds clean (0 warnings) |
+
+WPF shell as it stands:
+- `MainWindow` = menu + `AvalonDock.DockingManager` (Project tree pane left, Preview document
+  centre, Properties pane right) + status bar. Panes drag/dock/float/auto-hide; nothing is wired to
+  data yet. `App.OnStartup` applies the theme before creating the window.
+- Docking: `Dirkster.AvalonDock` 4.74.1 + `Dirkster.AvalonDock.Themes.VS2013` (MIT).
+- Theming: WPF built-in Fluent theme via `Application.ThemeMode` (experimental API; `WPF0001`
+  suppressed in the csproj). `Theming/ThemeController` switches System/Light/Dark, sets the matching
+  `Vs2013Dark/LightTheme` on the docking manager (it does not follow Fluent on its own) and darkens
+  the native title bar via DWM because WPF only does that on Windows 11. View > Theme drives it; the
+  choice is not persisted yet. **Every window that hosts a `DockingManager` must subscribe to
+  `ThemeController.Changed`** and re-read `CreateDockTheme()`.
+- Preview document: `Panes/PreviewPane` (dummy, 2026-10-08). Two placeholder pictures (field,
+  intensity) side by side or stacked (`Orientation`), each centred in its cell, with a `GridSplitter`
+  between them (one 3×3 grid; the unused dimension is spanned, so each orientation keeps its own
+  ratio; Enter or double-click resets to half). Transport bar with `MediaCommands.Play/Pause`
+  (Space toggles), a scrub `Slider` over `Position` 0..`LastFrame`, `FrameCount` bound to
+  `Simulation.Steps`/`VisualizeEvery` via `FrameCountConverter`, and an editable speed combo
+  (`SpeedPresets` 0.25…4, any value typed; `DoubleTextConverter` ignores text that does not parse
+  yet, otherwise every keystroke logs a binding error to the status bar). Numbers follow the Windows
+  locale everywhere: `App.OnStartup` overrides `FrameworkElement.Language` with the current culture
+  (WPF defaults to en-US), so the preset list and the typed text both say `0,25` on a de-DE machine. Playback is a
+  `DispatcherTimer` moving `Position` at `BaseFrameRate` × `Speed`; nothing renders yet. The render
+  pipeline will set `FieldImage` / `IntensityImage`. `Editors.xaml` gained the editable-combo text
+  box, a `Slider` style and keyboard-focus visuals for combo and slider.
+- **Keyboard first.** Every control must be reachable and operable with Tab and the arrow keys and
+  show its keyboard focus (accent border); the user tests without the mouse. The preview pane is
+  the model: explicit `TabIndex` order, the radio group is one tab stop (`IsTabStop` bound to
+  `IsChecked`, arrows handled in code because WPF's directional navigation skips non-tab-stops),
+  Play/Pause hand focus to each other when they get disabled, `AutomationProperties.AutomationId`
+  on everything a harness needs. Toolbar buttons in `ProjectTree`/`MessagesPane` are still
+  `Focusable=False` (reachable only through menus/shortcuts), not yet brought in line.
+- File type: `FileAssociation.Register` (called from `App.OnStartup`) registers `.wdproj` → ProgId
+  `WaveDude.Project` → `"exe" "%1"` under HKCR when elevated, else HKCU\Software\Classes (same order
+  as DTCODataSimulator), idempotently; a double-click arrives as `e.Args[0]` and goes to
+  `MainWindow.OpenFile`. That a per-user entry overrides a machine-wide one is intended: a per-user
+  install, or a plain copy with no installer, must win over a global installation for that user.
+  `assoc`/`ftype` in cmd do not see HKCU registrations; test with a real launch.
+
+History: the C# in `Wave_Dude_2D/` started as ILSpy-decompiled output of a VB.NET binary. It has
+since been made to compile, cleaned to idiomatic C#, documented, and partly refactored (details
+below). Baseline commit `1266f10` is the first compiling, cleaned, documented state; everything
+after it (AVI fix, style pass, engine refactor, WPF shell) is uncommitted at the time of writing.
+
+Repo root also holds runtime data that is tracked on purpose: `ColorSchemeList/` (the shipped colour
+schemes, `*.json`) and `Project/` (a sample project root). `.vs/`, `bin/`, `obj/` are ignored.
+
+No automated tests in the solution; two standalone harnesses exist under `_tools/` (see Verification).
 
 ## Build
 
-- Toolchain found on this machine: Visual Studio 18 (2026) Community. `dotnet` 10 SDK is installed but
-  the legacy csproj needs full MSBuild:
+- Visual Studio 18 (2026) Community and the .NET 10 SDK are installed.
+- Whole solution (the legacy csproj needs full MSBuild):
   ```
-  "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" Wave_Dude_2D.sln -p:Configuration=Debug -v:minimal -nologo -m
+  "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" Wave_Dude_2D.sln -restore -p:Configuration=Debug -v:minimal -nologo -m
   ```
-- **Current state (2026-10-07): compiles and runs.** 0 errors, 6 cosmetic warnings
-  (`components` never assigned in the Designer files, unused `_hasRun`, one sign-extension in
-  `MfVideoWriter`). Smoke test = launch exe, main window appears with title
-  `2D wave simulation - (new project) *`.
-- Standalone compile check that does not touch `bin/obj` (safe to run in parallel with other work):
-  `_tools/CLEANUP_GUIDE.md` has the full `csc.exe` command line.
-- `_tools/` holds the one-off Python scripts used for the decompiler clean-up (`replace_method.py`,
-  `fix_semantic.py`, `split_form1.py`, …) plus the guide. They are history, not build inputs.
+- WPF + library only: `dotnet build WaveDude.WPF/WaveDude.WPF.csproj`.
+- Expected result: 0 errors; 6 warnings in `Wave_Dude_2D` that are known and harmless
+  (`components` never assigned in the four generated Designer files, unused `Form1._hasRun`, one
+  sign-extension in `MfVideoWriter`). `DocumentationFile` is on, so malformed `///` XML or a wrong
+  `<param>` name is a build warning — keep it at zero.
+- Smoke test: launch `Wave_Dude_2D/bin/Debug/Wave_Dude_2D.exe`; the main window must appear with
+  title `2D wave simulation - (new project) *`.
+- Standalone compile check that does not touch `bin/obj` (safe while other work is in flight):
+  ```
+  cd Wave_Dude_2D && "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\Roslyn\csc.exe" -nologo -target:winexe -out:%TEMP%\check.exe -langversion:7.3 -r:System.dll -r:System.Core.dll -r:System.Drawing.dll -r:System.Windows.Forms.dll -r:Microsoft.VisualBasic.dll -r:System.Web.Extensions.dll -nowarn:0168,0649,0414,0675 *.cs My/*.cs My/Resources/*.cs Properties/*.cs
+  ```
 
-## Architecture map
+## Verification harnesses (`_tools/`)
+
+Run these after touching the code they cover; both are console programs compiled with `csc` against
+the project sources (same reference list as above, `-target:exe`, `-nowarn:...,1591`).
+
+- `_tools/engine_check/Program.cs` — add `-main:EngineCheck.Program` and all `Wave_Dude_2D` sources.
+  Runs `WaveSimulator` and `GpuWaveSimulator` over one scene (image source, continuous / Gaussian-pulsed /
+  detaching smoothed-square object sources, an out-of-canvas source that must be dropped, point and
+  integrated-line probes with a start step), with both stencils, and requires field, intensity, probe
+  samples and line profiles to agree within 1e-3 relative (actual: ~1e-7). Also exercises probe
+  re-install, `SetProbes(null)` and double dispose. Prints `skip GPU: …` when no OpenCL device works.
+- `_tools/avi_check/Program.cs` — compile with `AviMjpegWriter.cs` only. Writes a 3-frame MJPEG AVI and
+  walks the RIFF tree (44 structural checks: header offsets, strh dwQuality = -1, movi size, idx1 offsets, EOF).
+
+- `_tools/ui_check/PreviewCheck.ps1` drives the WPF preview pane end to end (25 checks: play/pause,
+  speed incl. locale spelling, scrubber keys, split radios, splitter, tab order, focus hand-off,
+  foreground untouched).
+  Run `powershell -ExecutionPolicy Bypass -File _tools/ui_check/PreviewCheck.ps1` (`-Trace` adds
+  foreground/focus per line); exit code = failures. **How UI harnesses must work here**: the user may
+  be using the machine, so no mouse, no `SendKeys`, no `SetForegroundWindow`. Post `WM_KEYDOWN`/
+  `WM_CHAR` to the app's HWND (WPF processes them while inactive) and read state back through
+  `System.Windows.Automation` properties. Do **not** call UIA *patterns* (`Invoke`, `SetValue`,
+  `Select`, `SetFocus`): on this app each one focuses its target and activates the window.
+  `PrintWindow(…, PW_RENDERFULLCONTENT)` captures the inactive window. The older scripts in the
+  folder (`MessagesCheck`, `ProjectTreeCheck`, `StatusBar*Check`) predate this rule and still use
+  patterns/mouse; rewrite them the same way when they are next needed.
+
+Other files in `_tools/` are one-off scripts from the clean-up (`replace_method.py`, `fix_semantic.py`,
+`split_form1.py`, `modernize.py`) and the agent guides (`CLEANUP_GUIDE.md`, `DOC_GUIDE.md`). They are
+history, not build inputs. `field_usage.py <Class> …` is still useful: it lists every private
+field/const of a class with the methods that use it, flagging single-method ones.
+
+## Architecture (Wave_Dude_2D)
 
 ```
-My/MyApplication.Main  ->  MyProject.Forms.Form1   (VB "My" application framework; replace with Program.Main)
-Form1 (14,473 lines)   ->  SimulationRunner (own Thread; events ProgressChanged/EngineReady/ProbesUpdated/PreviewReady/Finished)
-                            |- WaveEngineFactory -> IWaveEngine
-                            |     |- WaveSimulator      CPU, Parallel.For
-                            |     '- GpuWaveSimulator   OpenCL via OpenClApi (P/Invoke OpenCL.dll), kernels as strings
+My/MyApplication.Main  ->  MyProject.Forms.Form1   (VB "My" application framework; to be replaced by Program.Main)
+Form1 (partial, 8 files) -> SimulationRunner (own Thread; events ProgressChanged/EngineReady/ProbesUpdated/PreviewReady/Finished,
+                            all raised on the worker thread; Form1.PostToUi marshals via BeginInvoke)
+                            |- WaveEngineFactory -> IWaveEngine (Width/Height/Stride, FieldData, IntensityData, AdvanceOneStep,
+                            |     |                              PrepareFrame, SetProbes/SampleProbes/TakeProbeSamples/ReadProbeProfiles)
+                            |     |- WaveSimulator      CPU, Parallel.For over row bands; IDisposable is a no-op
+                            |     '- GpuWaveSimulator   OpenCL via OpenClApi (P/Invoke OpenCL.dll); kernels are C# string literals
                             |- FrameRenderer + ColorLut/ColorScheme   float field -> ARGB pixels
                             |- IFrameSink -> MfVideoWriter (Media Foundation SinkWriter P/Invoke, .mp4)
-                            |               AviMjpegWriter (.avi fallback)
-                            '- Probe* (Sampler/Collector/Series/Trace/GraphPainter/Overlay)
-Persistence: ProjectStore / ProjectConfig / Project   (JSON via System.Web.Extensions JavaScriptSerializer)
+                            |               AviFrameSink/AviMjpegWriter (.avi fallback)
+                            '- Probe* (Sampler/Collector/Series/Trace/Update sampled on the worker; GraphPainter/Overlay paint on the UI thread)
+Persistence: ProjectStore / ProjectConfig / Project   (JSON via System.Web.Extensions JavaScriptSerializer, snake_case keys)
              AppSettings  -> %AppData%\2D_wave_sim_V01\settings.json
-             ColorSchemeStore -> *.json colour schemes in a user-chosen folder
+             ColorSchemeStore -> *.json colour schemes in a user-chosen folder (ColorSchemeList/ ships the defaults;
+                                 FindDefaultFolder walks up from the exe looking for a *.sln, so a dev build edits the repo copy)
 Project folder layout:  <root>/<project>/configuration.json (+ legacy Configuration.txt), assets/, output_frames/, output_video/
-Model classes (plain POCOs, safe to reuse as-is): SceneSettings, SimulationSettings, SourceSettings(+SourceElement, enums), ProbeSettings(+enums), ColorScheme
+Model classes (plain POCOs): SceneSettings, SimulationSettings, SourceSettings(+SourceElement, enums), ProbeSettings(+enums), ColorScheme
 ```
 
-UI -> engine marshalling is `Form1.PostToUi(Action)` = `BeginInvoke` guarded by `IsHandleCreated`.
-Everything engine-side (`WaveSimulator`, `GpuWaveSimulator`, `OpenClApi`, `Mf*`, `IMF*Native`, `Probe*`,
-`FrameRenderer`) is UI-independent and should be left alone during UI work beyond compile fixes.
+### Engines (refactored 2026-10-07, verified by `engine_check`)
 
-## The UI as it stands (the thing to make viable)
+- `IWaveEngine` does **not** extend `IDisposable`; implementations decide, and `SimulationRunner`
+  disposes via `(engine as IDisposable)?.Dispose()`. Both engines have no thread affinity and no
+  internal synchronisation: exactly one thread may drive an engine at a time (today the runner's
+  worker; the UI thread only reads `FieldData`/`IntensityData` while the run is paused). That is the
+  contract to keep when the driving loop becomes `Task`-based.
+- Numerics shared through `WaveSimulator`'s `internal static` helpers: `ComputeSubSteps`,
+  `LowestSourceLevel`, `IntensityRetention`, `MaxOf`, `NominalDecayLevel`. Units: dx = dt = 1, c in
+  cells/step, `c2 = 1/n²`, frequencies in radians/step (`level/255 × 0.5 × scale`), `Time` in steps.
+  Scheme: leapfrog, 9-point Laplacian (0.066/0.184/−1) or 4th-order 5-point-per-axis with sub-stepping,
+  soft source blending (`u = 0.9u + 0.1v`), two-stage EMA intensity. The docs in both files spell it out.
+- `GpuWaveSimulator` keeps device handles in two `Resources` groups (`_scene`: program + kernels +
+  buffers for the run; `_probes`: everything `SetProbes` creates, released and rebuilt on every call).
+  Kernel arguments are bound at build time; only time (arg 4/11) and the per-sub-step track flag
+  (`wave_step` arg 8) change per launch. The object-source kernel has 17 arguments — the table in
+  `BuildObjectSourceKernels` is indexed by argument number; an off-by-one there shows up as
+  `CL_INVALID_ARG_SIZE`, which the harness catches.
+- `WaveSimulator` swaps its two field arrays every sub-step, so `FieldData` must be re-read per frame;
+  `GpuWaveSimulator.FieldData` is a stable host array refreshed only by `PrepareFrame`.
 
-`Form1` is still a god-class, but it is now a **partial class split along its feature seams**
-(~6,500 lines of logic in total, ~347 methods, 161 event handlers, 78 `MessageBox.Show` calls):
+### Moving engine code into `WaveDude/` (net10.0, no `-windows`)
+
+Files with no Windows dependency, movable as-is: `WaveSimulator`, `GpuWaveSimulator`, `OpenClApi`,
+`GpuDeviceInfo`, `IWaveEngine`, `WaveEngineFactory`, `ProbeSampler`, `ProbeCollector`, `ProbeSeries`,
+`ProbeTrace`, `ProbeUpdate`, the `Probe*`/`Source*` enums, `SourceElement`, `SourceSettings`,
+`SceneSettings`, `SimulationSettings`, `ProbeSettings`, `MfVideoWriter` + `IMF*Native` (COM, Windows at
+runtime but compiles anywhere), `AviMjpegWriter`.
+Files that use `System.Drawing` (`Bitmap`/`Graphics`) and need either `net10.0-windows` or an
+abstraction first: `SceneData` (`FromImage`), `FrameRenderer` (`ToRgbBytes`/`ToBitmap`),
+`SimulationRunner`/`SimulationJob`/`SimulationResult` (carry `Bitmap`s), `ProbeGraphPainter`,
+`ProbeOverlay`, `AviFrameSink`, `ColorLut`, `ColorScheme`. Decision pending: target the library at
+`net10.0-windows` (simplest; WPF can use `System.Drawing.Common`) or split pixel buffers from GDI+
+(cleaner for a `WriteableBitmap` preview).
+Also pending for the move: `JavaScriptSerializer` → `System.Text.Json` keeping the snake_case keys so
+existing `configuration.json`/`settings.json` files load; namespace `_2D_wave_sim_V01` → `WaveDude`
+(the AppData folder name must stay, or be migrated).
+
+## The WinForms UI (reference implementation)
+
+`Form1` is a partial class split along feature seams (~6,500 lines of logic, ~347 methods, 161 event
+handlers, 78 `MessageBox.Show` calls):
 
 | file | owns |
 |---|---|
@@ -76,85 +198,83 @@ Everything engine-side (`WaveSimulator`, `GpuWaveSimulator`, `OpenClApi`, `Mf*`,
 | `Form1.Probes.cs` | probes tab (2 hard-wired probes via `ProbeControlSet[]`) |
 | `Form1.Sources.cs` | sources tab |
 
-Controls are plain private fields declared at the bottom of `Form1.Designer.cs`; event handlers are
-attached in `InitializeComponent` under the comment `// event wiring (was VB WithEvents/Handles)`.
-The VS designer has **not** been verified to open these forms — the Designer files are decompiled
-output with `global::` prefixes; expect to regenerate them when the layout is rebuilt (roadmap 5).
+Controls are private fields at the bottom of `Form1.Designer.cs`; handlers are attached in
+`InitializeComponent` under `// event wiring (was VB WithEvents/Handles)`. The Designer files are
+decompiled output with `global::` prefixes and have not been opened in the VS designer — do not
+expect round-tripping. `Form1.Designer.cs` has 318 controls on a fixed 1781×989 form with absolute
+positions, no `Dock`/`Anchor`, Microsoft Sans Serif in seven sizes, no DPI manifest — the reason the
+UI is being rebuilt in WPF rather than restyled. Six tabs: Settings, Sources, Probes, Preview, Manage
+output, Colors; a persistent bottom strip with Start/Pause, share-image and quick-navigate buttons.
+`HelpForm.cs` holds the user-facing description of every control and is the closest thing to a
+functional spec for the WPF UI.
 
-`Form1.Designer.cs` (3,564 lines): **318 controls** — 91 Labels / 59 Buttons / 39 NumericUpDowns /
-28 CheckBoxes / 15 TextBoxes / 13 GroupBoxes / 13 ComboBoxes / 11 Panels / 10 RadioButtons / 6 ListViews /
-2 PictureBoxes; one `TabControl` (`tabMainFunctions`, owner-drawn, tabs gated via `Enabled` until a
-project is open) with six pages: **Settings, Sources, Probes, Preview, Manage output, Colors**.
-Persistent bottom strip: `grpSimulationControlButtons` (Start / Pause-Resume), `grpShareImage`,
-`grpNavigateTabs` (jump buttons), `btnSaveConfiguration`; `MenuStrip1` (File: New / Open / Choose project
-root / Set c-value / Save / Exit; Info: Help / About); `StatusStrip1`.
+## Known issues (open)
 
-Why it is not viable today:
+- `WaveEngineFactory.Create`: the "first choice failed" branch is dead (`GpuWaveSimulator.TryCreate`
+  never returns an engine together with a message).
+- `SimulationSettings.FromConfig` per-key fallbacks differ from the constructor defaults
+  (steps 2500 vs 0, 4th-order false vs true, c 0.563 vs 1.0, decay 10 vs 0). **Not a bug**: the VB
+  docs (`SimulationSettings.vb:47-49, 92-119`) say old projects must keep their exact behaviour while new
+  projects take the Designer values via `StartNewProject`. The C# `<remarks>` now says so.
+- Still from the VB audit, not done: no GPL headers in the C# (deliberately deferred; the C# tree is
+  temporary); `AssemblyCopyright` lacks the author's name; decompiler artefacts remain (`MessageBoxIcon`
+  aliases, `Keys.Return`, `VBByRefStr ref string` on two OpenCL P/Invokes, `OpenClApi` not `static`,
+  nested `*EventHandler` delegates in `SimulationRunner`, `colCreatedOn2` declared in `Form1.Simulation.cs`
+  instead of the Designer); the csproj does not copy `ColorSchemeList/` to the output as the vbproj did.
+- `btnRenameProject_Click` re-opens the project from disk, silently discarding unsaved edits.
+- `AboutForm` code says "Version 0.27", designer says 0.29; `HelpForm` text has typos ("everly").
+- Unused members: `Form1._hasRun`, `SimulationRunner.JpegQuality`,
+  `AppSettings.LastRootFolder/LastProjectName` (written, never read).
+- `My/*` + `WindowsFormsApplicationBase` startup is the only remaining `Microsoft.VisualBasic` use;
+  replace with `Program.Main` (`EnableVisualStyles`, `SetCompatibleTextRenderingDefault`) when convenient.
+- Private `ref` parameters that are really `out` remain outside the engines (`TryPictureToCanvas`,
+  `TryParseInt`, `DampingProblem`, `PromptForCValue`, `ComputeRanges`, `RgbToHsv`, …).
+- WPF: theme choice not persisted; panes empty.
 
-- **Fixed 1781x989 client size, 297 absolute `Location`s, zero `Dock`/`Anchor`, no `MinimumSize`,
-  no `TableLayoutPanel`/`FlowLayoutPanel`.** Does not fit a 1080p screen with taskbar; nothing reflows.
-- `AutoScaleMode.Font` at 6x13 with **Microsoft Sans Serif** in 7 sizes (9.75–20.25 pt); 2 stray Segoe UI.
-  No `app.manifest`, no DPI awareness -> blurry/clipped on >100 % scaling.
-- Ad-hoc colours (`Azure`, `Gainsboro`, `SystemColors.Menu`), hand-made owner-drawn tabs.
-- Secondary UI: `AboutForm` (version string stale: code says 0.27, designer 0.29), `HelpForm` (long
-  help text as string constants in code), `frmDescription`; `ColorPickerControl` is a code-only
-  UserControl hard-sized to 423x411; `BrowseForFolder` builds its own folder dialog form by hand;
-  `SetExplorerWindowViewMode` late-binds `Shell.Application` COM to restyle Explorer windows (fragile).
-- Help text in `HelpForm.cs` documents the intended behaviour of every control — use it as the spec.
+Fixed on 2026-10-07 (kept here so nobody re-reports them): `AviMjpegWriter` header/offset mismatch
+(header was 236 bytes vs. 224 assumed; now spec-exact, see `avi_check`); `GpuWaveSimulator.SetProbes`
+leaking the previous probe set and ignoring `null`; GPU engine carrying 28 buffer fields that existed
+only to be released, plus a hand-copied `ComputeSubSteps`; `SourceElement.DetachRampSteps` now used by
+both engines instead of a literal 30.
 
-## Recommended roadmap ("make the UI viable")
+Fixed on 2026-10-08 from the VB audit (`_tools/VB_SOURCE_AUDIT.md`): the author's rationale comments,
+Python-provenance notes and wrong C# docs ported into every C# file; folded constants restored
+(`ColorScheme.StopCount/EntryCount`, `SceneSettings.Max*`, `Thumb*`, `FVM_*`, hex OpenCL constants,
+`4f/3f`-style fractions, local consts); locals renamed where the VB name was clearer. Behaviour
+restored to the author's: `AviMjpegWriter` strh `dwQuality` = -1 (new `avi_check` check);
+`WaveSimulator.ApplySources` reuses `_levelValue` instead of allocating per step; `ColorSchemeStore`
+probes for `*.sln` (was `*.vbproj`, which never matched above the C# exe); NaN-safe `!(a > b)` checks in
+`ProbeGraphPainter`/`ProbeSettings`; `ProbeSampler` uses `!= Amplitude`; `Form1.StopRole` parity test;
+`HelpForm` disclaimer is the author's GPL wording.
 
-Do these in order; each step leaves the app runnable.
+## Roadmap
 
-0. ~~**Git hygiene**~~ — `.gitignore` added. **Nothing is committed yet**; the pre-cleanup
-   decompiled baseline is not recoverable from git (only from the original binary).
-1. ~~**Make it compile**~~ — done 2026-10-06.
-2. **Strip VB residue** — done 2026-10-07 (WithEvents block, Token comments, VB runtime
-   helpers, placeholder names, control flow), followed by an XML-doc pass: every type and member
-   in the hand-maintained files has `///` docs (~1,400 members; `DocumentationFile` is on in the
-   csproj so malformed docs are build warnings). Threading, units and coordinate systems are stated
-   in the docs — read them before changing anything on the engine/UI boundary.
-   **Latent issues found while documenting, left unchanged on purpose** (behaviour-preserving pass):
-   - `AviMjpegWriter`: the header actually written is 236 bytes but the `Pos*` patch offsets assume
-     224, so the `movi` size is patched into the BITMAPINFOHEADER and `idx1` offsets are off by 12.
-     Players may or may not tolerate it; see the class `<remarks>`.
-   - `WaveEngineFactory.Create`: the "first choice failed" branch is dead (`GpuWaveSimulator.TryCreate`
-     never returns an engine together with a message).
-   - `SimulationSettings.FromConfig` per-key fallbacks differ from the constructor defaults
-     (steps 2500 vs 0, 4th-order false vs true, c 0.563 vs 1.0, decay 10 vs 0).
-   - `btnRenameProject_Click` re-opens the project from disk, silently discarding unsaved edits.
-   - `GpuWaveSimulator.SetProbes` leaks earlier probe kernel handles if called twice; `SetProbes(null)`
-     does not clear an installed sampler (CPU engine does).
-   - Unused members kept for signature stability: `Form1.ThumbWidth/ThumbHeight/FVM_*`, `_hasRun`,
-     `SourceElement.DetachRampSteps` (engines use literal 30), `SimulationRunner.JpegQuality`,
-     `AviMjpegWriter.MaxFileSize`, `AppSettings.LastRootFolder/LastProjectName` (written, never read).
-   Still open: replace `My/*` with a plain `Program.Main`
-   (`EnableVisualStyles`, `SetCompatibleTextRenderingDefault`, `SetHighDpiMode`); convert
-   `ref` parameters that are really `out`; drop the `Microsoft.VisualBasic` reference once nothing
-   uses it.
-3. **Retarget** — recommended: SDK-style csproj on **.NET 8 (or 10) `net8.0-windows` + `UseWindowsForms`**.
-   Consequences: `JavaScriptSerializer` (System.Web.Extensions) -> `System.Text.Json` with the same
-   snake_case keys (`last_root_folder`, ...) so existing projects still load; `Microsoft.VisualBasic`
-   still exists on .NET; P/Invoke code (OpenCL, Media Foundation, shell32, gdi32) ports unchanged.
-   Fallback if staying on Framework: 4.8 + `app.manifest` with PerMonitorV2.
-4. **Split `Form1` by tab** into UserControls (`SettingsPage`, `SourcesPage`, `ProbesPage`,
-   `PreviewPage`, `OutputPage`, `ColorsPage`) following the existing line-range seams; keep a thin
-   shell form owning menu, status bar, bottom strip, and the `SimulationRunner` lifecycle. Move
-   project/scene/simulation state out of the form into a small view-model/service so pages share it.
-5. **Layout** — per page: `TableLayoutPanel`/`FlowLayoutPanel`, `Dock`/`Anchor`, `MinimumSize`,
-   splitter between settings and preview, single font (Segoe UI 9 pt, let DPI scaling do the rest),
-   drop custom colours and owner-drawn tabs; replace `MessageBox` validation with inline hints / `ErrorProvider`.
-6. Only after 1–5: consider moving off WinForms (WPF/Avalonia). Not before — the engine/UI boundary
-   must be clean first, and WinForms is sufficient for this app's needs.
+1. ~~Make it compile~~ · 2. ~~clean up / document~~ · 2b. ~~AVI fix, style pass, engine refactor~~
+3. **Extract the engine into `WaveDude/`** (see "Moving engine code" above), with the WinForms app
+   referencing it so both UIs run the same code. Replace `JavaScriptSerializer`; decide the
+   `System.Drawing` question; turn the two harnesses into real test projects while at it.
+4. **Make the engine loop `Task`-based**: `SimulationRunner` becomes an `async` driver
+   (`Task.Run` loop, `CancellationToken`, `IProgress<T>`/channels instead of raw events on a worker
+   thread), keeping the one-driver-at-a-time engine contract.
+5. **WPF UI** in `WaveDude.WPF`: fill the Project / Preview / Properties panes; preview as a
+   `WriteableBitmap` fed from `FrameRenderer` pixel buffers; MVVM over the existing settings POCOs;
+   persist the theme choice. Use `HelpForm.cs` as the functional spec.
+6. Retire `Wave_Dude_2D` once the WPF app covers it.
 
-## Conventions / gotchas when editing here
+## Conventions
 
-- Formatting is governed by `.editorconfig` (tabs in `.cs`). In Git Bash, `grep -E` needs `$'	'` for
-  tabs; `grep -P` is broken (locale error).
-- Namespace stays `_2D_wave_sim_V01` until step 3 (settings path and resources depend on it).
-- `Microsoft.VisualBasic` is still referenced only for `WindowsFormsApplicationBase` in `My/`.
+- Style: modern concise C# — expression-bodied accessors, **no `this.` qualification**, no
+  `IDisposable` on interfaces, `out` not `ref` for outputs, private state only for what genuinely
+  outlives a method (run `_tools/field_usage.py` when in doubt). `.editorconfig` encodes it.
+- Fix bugs you find and prove the fix with a harness; do not just document them.
+- Every type and member carries `///` docs stating threading, units and coordinate systems
+  (canvas pixels vs picture-box pixels; steps vs seconds; radians vs degrees). Keep that up.
+- Formatting: tabs in `.cs`, Allman braces, governed by `.editorconfig`. In Git Bash `grep -P` is
+  broken (locale); use `grep -E`.
+- Namespace stays `_2D_wave_sim_V01` in `Wave_Dude_2D` (settings path and resources depend on it).
 - `ColorScheme.StopCount` is 9 and `Form1` asserts the nine `btnColorN` buttons match it.
-- Probe count is hard-wired to 2 (`ProbeCount`, duplicated `*2` controls/handlers) — a `ProbeControlSet`
-  array already abstracts it; generalising is cheap once the UI is split.
-- Video export requires Media Foundation (Windows N editions need the Media Feature Pack); AVI/MJPEG is
-  the fallback. GPU path needs an OpenCL ICD (`OpenCL.dll`); the CPU engine is the fallback.
+- Probe count is hard-wired to 2 in the UI (`ProbeCount`, duplicated `*2` controls); the engines and
+  `ProbeSampler` take any number.
+- Video export needs Media Foundation (Windows N: Media Feature Pack); AVI/MJPEG is the fallback.
+  GPU path needs an OpenCL ICD (`OpenCL.dll`); the CPU engine is the fallback. This machine has an
+  RTX 2080 with working OpenCL, so `engine_check` exercises both paths here.

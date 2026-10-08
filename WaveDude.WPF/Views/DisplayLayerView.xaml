@@ -1,0 +1,23 @@
+<UserControl x:Class="WaveDude.WPF.Views.DisplayLayerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:WaveDude.WPF.Controls"
+             xmlns:meta="clr-namespace:WaveDude.WPF.Markup"
+             xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
+
+	<controls:FormPanel>
+		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.ColorScheme}" />
+		<TextBox Text="{Binding ColorScheme, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:DisplayLayer.ColorScheme}" />
+
+		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.Brightness}" />
+		<TextBox Text="{Binding Brightness}" ToolTip="{meta:Hint model:DisplayLayer.Brightness}" />
+
+		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.BlackLevel}" />
+		<TextBox Text="{Binding BlackLevel}" ToolTip="{meta:Hint model:DisplayLayer.BlackLevel}" />
+
+		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.Preview}"
+		          IsChecked="{Binding Preview}" ToolTip="{meta:Hint model:DisplayLayer.Preview}" />
+		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.Export}"
+		          IsChecked="{Binding Export}" ToolTip="{meta:Hint model:DisplayLayer.Export}" />
+	</controls:FormPanel>
+</UserControl>
