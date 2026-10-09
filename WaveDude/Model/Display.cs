@@ -17,6 +17,8 @@ public sealed class Display : ObservableObject
 	private DisplayLayer _field = new() { ColorScheme = DefaultFieldColorScheme, BlackLevel = DefaultFieldBlackLevel };
 	private DisplayLayer _intensity = new() { ColorScheme = DefaultIntensityColorScheme };
 	private Video _video = new();
+	private int _exportFrom;
+	private int _exportTo;
 
 	/// <summary>Rendering of the wave field.</summary>
 	[XmlElement]
@@ -48,6 +50,30 @@ public sealed class Display : ObservableObject
 		set => SetProperty(ref _video, value);
 	}
 
+	/// <summary>First simulation step of the exported range (and of loop playback); 0 is the start of the run.</summary>
+	[XmlAttribute]
+	[DefaultValue(0)]
+	[Category("Export")]
+	[DisplayName("From step")]
+	[Description("First simulation step of the exported range; 0 is the start of the run.")]
+	public int ExportFrom
+	{
+		get => _exportFrom;
+		set => SetProperty(ref _exportFrom, value);
+	}
+
+	/// <summary>Last simulation step of the exported range (and of loop playback); 0 means the end of the run.</summary>
+	[XmlAttribute]
+	[DefaultValue(0)]
+	[Category("Export")]
+	[DisplayName("To step")]
+	[Description("Last simulation step of the exported range; 0 means the end of the run.")]
+	public int ExportTo
+	{
+		get => _exportTo;
+		set => SetProperty(ref _exportTo, value);
+	}
+
 	/// <summary>Tells <see cref="XmlSerializer"/> to leave all-default video settings out of the file.</summary>
 	public bool ShouldSerializeVideo() => Video.Fps != Video.DefaultFps || Video.Quality != Video.DefaultQuality;
 
@@ -57,6 +83,12 @@ public sealed class Display : ObservableObject
 		Field.Normalize(DefaultFieldColorScheme);
 		Intensity.Normalize(DefaultIntensityColorScheme);
 		Video.Normalize();
+		ExportFrom = Math.Max(0, ExportFrom);
+		ExportTo = Math.Max(0, ExportTo);
+		if (ExportTo != 0 && ExportTo < ExportFrom)
+		{
+			ExportTo = 0;
+		}
 	}
 
 	/// <summary>The two colour scheme names, for display in a property grid.</summary>

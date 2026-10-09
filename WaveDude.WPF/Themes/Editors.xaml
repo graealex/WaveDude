@@ -85,8 +85,8 @@
 					</Border>
 					<ControlTemplate.Triggers>
 						<Trigger Property="IsHighlighted" Value="True">
-							<Setter TargetName="Bd" Property="Background" Value="{DynamicResource MenuItemHover}" />
-							<Setter Property="Foreground" Value="{DynamicResource MenuItemHoverForeground}" />
+							<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ComboBoxItemHover}" />
+							<Setter Property="Foreground" Value="{DynamicResource ComboBoxItemHoverForeground}" />
 						</Trigger>
 					</ControlTemplate.Triggers>
 				</ControlTemplate>
@@ -139,7 +139,7 @@
 						         Padding="{TemplateBinding Padding}" IsReadOnly="{TemplateBinding IsReadOnly}" />
 						<Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
 						       AllowsTransparency="True" PopupAnimation="None" Focusable="False">
-							<Border Background="{DynamicResource MenuPopupBackground}" BorderBrush="{DynamicResource MenuPopupBorder}"
+							<Border Background="{DynamicResource ComboBoxListBackground}" BorderBrush="{DynamicResource MenuPopupBorder}"
 							        BorderThickness="1" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
 							        SnapsToDevicePixels="True">
 								<ScrollViewer>

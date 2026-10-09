@@ -14,6 +14,15 @@
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionIntensity}" />
 			<local:DisplayLayerView DataContext="{Binding Intensity}" />
 
+			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionExportRange}" />
+			<controls:FormPanel>
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Display.ExportFrom}" />
+				<TextBox Text="{Binding ExportFrom}" ToolTip="{meta:Hint model:Display.ExportFrom}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Display.ExportTo}" />
+				<TextBox Text="{Binding ExportTo}" ToolTip="{meta:Hint model:Display.ExportTo}" />
+			</controls:FormPanel>
+
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionVideo}" />
 			<controls:FormPanel DataContext="{Binding Video}">
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Video.Fps}" />

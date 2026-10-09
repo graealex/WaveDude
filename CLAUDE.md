@@ -37,16 +37,29 @@ WPF shell as it stands:
 - Preview document: `Panes/PreviewPane` (dummy, 2026-10-08). Two placeholder pictures (field,
   intensity) side by side or stacked (`Orientation`), each centred in its cell, with a `GridSplitter`
   between them (one 3×3 grid; the unused dimension is spanned, so each orientation keeps its own
-  ratio; Enter or double-click resets to half). Transport bar with `MediaCommands.Play/Pause`
-  (Space toggles), a scrub `Slider` over `Position` 0..`LastFrame`, `FrameCount` bound to
-  `Simulation.Steps`/`VisualizeEvery` via `FrameCountConverter`, and an editable speed combo
+  ratio; Enter or double-click resets to half). Below them the time axis, `Controls/TimelineBar`
+  (2026-10-09, custom `OnRender`: tick labels, playhead with frame number, in/out range as a band
+  with brackets, hover frame; UIA peer exposes it as a slider). Transport bar with
+  `MediaCommands.Play/Pause` (Space toggles), `Commands/PreviewCommands` (step `,` `.`, Home/End to
+  the in/out points, `I`/`O` set them, `X` clears, `L` loops; letters are `KeyBinding`s on the pane
+  because `KeyGesture` rejects unmodified letters, and `CanTransport` refuses them inside text
+  boxes), a frame and step readout, `FrameCount` bound to `Simulation.Steps`/`VisualizeEvery` via
+  `FrameCountConverter`, and an editable speed combo
   (`SpeedPresets` 0.25…4, any value typed; `DoubleTextConverter` ignores text that does not parse
   yet, otherwise every keystroke logs a binding error to the status bar). Numbers follow the Windows
   locale everywhere: `App.OnStartup` overrides `FrameworkElement.Language` with the current culture
   (WPF defaults to en-US), so the preset list and the typed text both say `0,25` on a de-DE machine. Playback is a
   `DispatcherTimer` moving `Position` at `BaseFrameRate` × `Speed`; nothing renders yet. The render
   pipeline will set `FieldImage` / `IntensityImage`. `Editors.xaml` gained the editable-combo text
-  box, a `Slider` style and keyboard-focus visuals for combo and slider.
+  box, a `Slider` style and keyboard-focus visuals for combo and slider. An open combo list sits
+  on the combo's own background (`ComboBoxListBackground`, not the darker menu popup colour) and
+  the highlighted item is the accent with white text (`ComboBoxItemHover*`), like a tree
+  selection; agreed with the user 2026-10-09 after the menu colours read as inverted there.
+  The in/out range is model state: `Display.ExportFrom`/`ExportTo` in **steps** (0 = start / end of
+  the run, also edited on the Display view); the pane derives `InPoint`/`OutPoint` in frames with
+  `StepToFrameConverter` and writes steps back only through the commands (the bar's bracket drags
+  execute `SetInPoint`/`SetOutPoint` with the frame as parameter). Playback stops at the out point
+  or wraps to the in point while looping.
 - **Keyboard first.** Every control must be reachable and operable with Tab and the arrow keys and
   show its keyboard focus (accent border); the user tests without the mouse. The preview pane is
   the model: explicit `TabIndex` order, the radio group is one tab stop (`IsTabStop` bound to
@@ -104,16 +117,20 @@ the project sources (same reference list as above, `-target:exe`, `-nowarn:...,1
 - `_tools/avi_check/Program.cs` — compile with `AviMjpegWriter.cs` only. Writes a 3-frame MJPEG AVI and
   walks the RIFF tree (44 structural checks: header offsets, strh dwQuality = -1, movi size, idx1 offsets, EOF).
 
-- `_tools/ui_check/PreviewCheck.ps1` drives the WPF preview pane end to end (25 checks: play/pause,
-  speed incl. locale spelling, scrubber keys, split radios, splitter, tab order, focus hand-off,
-  foreground untouched).
+- `_tools/ui_check/PreviewCheck.ps1` drives the WPF preview pane end to end (39 checks: play/pause,
+  speed incl. locale spelling, timeline keys, frame steps, in/out/loop, split radios, splitter, tab
+  order, focus hand-off, foreground untouched).
   Run `powershell -ExecutionPolicy Bypass -File _tools/ui_check/PreviewCheck.ps1` (`-Trace` adds
   foreground/focus per line); exit code = failures. **How UI harnesses must work here**: the user may
   be using the machine, so no mouse, no `SendKeys`, no `SetForegroundWindow`. Post `WM_KEYDOWN`/
   `WM_CHAR` to the app's HWND (WPF processes them while inactive) and read state back through
   `System.Windows.Automation` properties. Do **not** call UIA *patterns* (`Invoke`, `SetValue`,
   `Select`, `SetFocus`): on this app each one focuses its target and activates the window.
-  `PrintWindow(…, PW_RENDERFULLCONTENT)` captures the inactive window. The older scripts in the
+  `_tools/ui_check/ComboListShot.ps1` opens the speed combo by keyboard and screenshots the list
+  (the popup has no HWND in UIA, so its screen rectangle is copied), for judging list colours.
+  `PrintWindow(…, PW_RENDERFULLCONTENT)` captures the inactive window. UIA lookups can miss while
+  the UI thread is busy, so `Find` retries; the harness parks the foreground on its own off-screen
+  form (minimise the app, activate the form, show the app without activation). The older scripts in the
   folder (`MessagesCheck`, `ProjectTreeCheck`, `StatusBar*Check`) predate this rule and still use
   patterns/mouse; rewrite them the same way when they are next needed.
 
@@ -230,6 +247,11 @@ functional spec for the WPF UI.
 - Private `ref` parameters that are really `out` remain outside the engines (`TryPictureToCanvas`,
   `TryParseInt`, `DampingProblem`, `PromptForCValue`, `ComputeRanges`, `RgbToHsv`, …).
 - WPF: theme choice not persisted; panes empty.
+- WPF preview, frames vs. steps: the transport bar, scrubber and playback count **frames**
+  (0..`LastFrame`, one per `VisualizeEvery` steps), while sources, probes, the export range and the
+  Properties pane use **steps**; the readout shows both (`773 / 1249  step 1546`), which reads as
+  "why is step twice the frame". Undecided (2026-10-09): label it `step 1546 of 2500`, drop the
+  step from the bar, or label the timeline ticks in steps. Do not change on your own.
 
 Fixed on 2026-10-07 (kept here so nobody re-reports them): `AviMjpegWriter` header/offset mismatch
 (header was 236 bytes vs. 224 assumed; now spec-exact, see `avi_check`); `GpuWaveSimulator.SetProbes`
@@ -259,6 +281,19 @@ probes for `*.sln` (was `*.vbproj`, which never matched above the C# exe); NaN-s
 5. **WPF UI** in `WaveDude.WPF`: fill the Project / Preview / Properties panes; preview as a
    `WriteableBitmap` fed from `FrameRenderer` pixel buffers; MVVM over the existing settings POCOs;
    persist the theme choice. Use `HelpForm.cs` as the functional spec.
+   Timeline, agreed 2026-10-09 (the scrub bar, in/out range and transport keys are done; these
+   stay inside the preview pane, below the pictures):
+   - **Event tracks** under the bar, one row per source and probe on the same time axis: a source
+     draws a bar from its start to its end step (pulse envelope as a filled shape), a probe draws
+     its start step as a flag; clicking selects the item in the Project tree, dragging a bar's
+     edge changes its start/stop steps. Needs a scrollable track area and a collapse rule for
+     many rows.
+   - **Probe signal lane**: the probe's sampled amplitude/intensity over time drawn like an audio
+     track on the same axis, so graph and picture line up; only meaningful once a run has data.
+   - **Zoom and pan of the time axis**: Ctrl+wheel zooms around the cursor, Shift+wheel pans, a
+     thin overview bar shows the visible window; needed once tracks exist, since 2500 steps at
+     one pixel per frame do not fit.
+   Deferred, possibly never: filmstrip thumbnails behind the bar (needs cached frames).
 6. Retire `Wave_Dude_2D` once the WPF app covers it.
 
 ## Conventions

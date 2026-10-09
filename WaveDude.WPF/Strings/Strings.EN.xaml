@@ -62,6 +62,15 @@
 	<s:String x:Key="TipPreviewSpeed">Playback speed: pick a factor or type one</s:String>
 	<s:String x:Key="TipPreviewSideBySide">Field and intensity side by side</s:String>
 	<s:String x:Key="TipPreviewStacked">Field above intensity</s:String>
+	<s:String x:Key="TipPreviewTimeline">Click or drag to scrub; drag a bracket to move the in or out point. Left/Right step a frame, PageUp/PageDown ten, Home/End jump to the in/out points</s:String>
+	<s:String x:Key="TipPreviewStepBack">Previous frame (,)</s:String>
+	<s:String x:Key="TipPreviewStepForward">Next frame (.)</s:String>
+	<s:String x:Key="TipPreviewSetIn">Set the in point at this frame (I)</s:String>
+	<s:String x:Key="TipPreviewSetOut">Set the out point at this frame (O)</s:String>
+	<s:String x:Key="TipPreviewClearRange">Clear the in/out range (X)</s:String>
+	<s:String x:Key="TipPreviewLoop">Loop playback between the in and out points (L)</s:String>
+	<s:String x:Key="LabelPreviewStep">step</s:String>
+	<s:String x:Key="TipPreviewStep">Simulation step of the frame shown</s:String>
 	<s:String x:Key="TipPreviewSplitter">Drag or use the arrow keys to resize; double-click or Enter resets to half</s:String>
 	<s:String x:Key="Ready">Ready</s:String>
 	<s:String x:Key="NoSelection">No selection</s:String>
@@ -79,6 +88,7 @@
 	<s:String x:Key="SectionField">Field</s:String>
 	<s:String x:Key="SectionIntensity">Intensity</s:String>
 	<s:String x:Key="SectionVideo">Video export</s:String>
+	<s:String x:Key="SectionExportRange">Export range</s:String>
 	<s:String x:Key="SectionPosition">Position</s:String>
 	<s:String x:Key="SectionWave">Wave</s:String>
 	<s:String x:Key="SectionTiming">Timing</s:String>

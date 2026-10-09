@@ -102,6 +102,10 @@
 	<SolidColorBrush x:Key="ComboBoxBackground" Color="#FF333337" />
 	<SolidColorBrush x:Key="ComboBoxBorder" Color="#FF434346" />
 	<SolidColorBrush x:Key="ComboBoxHover" Color="#FF3F3F46" />
+	<!-- an open list sits on the combo's own grey; the item under the mouse or keyboard is the accent, like a tree selection -->
+	<SolidColorBrush x:Key="ComboBoxListBackground" Color="#FF333337" />
+	<SolidColorBrush x:Key="ComboBoxItemHover" Color="#FF3399FF" />
+	<SolidColorBrush x:Key="ComboBoxItemHoverForeground" Color="#FFFFFFFF" />
 	<SolidColorBrush x:Key="ComboBoxGlyph" Color="#FFF1F1F1" />
 	<SolidColorBrush x:Key="CheckBoxBackground" Color="#FF333337" />
 	<SolidColorBrush x:Key="CheckBoxBorder" Color="#FF6D6D70" />

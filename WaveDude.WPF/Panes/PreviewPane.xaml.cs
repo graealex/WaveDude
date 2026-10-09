@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WaveDude.Model;
+using WaveDude.WPF.Commands;
 using WaveDude.WPF.Converters;
 
 namespace WaveDude.WPF.Panes;
@@ -18,7 +19,10 @@ namespace WaveDude.WPF.Panes;
 /// speed. Dummy stage: the pictures are fixed placeholders and playing only advances
 /// <see cref="Position"/>; the render pipeline that will feed <see cref="FieldImage"/> and
 /// <see cref="IntensityImage"/> per frame does not exist yet. <see cref="FrameCount"/> follows
-/// the project's step count and visualisation interval through a binding.
+/// the project's step count and visualisation interval through a binding, and so do the
+/// <see cref="InPoint"/>/<see cref="OutPoint"/> of the export range (<c>Display.ExportFrom/To</c>,
+/// in steps; the <see cref="PreviewCommands"/> write them). Playback runs between the two,
+/// looping when <see cref="IsLooping"/>.
 /// </summary>
 /// <remarks>
 /// Playback runs on a <see cref="DispatcherTimer"/> on the UI thread: a speed of 1 advances
@@ -79,6 +83,18 @@ public partial class PreviewPane : UserControl
 		nameof(Speed), typeof(double), typeof(PreviewPane),
 		new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, null, CoerceSpeed));
 
+	/// <summary>Identifies the <see cref="InPoint"/> property.</summary>
+	public static readonly DependencyProperty InPointProperty = DependencyProperty.Register(
+		nameof(InPoint), typeof(int), typeof(PreviewPane), new PropertyMetadata(0));
+
+	/// <summary>Identifies the <see cref="OutPoint"/> property.</summary>
+	public static readonly DependencyProperty OutPointProperty = DependencyProperty.Register(
+		nameof(OutPoint), typeof(int), typeof(PreviewPane), new PropertyMetadata(0));
+
+	/// <summary>Identifies the <see cref="IsLooping"/> property.</summary>
+	public static readonly DependencyProperty IsLoopingProperty = DependencyProperty.Register(
+		nameof(IsLooping), typeof(bool), typeof(PreviewPane), new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
 	/// <summary>Identifies the <see cref="Orientation"/> property.</summary>
 	public static readonly DependencyProperty OrientationProperty = DependencyProperty.Register(
 		nameof(Orientation), typeof(Orientation), typeof(PreviewPane),
@@ -113,10 +129,27 @@ public partial class PreviewPane : UserControl
 			},
 		});
 
+		// in/out points in frames from the model's steps; "end" makes an ExportTo of 0 the last frame
+		SetBinding(InPointProperty, RangeBinding(nameof(Display.ExportFrom), null));
+		SetBinding(OutPointProperty, RangeBinding(nameof(Display.ExportTo), "end"));
+
 		_timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(1.0 / 60.0) };
 		_timer.Tick += OnTick;
 		Unloaded += (_, _) => IsPlaying = false;
 	}
+
+	private MultiBinding RangeBinding(string stepProperty, string? parameter) => new()
+	{
+		Converter = new StepToFrameConverter(),
+		ConverterParameter = parameter,
+		Mode = BindingMode.OneWay,
+		Bindings =
+		{
+			new Binding($"{nameof(Project)}.{nameof(Model.Project.Display)}.{stepProperty}") { Source = this },
+			new Binding($"{nameof(Project)}.{nameof(Model.Project.Simulation)}.{nameof(Simulation.VisualizeEvery)}") { Source = this },
+			new Binding(nameof(LastFrame)) { Source = this },
+		},
+	};
 
 	/// <summary>The project whose run is shown; null shows the placeholders with a single frame.</summary>
 	public Project? Project
@@ -158,6 +191,27 @@ public partial class PreviewPane : UserControl
 	{
 		get => (double)GetValue(SpeedProperty);
 		set => SetValue(SpeedProperty, value);
+	}
+
+	/// <summary>First frame of the export/loop range; 0 while no in point is set. Follows the model.</summary>
+	public int InPoint
+	{
+		get => (int)GetValue(InPointProperty);
+		private set => SetValue(InPointProperty, value);
+	}
+
+	/// <summary>Last frame of the export/loop range; <see cref="LastFrame"/> while no out point is set. Follows the model.</summary>
+	public int OutPoint
+	{
+		get => (int)GetValue(OutPointProperty);
+		private set => SetValue(OutPointProperty, value);
+	}
+
+	/// <summary>Whether playback wraps from the out point back to the in point instead of stopping.</summary>
+	public bool IsLooping
+	{
+		get => (bool)GetValue(IsLoopingProperty);
+		set => SetValue(IsLoopingProperty, value);
 	}
 
 	/// <summary>How the two pictures are split: <see cref="Orientation.Horizontal"/> side by side, <see cref="Orientation.Vertical"/> field above intensity.</summary>
@@ -203,9 +257,9 @@ public partial class PreviewPane : UserControl
 		var pane = (PreviewPane)d;
 		if ((bool)e.NewValue)
 		{
-			if (pane.Position >= pane.LastFrame)
+			if (pane.Position >= pane.OutPoint)
 			{
-				pane.Position = 0; // play again from the start
+				pane.Position = pane.InPoint; // play the range again from its start
 			}
 			pane._carry = 0.0;
 			pane._clock.Restart();
@@ -237,7 +291,10 @@ public partial class PreviewPane : UserControl
 		}
 	}
 
-	/// <summary>Advances <see cref="Position"/> by the frames elapsed since the previous tick; stops at the last frame.</summary>
+	/// <summary>
+	/// Advances <see cref="Position"/> by the frames elapsed since the previous tick. At the out
+	/// point playback stops, or wraps to the in point when <see cref="IsLooping"/>.
+	/// </summary>
 	private void OnTick(object? sender, EventArgs e)
 	{
 		double seconds = _clock.Elapsed.TotalSeconds;
@@ -250,14 +307,19 @@ public partial class PreviewPane : UserControl
 		}
 		_carry -= frames;
 		int next = Position + frames;
-		if (next >= LastFrame)
+		int end = OutPoint;
+		if (next < end)
 		{
-			Position = LastFrame;
-			IsPlaying = false;
+			Position = next;
+		}
+		else if (IsLooping && end > InPoint)
+		{
+			Position = InPoint + (next - end) % (end - InPoint);
 		}
 		else
 		{
-			Position = next;
+			Position = end;
+			IsPlaying = false;
 		}
 	}
 
@@ -272,6 +334,68 @@ public partial class PreviewPane : UserControl
 	private void CanTogglePlayPause(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = LastFrame > 0;
 
 	private void OnTogglePlayPause(object sender, ExecutedRoutedEventArgs e) => IsPlaying = !IsPlaying;
+
+	// ---------------------------------------------------------------- transport commands
+
+	/// <summary>The letter and punctuation gestures must not fire while the user types in a text box.</summary>
+	private void CanTransport(object sender, CanExecuteRoutedEventArgs e) =>
+		e.CanExecute = Project != null && e.OriginalSource is not TextBoxBase;
+
+	private void OnStepBack(object sender, ExecutedRoutedEventArgs e) => Position -= 1;
+
+	private void OnStepForward(object sender, ExecutedRoutedEventArgs e) => Position += 1;
+
+	private void OnGoToStart(object sender, ExecutedRoutedEventArgs e) => Position = InPoint;
+
+	private void OnGoToEnd(object sender, ExecutedRoutedEventArgs e) => Position = OutPoint;
+
+	private void CanEditRange(object sender, CanExecuteRoutedEventArgs e) =>
+		e.CanExecute = Project != null && LastFrame > 0 && e.OriginalSource is not TextBoxBase;
+
+	/// <summary>The frame a range command was given, or the frame shown.</summary>
+	private int FrameOf(ExecutedRoutedEventArgs e) => e.Parameter is int frame ? Math.Clamp(frame, 0, LastFrame) : Position;
+
+	/// <summary>
+	/// Sets the in point, in steps, on the model. An in point past the out point clears the out
+	/// point (0 = end of the run), so the range stays ordered.
+	/// </summary>
+	private void OnSetInPoint(object sender, ExecutedRoutedEventArgs e)
+	{
+		Display display = Project!.Display;
+		int step = FrameOf(e) * Project.Simulation.VisualizeEvery;
+		if (display.ExportTo != 0 && display.ExportTo <= step)
+		{
+			display.ExportTo = 0;
+		}
+		display.ExportFrom = step;
+	}
+
+	/// <summary>
+	/// Sets the out point on the model; the last frame means "to the end" and is stored as 0. An
+	/// out point before the in point clears the in point.
+	/// </summary>
+	private void OnSetOutPoint(object sender, ExecutedRoutedEventArgs e)
+	{
+		Display display = Project!.Display;
+		int frame = FrameOf(e);
+		int step = frame >= LastFrame ? 0 : frame * Project.Simulation.VisualizeEvery;
+		if (step != 0 && display.ExportFrom >= step)
+		{
+			display.ExportFrom = 0;
+		}
+		display.ExportTo = step;
+	}
+
+	private void CanClearRange(object sender, CanExecuteRoutedEventArgs e) =>
+		e.CanExecute = Project is { Display: { } display } && (display.ExportFrom != 0 || display.ExportTo != 0) && e.OriginalSource is not TextBoxBase;
+
+	private void OnClearRange(object sender, ExecutedRoutedEventArgs e)
+	{
+		Project!.Display.ExportFrom = 0;
+		Project.Display.ExportTo = 0;
+	}
+
+	private void OnToggleLoop(object sender, ExecutedRoutedEventArgs e) => IsLooping = !IsLooping;
 
 	/// <summary>Space inside the speed text box is neither a digit nor the play/pause toggle: swallowed.</summary>
 	private void OnSpeedBoxPreviewKeyDown(object sender, KeyEventArgs e)

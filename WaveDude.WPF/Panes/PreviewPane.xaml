@@ -3,16 +3,25 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:WaveDude.WPF.Panes"
              xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
+             xmlns:controls="clr-namespace:WaveDude.WPF.Controls"
+             xmlns:commands="clr-namespace:WaveDude.WPF.Commands"
              Background="{DynamicResource DocumentBackground}" Focusable="True" IsTabStop="False">
 
 	<UserControl.Resources>
 		<converters:EnumBooleanConverter x:Key="EnumBoolean" />
 		<converters:DoubleTextConverter x:Key="DoubleText" />
+		<converters:FrameToStepConverter x:Key="FrameToStep" />
 
 		<StreamGeometry x:Key="PlayGeometry">M0,0 L9,5 L0,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="PauseGeometry">M0,0 L3,0 L3,10 L0,10 Z M6,0 L9,0 L9,10 L6,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="SideBySideGeometry">M0,0 L5,0 L5,10 L0,10 Z M7,0 L12,0 L12,10 L7,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="StackedGeometry">M0,0 L12,0 L12,4 L0,4 Z M0,6 L12,6 L12,10 L0,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="StepBackGeometry">M0,0 L2,0 L2,10 L0,10 Z M9,0 L3,5 L9,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="StepForwardGeometry">M7,0 L9,0 L9,10 L7,10 Z M0,0 L6,5 L0,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="SetInGeometry">M0,0 L4,0 L4,2 L2,2 L2,8 L4,8 L4,10 L0,10 Z M6,2 L11,5 L6,8 Z</StreamGeometry>
+		<StreamGeometry x:Key="SetOutGeometry">M11,0 L7,0 L7,2 L9,2 L9,8 L7,8 L7,10 L11,10 Z M5,2 L0,5 L5,8 Z</StreamGeometry>
+		<StreamGeometry x:Key="ClearRangeGeometry">M0,1.5 L1.5,0 L5,3.5 L8.5,0 L10,1.5 L6.5,5 L10,8.5 L8.5,10 L5,6.5 L1.5,10 L0,8.5 L3.5,5 Z</StreamGeometry>
+		<StreamGeometry x:Key="LoopGeometry">M5,1 A4,4 0 1 1 1,5 L3,5 A2,2 0 1 0 5,3 Z M5,0 L8,2 L5,4 Z</StreamGeometry>
 
 		<!-- filled-glyph transport button; Content is the geometry. A tab stop: keyboard focus shows as an accent border -->
 		<Style x:Key="TransportButton" TargetType="{x:Type Button}">
@@ -49,9 +58,9 @@
 			</Setter>
 		</Style>
 
-		<!-- glyph radio button for a choice shown as a row of buttons; the chosen one stays pressed.
-		     The group is one tab stop; Left/Right move within it (see the StackPanel below) -->
-		<Style x:Key="TransportRadio" TargetType="{x:Type RadioButton}">
+		<!-- glyph toggle (and radio) button; the checked one stays pressed. Used for the loop toggle and
+		     the split radios, whose group is one tab stop with Left/Right inside (see the StackPanel below) -->
+		<Style x:Key="TransportToggle" TargetType="{x:Type ToggleButton}">
 			<Setter Property="Width" Value="22" />
 			<Setter Property="Height" Value="22" />
 			<Setter Property="Margin" Value="1,0" />
@@ -59,7 +68,7 @@
 			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
 			<Setter Property="Template">
 				<Setter.Value>
-					<ControlTemplate TargetType="{x:Type RadioButton}">
+					<ControlTemplate TargetType="{x:Type ToggleButton}">
 						<Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" SnapsToDevicePixels="True">
 							<Path Data="{TemplateBinding Content}" Fill="{TemplateBinding Foreground}"
 							      HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -80,22 +89,49 @@
 				</Setter.Value>
 			</Setter>
 		</Style>
+
+		<!-- the time axis: theme colours for the custom-drawn bar -->
+		<Style TargetType="{x:Type controls:TimelineBar}">
+			<Setter Property="Background" Value="{DynamicResource ScrollBarBackground}" />
+			<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+			<Setter Property="TickBrush" Value="{DynamicResource ControlBorder}" />
+			<Setter Property="LabelBrush" Value="{DynamicResource GrayText}" />
+			<Setter Property="AccentBrush" Value="{DynamicResource Accent}" />
+			<Setter Property="Margin" Value="4,2" />
+		</Style>
 	</UserControl.Resources>
 
 	<UserControl.CommandBindings>
 		<CommandBinding Command="MediaCommands.Play" CanExecute="CanPlay" Executed="OnPlay" />
 		<CommandBinding Command="MediaCommands.Pause" CanExecute="CanPause" Executed="OnPause" />
 		<CommandBinding Command="MediaCommands.TogglePlayPause" CanExecute="CanTogglePlayPause" Executed="OnTogglePlayPause" />
+		<!-- Home/End are gestures of the commands, the letter keys are the InputBindings below; CanTransport refuses all of them inside a text box -->
+		<CommandBinding Command="{x:Static commands:PreviewCommands.StepBack}" CanExecute="CanTransport" Executed="OnStepBack" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.StepForward}" CanExecute="CanTransport" Executed="OnStepForward" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.GoToStart}" CanExecute="CanTransport" Executed="OnGoToStart" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.GoToEnd}" CanExecute="CanTransport" Executed="OnGoToEnd" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.SetInPoint}" CanExecute="CanEditRange" Executed="OnSetInPoint" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.SetOutPoint}" CanExecute="CanEditRange" Executed="OnSetOutPoint" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.ClearRange}" CanExecute="CanClearRange" Executed="OnClearRange" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.ToggleLoop}" CanExecute="CanTransport" Executed="OnToggleLoop" />
 	</UserControl.CommandBindings>
+	<!-- plain letters are not valid KeyGestures on a command, so these live here; CanTransport keeps them out of text boxes -->
 	<UserControl.InputBindings>
 		<KeyBinding Key="Space" Command="MediaCommands.TogglePlayPause" />
+		<KeyBinding Key="OemComma" Command="{x:Static commands:PreviewCommands.StepBack}" />
+		<KeyBinding Key="OemPeriod" Command="{x:Static commands:PreviewCommands.StepForward}" />
+		<KeyBinding Key="I" Command="{x:Static commands:PreviewCommands.SetInPoint}" />
+		<KeyBinding Key="O" Command="{x:Static commands:PreviewCommands.SetOutPoint}" />
+		<KeyBinding Key="X" Command="{x:Static commands:PreviewCommands.ClearRange}" />
+		<KeyBinding Key="L" Command="{x:Static commands:PreviewCommands.ToggleLoop}" />
 	</UserControl.InputBindings>
 
 	<DockPanel>
 
-		<!-- transport bar: play, pause, scrubber, frame readout, speed, split.
-		     Tab order (TabIndex) is left to right: play, pause, scrubber, speed, split; the DockPanel
-		     declares the right-docked items first, so it cannot be the declaration order. -->
+		<!-- transport bar: play, pause, frame steps, in/out/clear, loop, frame and step readout, speed,
+		     split. Tab order (TabIndex) is left to right; the DockPanel declares the right-docked items
+		     first, so it cannot be the declaration order. The timeline is the row above (declared after
+		     this one, since both dock to the bottom) and follows in the tab order. -->
 		<Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource ToolWindowBorder}" BorderThickness="0,1,0,0" Padding="4,3">
 			<DockPanel KeyboardNavigation.TabNavigation="Local">
 				<Button x:Name="playButton" DockPanel.Dock="Left" TabIndex="1" Style="{StaticResource TransportButton}" Content="{StaticResource PlayGeometry}"
@@ -105,30 +141,52 @@
 				        Command="MediaCommands.Pause" ToolTip="{DynamicResource TipPreviewPause}"
 				        AutomationProperties.Name="{DynamicResource TipPreviewPause}" AutomationProperties.AutomationId="PreviewPause" />
 				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
+				<Button DockPanel.Dock="Left" TabIndex="3" Style="{StaticResource TransportButton}" Content="{StaticResource StepBackGeometry}"
+				        Command="{x:Static commands:PreviewCommands.StepBack}" ToolTip="{DynamicResource TipPreviewStepBack}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewStepBack}" AutomationProperties.AutomationId="PreviewStepBack" />
+				<Button DockPanel.Dock="Left" TabIndex="4" Style="{StaticResource TransportButton}" Content="{StaticResource StepForwardGeometry}"
+				        Command="{x:Static commands:PreviewCommands.StepForward}" ToolTip="{DynamicResource TipPreviewStepForward}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewStepForward}" AutomationProperties.AutomationId="PreviewStepForward" />
+				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
+				<Button DockPanel.Dock="Left" TabIndex="5" Style="{StaticResource TransportButton}" Content="{StaticResource SetInGeometry}"
+				        Command="{x:Static commands:PreviewCommands.SetInPoint}" ToolTip="{DynamicResource TipPreviewSetIn}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewSetIn}" AutomationProperties.AutomationId="PreviewSetIn" />
+				<Button DockPanel.Dock="Left" TabIndex="6" Style="{StaticResource TransportButton}" Content="{StaticResource SetOutGeometry}"
+				        Command="{x:Static commands:PreviewCommands.SetOutPoint}" ToolTip="{DynamicResource TipPreviewSetOut}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewSetOut}" AutomationProperties.AutomationId="PreviewSetOut" />
+				<Button DockPanel.Dock="Left" TabIndex="7" Style="{StaticResource TransportButton}" Content="{StaticResource ClearRangeGeometry}"
+				        Command="{x:Static commands:PreviewCommands.ClearRange}" ToolTip="{DynamicResource TipPreviewClearRange}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewClearRange}" AutomationProperties.AutomationId="PreviewClearRange" />
+				<ToggleButton DockPanel.Dock="Left" TabIndex="8" Style="{StaticResource TransportToggle}" Content="{StaticResource LoopGeometry}"
+				              IsChecked="{Binding IsLooping, ElementName=pane}" ToolTip="{DynamicResource TipPreviewLoop}"
+				              AutomationProperties.Name="{DynamicResource TipPreviewLoop}" AutomationProperties.AutomationId="PreviewLoop" />
+				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
 
 				<!-- right-docked items: the first declared is the rightmost -->
 				<!-- one tab stop, the checked radio (IsTabStop follows IsChecked); the arrow keys move to the
 				     neighbour and check it, in code, since WPF's directional navigation skips non-tab-stops -->
-				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="5"
+				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="10"
 				            KeyDown="OnSplitGroupKeyDown">
-					<RadioButton Style="{StaticResource TransportRadio}" Content="{StaticResource SideBySideGeometry}" GroupName="Split"
+					<RadioButton Style="{StaticResource TransportToggle}" Content="{StaticResource SideBySideGeometry}" GroupName="Split"
 					             ToolTip="{DynamicResource TipPreviewSideBySide}"
 					             AutomationProperties.Name="{DynamicResource TipPreviewSideBySide}" AutomationProperties.AutomationId="PreviewSideBySide"
 					             IsChecked="{Binding Orientation, ElementName=pane, Converter={StaticResource EnumBoolean}, ConverterParameter={x:Static Orientation.Horizontal}}"
 					             IsTabStop="{Binding IsChecked, RelativeSource={RelativeSource Self}, Mode=OneWay}" />
-					<RadioButton Style="{StaticResource TransportRadio}" Content="{StaticResource StackedGeometry}" GroupName="Split"
+					<RadioButton Style="{StaticResource TransportToggle}" Content="{StaticResource StackedGeometry}" GroupName="Split"
 					             ToolTip="{DynamicResource TipPreviewStacked}"
 					             AutomationProperties.Name="{DynamicResource TipPreviewStacked}" AutomationProperties.AutomationId="PreviewStacked"
 					             IsChecked="{Binding Orientation, ElementName=pane, Converter={StaticResource EnumBoolean}, ConverterParameter={x:Static Orientation.Vertical}}"
 					             IsTabStop="{Binding IsChecked, RelativeSource={RelativeSource Self}, Mode=OneWay}" />
 				</StackPanel>
 				<Rectangle DockPanel.Dock="Right" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
-				<ComboBox x:Name="speedBox" DockPanel.Dock="Right" TabIndex="4" Width="64" IsEditable="True" ItemsSource="{x:Static local:PreviewPane.SpeedPresets}"
+				<ComboBox x:Name="speedBox" DockPanel.Dock="Right" TabIndex="9" Width="64" IsEditable="True" ItemsSource="{x:Static local:PreviewPane.SpeedPresets}"
 				          Text="{Binding Speed, ElementName=pane, Mode=TwoWay, Converter={StaticResource DoubleText}}" ToolTip="{DynamicResource TipPreviewSpeed}"
 				          AutomationProperties.Name="{DynamicResource LabelPreviewSpeed}" AutomationProperties.AutomationId="PreviewSpeed"
 				          PreviewKeyDown="OnSpeedBoxPreviewKeyDown" />
 				<TextBlock DockPanel.Dock="Right" Style="{StaticResource FormLabel}" Margin="8,0,4,0" Text="{DynamicResource LabelPreviewSpeed}" />
-				<TextBlock DockPanel.Dock="Right" Style="{StaticResource FormValue}" MinWidth="90" TextAlignment="Right" ToolTip="{DynamicResource TipPreviewFrame}"
+
+				<!-- readout: "frame / last" and, dimmer, the simulation step of that frame -->
+				<TextBlock DockPanel.Dock="Left" Style="{StaticResource FormLabel}" Margin="4,0" ToolTip="{DynamicResource TipPreviewFrame}"
 				           AutomationProperties.AutomationId="PreviewFrame">
 					<TextBlock.Text>
 						<MultiBinding StringFormat="{}{0} / {1}">
@@ -137,13 +195,29 @@
 						</MultiBinding>
 					</TextBlock.Text>
 				</TextBlock>
-
-				<!-- the scrubber takes what is left; Left/Right step a frame, PageUp/PageDown ten, Home/End to the ends -->
-				<Slider TabIndex="3" Margin="4,0" Minimum="0" Maximum="{Binding LastFrame, ElementName=pane}" Value="{Binding Position, ElementName=pane}"
-				        SmallChange="1" LargeChange="10" ToolTip="{DynamicResource TipPreviewScrub}"
-				        AutomationProperties.Name="{DynamicResource TipPreviewScrub}" AutomationProperties.AutomationId="PreviewScrub" />
+				<TextBlock DockPanel.Dock="Left" Style="{StaticResource FormValue}" ToolTip="{DynamicResource TipPreviewStep}"
+				           AutomationProperties.AutomationId="PreviewStep">
+					<Run Text="{DynamicResource LabelPreviewStep}" /><Run Text=" " /><Run>
+						<Run.Text>
+							<MultiBinding Converter="{StaticResource FrameToStep}" Mode="OneWay">
+								<Binding Path="Position" ElementName="pane" />
+								<Binding Path="Project.Simulation.VisualizeEvery" ElementName="pane" />
+							</MultiBinding>
+						</Run.Text>
+					</Run>
+				</TextBlock>
+				<Rectangle Fill="Transparent" />
 			</DockPanel>
 		</Border>
+
+		<!-- the time axis, full width above the transport bar -->
+		<controls:TimelineBar x:Name="timeline" DockPanel.Dock="Bottom"
+		                      Maximum="{Binding LastFrame, ElementName=pane}" Value="{Binding Position, ElementName=pane}"
+		                      RangeStart="{Binding InPoint, ElementName=pane}" RangeEnd="{Binding OutPoint, ElementName=pane}"
+		                      SetRangeStartCommand="{x:Static commands:PreviewCommands.SetInPoint}"
+		                      SetRangeEndCommand="{x:Static commands:PreviewCommands.SetOutPoint}"
+		                      ToolTip="{DynamicResource TipPreviewTimeline}"
+		                      AutomationProperties.Name="{DynamicResource TipPreviewTimeline}" AutomationProperties.AutomationId="PreviewTimeline" />
 
 		<!-- the two pictures, side by side (columns 0 and 2) or stacked (rows 0 and 2), with a splitter in
 		     the middle definition. The unused dimension is bridged by spanning all three of its
