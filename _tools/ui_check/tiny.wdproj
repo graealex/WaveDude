@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Version="1" Seed="12345">
+	<Description>Harness project: a 64 x 48 canvas, 200 steps, a frame every 2 steps, one continuous source.</Description>
+	<Scene Width="64" Height="48" DampingEdge="4" />
+	<Simulation Steps="200" VisualizeEvery="2" />
+	<Display>
+		<Field ColorScheme="Default_Field" BlackLevel="-0.05" />
+		<Intensity ColorScheme="Default_intensity" />
+	</Display>
+	<Source Name="Source 1" X="20" Y="24" Frequency="120" />
+</Project>

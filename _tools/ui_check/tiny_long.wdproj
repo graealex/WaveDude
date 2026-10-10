@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Version="1" Seed="12345">
+	<Description>Harness project: the tiny canvas run for 2 000 000 steps on the CPU (minutes), a frame every 1000 steps, to pause and stop.</Description>
+	<Scene Width="64" Height="48" DampingEdge="4" />
+	<Simulation Steps="2000000" VisualizeEvery="1000" />
+	<Display>
+		<Field ColorScheme="Default_Field" BlackLevel="-0.05" />
+		<Intensity ColorScheme="Default_intensity" />
+	</Display>
+	<Source Name="Source 1" X="20" Y="24" Frequency="120" />
+</Project>

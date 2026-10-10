@@ -1,0 +1,134 @@
+using System.Collections.Specialized;
+using System.ComponentModel;
+
+namespace WaveDude.Model;
+
+/// <summary>What changed in a watched project: the object and the property, or a list when items were added or removed.</summary>
+/// <param name="Item">The object that changed (a <see cref="Scene"/>, <see cref="Source"/>, …) or the collection.</param>
+/// <param name="Property">The property name, or null for a collection change.</param>
+public sealed record ProjectChange(object Item, string? Property)
+{
+	/// <summary>
+	/// Whether the change alters what a simulation computes: the scene, the solver settings, the seed or a
+	/// source. Display settings, probes and the description do not.
+	/// </summary>
+	public bool AffectsSimulation => Item switch
+	{
+		Scene or Simulation or Source or SourceArray => true,
+		Project => Property is nameof(Project.Seed) or nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Sources),
+		NotifyCollectionChangedEventArgs => true,
+		_ => false,
+	};
+}
+
+/// <summary>
+/// Raises one event for any change anywhere in a <see cref="Project"/>: the nested settings objects, the
+/// source and probe lists and their items (re-subscribing when objects are replaced or items come and go).
+/// The model has no aggregate notification of its own; this is it. UI thread, like the model.
+/// </summary>
+public sealed class ProjectWatcher : IDisposable
+{
+	private readonly Project _project;
+	private readonly HashSet<INotifyPropertyChanged> _subscribed = [];
+	private readonly HashSet<INotifyCollectionChanged> _collections = [];
+
+	/// <param name="project">The project to watch for its lifetime (or until <see cref="Dispose"/>).</param>
+	public ProjectWatcher(Project project)
+	{
+		_project = project;
+		project.PropertyChanged += OnProjectPropertyChanged;
+		Resubscribe();
+	}
+
+	/// <summary>Something in the project changed.</summary>
+	public event EventHandler<ProjectChange>? Changed;
+
+	/// <summary>Stops watching.</summary>
+	public void Dispose()
+	{
+		_project.PropertyChanged -= OnProjectPropertyChanged;
+		Unsubscribe();
+	}
+
+	private void OnProjectPropertyChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		if (e.PropertyName is nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Display) or nameof(Project.Sources) or nameof(Project.Probes))
+		{
+			Resubscribe();
+		}
+		Changed?.Invoke(this, new ProjectChange(_project, e.PropertyName));
+	}
+
+	private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		if (sender is Source && e.PropertyName == nameof(Source.Array) || sender is Display && e.PropertyName is nameof(Display.Field) or nameof(Display.Intensity) or nameof(Display.Video))
+		{
+			Resubscribe();
+		}
+		if (sender != null)
+		{
+			Changed?.Invoke(this, new ProjectChange(sender, e.PropertyName));
+		}
+	}
+
+	private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+	{
+		Resubscribe();
+		Changed?.Invoke(this, new ProjectChange(e, null));
+	}
+
+	private void Resubscribe()
+	{
+		Unsubscribe();
+		Subscribe(_project.Scene);
+		Subscribe(_project.Simulation);
+		Subscribe(_project.Display);
+		Subscribe(_project.Display.Field);
+		Subscribe(_project.Display.Intensity);
+		Subscribe(_project.Display.Video);
+		SubscribeCollection(_project.Sources);
+		SubscribeCollection(_project.Probes);
+		foreach (Source source in _project.Sources)
+		{
+			Subscribe(source);
+			if (source.Array != null)
+			{
+				Subscribe(source.Array);
+			}
+		}
+		foreach (Probe probe in _project.Probes)
+		{
+			Subscribe(probe);
+		}
+	}
+
+	private void Subscribe(INotifyPropertyChanged item)
+	{
+		if (_subscribed.Add(item))
+		{
+			item.PropertyChanged += OnItemPropertyChanged;
+		}
+	}
+
+	private void SubscribeCollection(INotifyCollectionChanged collection)
+	{
+		if (_collections.Add(collection))
+		{
+			collection.CollectionChanged += OnCollectionChanged;
+		}
+	}
+
+	private void Unsubscribe()
+	{
+		foreach (INotifyPropertyChanged item in _subscribed)
+		{
+			item.PropertyChanged -= OnItemPropertyChanged;
+		}
+		_subscribed.Clear();
+		foreach (INotifyCollectionChanged collection in _collections)
+		{
+			collection.CollectionChanged -= OnCollectionChanged;
+		}
+		_collections.Clear();
+	}
+}

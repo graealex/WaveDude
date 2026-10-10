@@ -6,7 +6,7 @@ namespace WaveDude.WPF.Commands;
 /// Transport commands of the preview pane beyond the built-in <see cref="MediaCommands"/>.
 /// Bound on the pane, so the keys work from any control inside it (the pane's handlers refuse
 /// them while a text box has focus, so typing is never hijacked). Home and End are gestures of
-/// the commands; the letter and punctuation keys (, . I O X L) are <c>KeyBinding</c>s in the
+/// the commands; the letter and punctuation keys (, . I O X L F) are <c>KeyBinding</c>s in the
 /// pane's XAML, because <see cref="KeyGesture"/> rejects unmodified letters. The in/out commands
 /// take a frame number as parameter, or null for the frame shown.
 /// </summary>
@@ -37,4 +37,7 @@ public static class PreviewCommands
 
 	/// <summary>Toggles looping between the in and out points.</summary>
 	public static readonly RoutedUICommand ToggleLoop = new("Loop", nameof(ToggleLoop), typeof(PreviewCommands));
+
+	/// <summary>Toggles following the newest frame of a run in progress.</summary>
+	public static readonly RoutedUICommand ToggleLive = new("Live", nameof(ToggleLive), typeof(PreviewCommands));
 }

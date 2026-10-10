@@ -128,5 +128,41 @@ namespace WaveDude.WPF.Properties {
                 this["RecentFiles"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Vertical")]
+        public global::System.Windows.Controls.Orientation PreviewOrientation {
+            get {
+                return ((global::System.Windows.Controls.Orientation)(this["PreviewOrientation"]));
+            }
+            set {
+                this["PreviewOrientation"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool AutoRerun {
+            get {
+                return ((bool)(this["AutoRerun"]));
+            }
+            set {
+                this["AutoRerun"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool UseGpu {
+            get {
+                return ((bool)(this["UseGpu"]));
+            }
+            set {
+                this["UseGpu"] = value;
+            }
+        }
     }
 }

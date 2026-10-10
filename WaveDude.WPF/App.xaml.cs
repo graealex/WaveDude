@@ -11,6 +11,8 @@ using NLog.Config;
 using NLog.Targets;
 using WaveDude.WPF.Logging;
 using WaveDude.WPF.Properties;
+using WaveDude.Runs;
+using WaveDude.WPF.Rendering;
 using WaveDude.WPF.Theming;
 
 namespace WaveDude.WPF;
@@ -196,6 +198,8 @@ public partial class App : Application
 		}
 
 		PrepareSettings();
+		FrameCache.Sweep();
+		ColorSchemeCatalog.Instance.Load();
 
 		ThemeController.Instance.Current = Settings.Default.Theme;
 		ThemeController.Instance.PropertyChanged += (_, args) =>

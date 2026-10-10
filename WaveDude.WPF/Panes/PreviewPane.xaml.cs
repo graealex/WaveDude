@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,27 +9,34 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WaveDude.Model;
+using WaveDude.Runs;
 using WaveDude.WPF.Commands;
 using WaveDude.WPF.Converters;
+using WaveDude.WPF.Rendering;
 
 namespace WaveDude.WPF.Panes;
 
 /// <summary>
 /// The document in the centre: the field and the intensity picture, side by side or stacked,
 /// with a transport bar to scrub, play and pause through the frames of a run at a chosen
-/// speed. Dummy stage: the pictures are fixed placeholders and playing only advances
-/// <see cref="Position"/>; the render pipeline that will feed <see cref="FieldImage"/> and
-/// <see cref="IntensityImage"/> per frame does not exist yet. <see cref="FrameCount"/> follows
-/// the project's step count and visualisation interval through a binding, and so do the
-/// <see cref="InPoint"/>/<see cref="OutPoint"/> of the export range (<c>Display.ExportFrom/To</c>,
-/// in steps; the <see cref="PreviewCommands"/> write them). Playback runs between the two,
-/// looping when <see cref="IsLooping"/>.
+/// speed. The frames come from the <see cref="Run"/>'s <see cref="FrameStore"/> through a
+/// <see cref="FramePresenter"/>, which colours the frame at <see cref="Position"/> with the
+/// project's display settings (<see cref="FieldSettings"/>, <see cref="IntensitySettings"/>:
+/// colour scheme, brightness, black level; changing them re-colours the frame shown). Without a
+/// run the pictures are placeholders. <see cref="FrameCount"/> follows the project's step count
+/// and visualisation interval through a binding, and so do the <see cref="InPoint"/>/
+/// <see cref="OutPoint"/> of the export range (<c>Display.ExportFrom/To</c>, in steps; the
+/// <see cref="PreviewCommands"/> write them). Playback runs between the two, looping when
+/// <see cref="IsLooping"/>.
 /// </summary>
 /// <remarks>
-/// Playback runs on a <see cref="DispatcherTimer"/> on the UI thread: a speed of 1 advances
-/// <see cref="BaseFrameRate"/> frames per second of wall-clock time, measured with a stopwatch
-/// so that a slow tick does not slow the clock. Playing at the last frame restarts at 0.
-/// Play, Pause and Space (toggle) are the built-in <see cref="MediaCommands"/>.
+/// While a run is in progress the axis spans the planned frames (<see cref="PlannedLastFrame"/>)
+/// and <see cref="LastFrame"/> is the last frame that exists so far; <see cref="IsLive"/> keeps
+/// <see cref="Position"/> on that newest frame until the user scrubs, steps or plays, and the
+/// Live button (or F) re-attaches. Playback runs on a <see cref="DispatcherTimer"/> on the UI
+/// thread: a speed of 1 advances <see cref="Fps"/> (the project's video frame rate) frames per
+/// second of wall-clock time, measured with a stopwatch so that a slow tick does not slow the
+/// clock. Play, Pause and Space (toggle) are the built-in <see cref="MediaCommands"/>.
 /// Keyboard: every transport control is a tab stop (play, pause, scrubber, speed, split, and
 /// the splitter between the pictures). The split radios are one stop that lands on the checked
 /// one; Left/Right there check the other. Arrows move the splitter; Enter (or a double-click)
@@ -39,8 +47,6 @@ namespace WaveDude.WPF.Panes;
 /// </remarks>
 public partial class PreviewPane : UserControl
 {
-	/// <summary>Frames per second that a playback <see cref="Speed"/> of 1 corresponds to; a placeholder until the pipeline defines the frame clock.</summary>
-	public const double BaseFrameRate = 30.0;
 
 	/// <summary>Smallest accepted <see cref="Speed"/>.</summary>
 	public const double MinSpeed = 0.01;
@@ -51,12 +57,16 @@ public partial class PreviewPane : UserControl
 	/// <summary>Speed factors offered in the drop-down; any other value can be typed.</summary>
 	public static IReadOnlyList<double> SpeedPresets { get; } = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0];
 
-	private static readonly BitmapSource PlaceholderField = CreatePlaceholder(intensity: false);
-	private static readonly BitmapSource PlaceholderIntensity = CreatePlaceholder(intensity: true);
+	/// <summary>The picture shown while there is no run: black, in the canvas's size so the overlay and the aspect ratio are right.</summary>
+	private BitmapSource _blackFrame = BlackFrame(16, 9);
 
 	/// <summary>Identifies the <see cref="Project"/> property.</summary>
 	public static readonly DependencyProperty ProjectProperty = DependencyProperty.Register(
 		nameof(Project), typeof(Project), typeof(PreviewPane));
+
+	/// <summary>Identifies the <see cref="Run"/> property.</summary>
+	public static readonly DependencyProperty RunProperty = DependencyProperty.Register(
+		nameof(Run), typeof(SimulationRun), typeof(PreviewPane), new PropertyMetadata(null, OnRunChanged));
 
 	/// <summary>Identifies the <see cref="FrameCount"/> property.</summary>
 	public static readonly DependencyProperty FrameCountProperty = DependencyProperty.Register(
@@ -69,19 +79,40 @@ public partial class PreviewPane : UserControl
 	/// <summary>Identifies the <see cref="LastFrame"/> property.</summary>
 	public static readonly DependencyProperty LastFrameProperty = LastFrameKey.DependencyProperty;
 
+	private static readonly DependencyPropertyKey PlannedLastFrameKey = DependencyProperty.RegisterReadOnly(
+		nameof(PlannedLastFrame), typeof(int), typeof(PreviewPane), new PropertyMetadata(0));
+
+	/// <summary>Identifies the <see cref="PlannedLastFrame"/> property.</summary>
+	public static readonly DependencyProperty PlannedLastFrameProperty = PlannedLastFrameKey.DependencyProperty;
+
+	private static readonly DependencyPropertyKey AvailableKey = DependencyProperty.RegisterReadOnly(
+		nameof(Available), typeof(int), typeof(PreviewPane), new PropertyMetadata(0));
+
+	/// <summary>Identifies the <see cref="Available"/> property.</summary>
+	public static readonly DependencyProperty AvailableProperty = AvailableKey.DependencyProperty;
+
 	/// <summary>Identifies the <see cref="Position"/> property.</summary>
 	public static readonly DependencyProperty PositionProperty = DependencyProperty.Register(
 		nameof(Position), typeof(int), typeof(PreviewPane),
-		new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, null, CoercePosition));
+		new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnPositionChanged, CoercePosition));
 
 	/// <summary>Identifies the <see cref="IsPlaying"/> property.</summary>
 	public static readonly DependencyProperty IsPlayingProperty = DependencyProperty.Register(
 		nameof(IsPlaying), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, OnIsPlayingChanged));
 
+	/// <summary>Identifies the <see cref="IsLive"/> property.</summary>
+	public static readonly DependencyProperty IsLiveProperty = DependencyProperty.Register(
+		nameof(IsLive), typeof(bool), typeof(PreviewPane),
+		new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnIsLiveChanged));
+
 	/// <summary>Identifies the <see cref="Speed"/> property.</summary>
 	public static readonly DependencyProperty SpeedProperty = DependencyProperty.Register(
 		nameof(Speed), typeof(double), typeof(PreviewPane),
 		new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, null, CoerceSpeed));
+
+	/// <summary>Identifies the <see cref="Fps"/> property.</summary>
+	public static readonly DependencyProperty FpsProperty = DependencyProperty.Register(
+		nameof(Fps), typeof(int), typeof(PreviewPane), new PropertyMetadata(Video.DefaultFps, null, (_, value) => Math.Max(1, (int)value)));
 
 	/// <summary>Identifies the <see cref="InPoint"/> property.</summary>
 	public static readonly DependencyProperty InPointProperty = DependencyProperty.Register(
@@ -102,21 +133,69 @@ public partial class PreviewPane : UserControl
 
 	/// <summary>Identifies the <see cref="FieldImage"/> property.</summary>
 	public static readonly DependencyProperty FieldImageProperty = DependencyProperty.Register(
-		nameof(FieldImage), typeof(ImageSource), typeof(PreviewPane), new PropertyMetadata(PlaceholderField));
+		nameof(FieldImage), typeof(ImageSource), typeof(PreviewPane));
 
 	/// <summary>Identifies the <see cref="IntensityImage"/> property.</summary>
 	public static readonly DependencyProperty IntensityImageProperty = DependencyProperty.Register(
-		nameof(IntensityImage), typeof(ImageSource), typeof(PreviewPane), new PropertyMetadata(PlaceholderIntensity));
+		nameof(IntensityImage), typeof(ImageSource), typeof(PreviewPane));
+
+	/// <summary>Identifies the <see cref="SelectedItem"/> property.</summary>
+	public static readonly DependencyProperty SelectedItemProperty = DependencyProperty.Register(
+		nameof(SelectedItem), typeof(object), typeof(PreviewPane), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
+	/// <summary>Identifies the <see cref="IsStale"/> property.</summary>
+	public static readonly DependencyProperty IsStaleProperty = DependencyProperty.Register(
+		nameof(IsStale), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, (d, _) => ((PreviewPane)d).UpdateSource()));
+
+	/// <summary>Identifies the <see cref="ScratchFrame"/> property.</summary>
+	public static readonly DependencyProperty ScratchFrameProperty = DependencyProperty.Register(
+		nameof(ScratchFrame), typeof(ScratchResult), typeof(PreviewPane), new PropertyMetadata(null, (d, _) => ((PreviewPane)d).UpdateSource()));
+
+	private static readonly DependencyPropertyKey CanvasWidthKey = DependencyProperty.RegisterReadOnly(
+		nameof(CanvasWidth), typeof(int), typeof(PreviewPane), new PropertyMetadata(1));
+
+	/// <summary>Identifies the <see cref="CanvasWidth"/> property.</summary>
+	public static readonly DependencyProperty CanvasWidthProperty = CanvasWidthKey.DependencyProperty;
+
+	private static readonly DependencyPropertyKey CanvasHeightKey = DependencyProperty.RegisterReadOnly(
+		nameof(CanvasHeight), typeof(int), typeof(PreviewPane), new PropertyMetadata(1));
+
+	/// <summary>Identifies the <see cref="CanvasHeight"/> property.</summary>
+	public static readonly DependencyProperty CanvasHeightProperty = CanvasHeightKey.DependencyProperty;
+
+	/// <summary>The project's canvas width, bound privately; the canvas size follows the run while one exists.</summary>
+	private static readonly DependencyProperty SceneWidthProperty = DependencyProperty.Register(
+		"SceneWidth", typeof(int), typeof(PreviewPane), new PropertyMetadata(Scene.DefaultWidth, (d, _) => ((PreviewPane)d).UpdateCanvas()));
+
+	/// <summary>The project's canvas height, bound privately.</summary>
+	private static readonly DependencyProperty SceneHeightProperty = DependencyProperty.Register(
+		"SceneHeight", typeof(int), typeof(PreviewPane), new PropertyMetadata(Scene.DefaultHeight, (d, _) => ((PreviewPane)d).UpdateCanvas()));
+
+	/// <summary>Identifies the <see cref="FieldSettings"/> property.</summary>
+	public static readonly DependencyProperty FieldSettingsProperty = DependencyProperty.Register(
+		nameof(FieldSettings), typeof(DisplayLayer), typeof(PreviewPane), new PropertyMetadata(null, (d, e) => ((PreviewPane)d).OnLayerSettingsChanged(FrameLayer.Field, e)));
+
+	/// <summary>Identifies the <see cref="IntensitySettings"/> property.</summary>
+	public static readonly DependencyProperty IntensitySettingsProperty = DependencyProperty.Register(
+		nameof(IntensitySettings), typeof(DisplayLayer), typeof(PreviewPane), new PropertyMetadata(null, (d, e) => ((PreviewPane)d).OnLayerSettingsChanged(FrameLayer.Intensity, e)));
 
 	private readonly DispatcherTimer _timer;
 	private readonly Stopwatch _clock = new();
+	private readonly FramePresenter _presenter;
 
 	/// <summary>Fractional frame advance carried from one tick to the next, so slow speeds still move.</summary>
 	private double _carry;
 
+	/// <summary>Set while the pane itself moves <see cref="Position"/> to the newest frame, so that move does not end <see cref="IsLive"/>.</summary>
+	private bool _following;
+
+	/// <summary>The scratch frame currently wrapped as the presenter's source, to reuse the wrapper.</summary>
+	private SnapshotFrameSource? _scratchSource;
+
 	public PreviewPane()
 	{
 		InitializeComponent();
+		_presenter = new FramePresenter(Dispatcher);
 
 		// frames = ceil(steps / visualize every); re-evaluated whenever the project or its settings change
 		SetBinding(FrameCountProperty, new MultiBinding
@@ -129,9 +208,17 @@ public partial class PreviewPane : UserControl
 			},
 		});
 
-		// in/out points in frames from the model's steps; "end" makes an ExportTo of 0 the last frame
+		// in/out points in frames from the model's steps; "end" makes an ExportTo of 0 the last planned frame
 		SetBinding(InPointProperty, RangeBinding(nameof(Display.ExportFrom), null));
 		SetBinding(OutPointProperty, RangeBinding(nameof(Display.ExportTo), "end"));
+
+		// the frame clock and the colouring of the two pictures follow the project's display settings
+		SetBinding(FpsProperty, new Binding($"{nameof(Project)}.{nameof(Model.Project.Display)}.{nameof(Display.Video)}.{nameof(Video.Fps)}") { Source = this, Mode = BindingMode.OneWay });
+		SetBinding(FieldSettingsProperty, new Binding($"{nameof(Project)}.{nameof(Model.Project.Display)}.{nameof(Display.Field)}") { Source = this, Mode = BindingMode.OneWay });
+		SetBinding(IntensitySettingsProperty, new Binding($"{nameof(Project)}.{nameof(Model.Project.Display)}.{nameof(Display.Intensity)}") { Source = this, Mode = BindingMode.OneWay });
+		SetBinding(SceneWidthProperty, new Binding($"{nameof(Project)}.{nameof(Model.Project.Scene)}.{nameof(Scene.Width)}") { Source = this, Mode = BindingMode.OneWay });
+		SetBinding(SceneHeightProperty, new Binding($"{nameof(Project)}.{nameof(Model.Project.Scene)}.{nameof(Scene.Height)}") { Source = this, Mode = BindingMode.OneWay });
+		UpdateCanvas();
 
 		_timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(1.0 / 60.0) };
 		_timer.Tick += OnTick;
@@ -147,7 +234,7 @@ public partial class PreviewPane : UserControl
 		{
 			new Binding($"{nameof(Project)}.{nameof(Model.Project.Display)}.{stepProperty}") { Source = this },
 			new Binding($"{nameof(Project)}.{nameof(Model.Project.Simulation)}.{nameof(Simulation.VisualizeEvery)}") { Source = this },
-			new Binding(nameof(LastFrame)) { Source = this },
+			new Binding(nameof(PlannedLastFrame)) { Source = this },
 		},
 	};
 
@@ -158,18 +245,39 @@ public partial class PreviewPane : UserControl
 		set => SetValue(ProjectProperty, value);
 	}
 
-	/// <summary>Number of frames in the run, at least 1. Bound to the project's steps and visualisation interval.</summary>
+	/// <summary>The run whose frames are shown (in progress or finished); null shows the placeholders.</summary>
+	public SimulationRun? Run
+	{
+		get => (SimulationRun?)GetValue(RunProperty);
+		set => SetValue(RunProperty, value);
+	}
+
+	/// <summary>Number of frames the project's settings would produce, at least 1. Bound to the steps and visualisation interval.</summary>
 	public int FrameCount
 	{
 		get => (int)GetValue(FrameCountProperty);
 		set => SetValue(FrameCountProperty, value);
 	}
 
-	/// <summary>Index of the last frame, <see cref="FrameCount"/> - 1; the scrubber's maximum.</summary>
+	/// <summary>Index of the last frame that can be shown: the newest frame of the run, or <see cref="PlannedLastFrame"/> without a run.</summary>
 	public int LastFrame
 	{
 		get => (int)GetValue(LastFrameProperty);
 		private set => SetValue(LastFrameKey, value);
+	}
+
+	/// <summary>Index of the last frame of the whole run (the run's own count while one exists, else the project's); the timeline's axis.</summary>
+	public int PlannedLastFrame
+	{
+		get => (int)GetValue(PlannedLastFrameProperty);
+		private set => SetValue(PlannedLastFrameKey, value);
+	}
+
+	/// <summary>Frames of the run computed so far; 0 without a run.</summary>
+	public int Available
+	{
+		get => (int)GetValue(AvailableProperty);
+		private set => SetValue(AvailableKey, value);
 	}
 
 	/// <summary>Frame shown, 0 to <see cref="LastFrame"/>. Moved by the scrubber and by playback.</summary>
@@ -186,11 +294,25 @@ public partial class PreviewPane : UserControl
 		set => SetValue(IsPlayingProperty, value);
 	}
 
-	/// <summary>Playback speed factor, <see cref="MinSpeed"/> to <see cref="MaxSpeed"/>; 1 is <see cref="BaseFrameRate"/> frames per second.</summary>
+	/// <summary>Whether <see cref="Position"/> follows the newest frame of a run in progress. Only while a run is active; scrubbing, stepping, playing or the run's end turns it off.</summary>
+	public bool IsLive
+	{
+		get => (bool)GetValue(IsLiveProperty);
+		set => SetValue(IsLiveProperty, value);
+	}
+
+	/// <summary>Playback speed factor, <see cref="MinSpeed"/> to <see cref="MaxSpeed"/>; 1 is <see cref="Fps"/> frames per second.</summary>
 	public double Speed
 	{
 		get => (double)GetValue(SpeedProperty);
 		set => SetValue(SpeedProperty, value);
+	}
+
+	/// <summary>Frames per second at a <see cref="Speed"/> of 1: the project's video frame rate, so speed 1 plays as the export would.</summary>
+	public int Fps
+	{
+		get => (int)GetValue(FpsProperty);
+		set => SetValue(FpsProperty, value);
 	}
 
 	/// <summary>First frame of the export/loop range; 0 while no in point is set. Follows the model.</summary>
@@ -200,7 +322,7 @@ public partial class PreviewPane : UserControl
 		private set => SetValue(InPointProperty, value);
 	}
 
-	/// <summary>Last frame of the export/loop range; <see cref="LastFrame"/> while no out point is set. Follows the model.</summary>
+	/// <summary>Last frame of the export/loop range; <see cref="PlannedLastFrame"/> while no out point is set. Follows the model.</summary>
 	public int OutPoint
 	{
 		get => (int)GetValue(OutPointProperty);
@@ -221,30 +343,281 @@ public partial class PreviewPane : UserControl
 		set => SetValue(OrientationProperty, value);
 	}
 
-	/// <summary>Picture of the field at <see cref="Position"/>; a placeholder until the render pipeline sets it.</summary>
+	/// <summary>Picture of the field at <see cref="Position"/>; the presenter's bitmap, or a black frame without a run.</summary>
 	public ImageSource? FieldImage
 	{
 		get => (ImageSource?)GetValue(FieldImageProperty);
 		set => SetValue(FieldImageProperty, value);
 	}
 
-	/// <summary>Picture of the intensity at <see cref="Position"/>; a placeholder until the render pipeline sets it.</summary>
+	/// <summary>Picture of the intensity at <see cref="Position"/>; the presenter's bitmap, or a black frame without a run (or without an intensity plane).</summary>
 	public ImageSource? IntensityImage
 	{
 		get => (ImageSource?)GetValue(IntensityImageProperty);
 		set => SetValue(IntensityImageProperty, value);
 	}
 
-	private static void OnFrameCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	/// <summary>The source or probe selected in the project: highlighted on the pictures, set by grabbing or focusing a marker. Bound to the main window.</summary>
+	public object? SelectedItem
+	{
+		get => GetValue(SelectedItemProperty);
+		set => SetValue(SelectedItemProperty, value);
+	}
+
+	/// <summary>Whether the project was edited since the run started, so the stored frames no longer show it; the available-frames shading goes grey.</summary>
+	public bool IsStale
+	{
+		get => (bool)GetValue(IsStaleProperty);
+		set => SetValue(IsStaleProperty, value);
+	}
+
+	/// <summary>
+	/// A frame computed for the project as it is now (after an edit, without a run); shown instead of the
+	/// stored frame while its frame index is <see cref="Position"/> and the store has nothing newer. Null for none.
+	/// </summary>
+	public ScratchResult? ScratchFrame
+	{
+		get => (ScratchResult?)GetValue(ScratchFrameProperty);
+		set => SetValue(ScratchFrameProperty, value);
+	}
+
+	/// <summary>Width in pixels of the canvas the pictures show: the run's while one exists, else the project's blank canvas size.</summary>
+	public int CanvasWidth
+	{
+		get => (int)GetValue(CanvasWidthProperty);
+		private set => SetValue(CanvasWidthKey, value);
+	}
+
+	/// <summary>Height in pixels of the canvas the pictures show.</summary>
+	public int CanvasHeight
+	{
+		get => (int)GetValue(CanvasHeightProperty);
+		private set => SetValue(CanvasHeightKey, value);
+	}
+
+	/// <summary>The project's display settings of the field picture (scheme, brightness, black level, whether shown). Bound.</summary>
+	public DisplayLayer? FieldSettings
+	{
+		get => (DisplayLayer?)GetValue(FieldSettingsProperty);
+		set => SetValue(FieldSettingsProperty, value);
+	}
+
+	/// <summary>The project's display settings of the intensity picture. Bound.</summary>
+	public DisplayLayer? IntensitySettings
+	{
+		get => (DisplayLayer?)GetValue(IntensitySettingsProperty);
+		set => SetValue(IntensitySettingsProperty, value);
+	}
+
+	// ---------------------------------------------------------------- the run and its frames
+
+	private static void OnRunChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
 	{
 		var pane = (PreviewPane)d;
-		pane.LastFrame = (int)e.NewValue - 1;
-		pane.CoerceValue(PositionProperty);
+		if (e.OldValue is SimulationRun old)
+		{
+			old.PropertyChanged -= pane.OnRunPropertyChanged;
+		}
+		var run = (SimulationRun?)e.NewValue;
+		if (run != null)
+		{
+			run.PropertyChanged += pane.OnRunPropertyChanged;
+		}
+		if (run is { IsAutomatic: true, IsFinished: false })
+		{
+			// a re-run after an edit: the position stays where the user is (the axis stays the planned run, so
+			// nothing coerces it), the scratch frame stays on screen until the store has that frame, and the
+			// run is not followed whatever the Live button said
+			pane.UpdateFrames();
+			pane.IsLive = false;
+		}
+		else if (run == null)
+		{
+			// the run was discarded (replaced, or the project closed): keep the position for whatever comes next
+			pane.UpdateFrames();
+			pane.IsLive = false;
+		}
+		else
+		{
+			// a run the user started: from the beginning, following it; playback (if any) stops
+			pane.IsPlaying = false;
+			pane.UpdateFrames();
+			pane.Position = 0;
+			// a run handed over before Start is still "Created": follow everything that has not ended
+			pane.IsLive = !run.IsFinished;
+		}
+		pane.UpdateSource();
+	}
+
+	private void OnRunPropertyChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		switch (e.PropertyName)
+		{
+			case nameof(SimulationRun.FrameCount):
+				UpdateFrames();
+				if (IsLive)
+				{
+					_following = true;
+					Position = NewestFrame;
+					_following = false;
+				}
+				UpdateSource();
+				break;
+			case nameof(SimulationRun.State):
+				UpdateFrames();
+				UpdateSource();
+				if (Run?.IsFinished == true)
+				{
+					IsLive = false; // nothing left to follow
+				}
+				CommandManager.InvalidateRequerySuggested();
+				break;
+		}
+	}
+
+	/// <summary>
+	/// Decides what the pictures show. A picture changes only when a frame for <see cref="Position"/> itself is
+	/// there: the scratch frame computed for it (preferred while the run is stale, missing, or not that far
+	/// yet), else the run's stored frame. When neither exists (a run in progress that has not reached the
+	/// position, after the previous run's frames were discarded) the last picture simply stays; the frames are
+	/// never replayed from the start and never replaced by black or by some other frame. Also re-derives the
+	/// canvas size (the frame's, the run's, or the project's blank canvas; a scene image's size is only known
+	/// once it has run).
+	/// </summary>
+	private void UpdateSource()
+	{
+		SimulationRun? run = Run;
+		ScratchResult? scratch = ScratchFrame;
+		bool useScratch = scratch is { Snapshot: not null } && scratch.Frame == Position
+			&& (run == null || IsStale || run.FrameCount <= Position);
+		if (useScratch)
+		{
+			if (_scratchSource == null || !ReferenceEquals(_scratchSource.Snapshot, scratch!.Snapshot))
+			{
+				_scratchSource = new SnapshotFrameSource(scratch!.Snapshot!);
+			}
+			_presenter.Source = _scratchSource;
+			UpdateCanvas(_scratchSource);
+			_presenter.Show(0);
+		}
+		else if (run != null && run.FrameCount > Position)
+		{
+			_presenter.Source = run.Store;
+			UpdateCanvas(run.Store);
+			_presenter.Show(Position);
+		}
+		else if (run == null && _presenter.Source != null)
+		{
+			// nothing at all any more (project closed or replaced)
+			_presenter.Source = null;
+			UpdateCanvas(null);
+		}
+		else
+		{
+			// nothing for this position yet: keep what is shown
+			UpdateCanvas(_presenter.Source);
+		}
+	}
+
+	private void UpdateCanvas(IFrameSource? source)
+	{
+		int width = Math.Max(1, source?.Width ?? Run?.Spec.Width ?? (int)GetValue(SceneWidthProperty));
+		int height = Math.Max(1, source?.Height ?? Run?.Spec.Height ?? (int)GetValue(SceneHeightProperty));
+		CanvasWidth = width;
+		CanvasHeight = height;
+		if (_blackFrame.PixelWidth != width || _blackFrame.PixelHeight != height)
+		{
+			_blackFrame = BlackFrame(width, height);
+		}
+		FieldImage = _presenter.FieldBitmap ?? _blackFrame;
+		IntensityImage = _presenter.IntensityBitmap ?? _blackFrame;
+	}
+
+	/// <summary>The canvas follows the project's size while nothing is shown.</summary>
+	private void UpdateCanvas() => UpdateSource();
+
+	/// <summary>A black picture of the given size, frozen; what the pane shows before any run.</summary>
+	private static BitmapSource BlackFrame(int width, int height)
+	{
+		var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
+		bitmap.Freeze();
+		return bitmap;
+	}
+
+	/// <summary>
+	/// Re-derives the axis, the reachable last frame and the available count from the run (or the project
+	/// without one). For an automatic re-run the reachable end is always the planned run, filling or
+	/// cancelled by the next edit, so the user's position is never pulled back; only a run the user started
+	/// (and follows, or stopped) bounds the position by the frames that exist.
+	/// </summary>
+	private void UpdateFrames()
+	{
+		SimulationRun? run = Run;
+		PlannedLastFrame = (run?.Spec.FrameCount ?? FrameCount) - 1;
+		Available = run?.FrameCount ?? 0;
+		LastFrame = run == null || run.IsAutomatic ? PlannedLastFrame : Math.Max(0, run.FrameCount - 1);
+		CoerceValue(PositionProperty);
 		CommandManager.InvalidateRequerySuggested();
 	}
 
+	/// <summary>The newest frame that exists: the run's last written frame, or the project's last frame without a run.</summary>
+	private int NewestFrame => Run != null ? Math.Max(0, Run.FrameCount - 1) : PlannedLastFrame;
+
+	private static void OnFrameCountChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) => ((PreviewPane)d).UpdateFrames();
+
 	private static object CoercePosition(DependencyObject d, object value) =>
 		Math.Clamp((int)value, 0, ((PreviewPane)d).LastFrame);
+
+	private static void OnPositionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	{
+		var pane = (PreviewPane)d;
+		if (!pane._following)
+		{
+			pane.IsLive = false;
+		}
+		pane.UpdateSource();
+	}
+
+	private static void OnIsLiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+	{
+		var pane = (PreviewPane)d;
+		if ((bool)e.NewValue)
+		{
+			pane.IsPlaying = false;
+			pane._following = true;
+			pane.Position = pane.NewestFrame;
+			pane._following = false;
+		}
+	}
+
+	/// <summary>Re-wires the model's change notification for one layer's display settings and applies them.</summary>
+	private void OnLayerSettingsChanged(FrameLayer layer, DependencyPropertyChangedEventArgs e)
+	{
+		PropertyChangedEventHandler handler = layer == FrameLayer.Field ? OnFieldSettingsPropertyChanged : OnIntensitySettingsPropertyChanged;
+		if (e.OldValue is DisplayLayer old)
+		{
+			old.PropertyChanged -= handler;
+		}
+		if (e.NewValue is DisplayLayer settings)
+		{
+			settings.PropertyChanged += handler;
+		}
+		ApplyLayer(layer);
+	}
+
+	private void OnFieldSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e) => ApplyLayer(FrameLayer.Field);
+
+	private void OnIntensitySettingsPropertyChanged(object? sender, PropertyChangedEventArgs e) => ApplyLayer(FrameLayer.Intensity);
+
+	/// <summary>Hands a layer's palette, brightness and visibility to the presenter, which redraws the frame shown.</summary>
+	private void ApplyLayer(FrameLayer layer)
+	{
+		DisplayLayer? settings = layer == FrameLayer.Field ? FieldSettings : IntensitySettings;
+		int[]? lut = settings == null ? null : ColorSchemeCatalog.Instance.LutFor(settings.ColorScheme, settings.BlackLevel);
+		_presenter.SetLayer(layer, lut, (float)(settings?.Brightness ?? DisplayLayer.DefaultBrightness), settings?.Preview ?? true);
+	}
+
+	// ---------------------------------------------------------------- playback
 
 	private static object CoerceSpeed(DependencyObject d, object value)
 	{
@@ -252,11 +625,15 @@ public partial class PreviewPane : UserControl
 		return double.IsNaN(speed) ? 1.0 : Math.Clamp(speed, MinSpeed, MaxSpeed);
 	}
 
+	/// <summary>The last frame playback can reach: the out point, or the newest frame while the run has not got there yet.</summary>
+	private int PlayEnd => Math.Min(OutPoint, NewestFrame);
+
 	private static void OnIsPlayingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
 	{
 		var pane = (PreviewPane)d;
 		if ((bool)e.NewValue)
 		{
+			pane.IsLive = false;
 			if (pane.Position >= pane.OutPoint)
 			{
 				pane.Position = pane.InPoint; // play the range again from its start
@@ -264,6 +641,8 @@ public partial class PreviewPane : UserControl
 			pane._carry = 0.0;
 			pane._clock.Restart();
 			pane._timer.Start();
+			// playing means showing the simulation: the window starts a run when there is none or it is stale
+			SimulationCommands.EnsureRun.Execute(null, pane);
 		}
 		else
 		{
@@ -299,7 +678,7 @@ public partial class PreviewPane : UserControl
 	{
 		double seconds = _clock.Elapsed.TotalSeconds;
 		_clock.Restart();
-		_carry += seconds * BaseFrameRate * Speed;
+		_carry += seconds * Fps * Speed;
 		int frames = (int)Math.Floor(_carry);
 		if (frames == 0)
 		{
@@ -307,10 +686,18 @@ public partial class PreviewPane : UserControl
 		}
 		_carry -= frames;
 		int next = Position + frames;
-		int end = OutPoint;
+		int end = PlayEnd;
 		if (next < end)
 		{
 			Position = next;
+		}
+		else if (Run is { IsActive: true } && end < OutPoint)
+		{
+			// the run has not got this far yet: hold at its newest frame and wait, without accumulating a jump
+			_following = true;
+			Position = Math.Max(Position, end);
+			_following = false;
+			_carry = 0.0;
 		}
 		else if (IsLooping && end > InPoint)
 		{
@@ -347,13 +734,13 @@ public partial class PreviewPane : UserControl
 
 	private void OnGoToStart(object sender, ExecutedRoutedEventArgs e) => Position = InPoint;
 
-	private void OnGoToEnd(object sender, ExecutedRoutedEventArgs e) => Position = OutPoint;
+	private void OnGoToEnd(object sender, ExecutedRoutedEventArgs e) => Position = PlayEnd;
 
 	private void CanEditRange(object sender, CanExecuteRoutedEventArgs e) =>
-		e.CanExecute = Project != null && LastFrame > 0 && e.OriginalSource is not TextBoxBase;
+		e.CanExecute = Project != null && PlannedLastFrame > 0 && e.OriginalSource is not TextBoxBase;
 
 	/// <summary>The frame a range command was given, or the frame shown.</summary>
-	private int FrameOf(ExecutedRoutedEventArgs e) => e.Parameter is int frame ? Math.Clamp(frame, 0, LastFrame) : Position;
+	private int FrameOf(ExecutedRoutedEventArgs e) => e.Parameter is int frame ? Math.Clamp(frame, 0, PlannedLastFrame) : Position;
 
 	/// <summary>
 	/// Sets the in point, in steps, on the model. An in point past the out point clears the out
@@ -378,7 +765,7 @@ public partial class PreviewPane : UserControl
 	{
 		Display display = Project!.Display;
 		int frame = FrameOf(e);
-		int step = frame >= LastFrame ? 0 : frame * Project.Simulation.VisualizeEvery;
+		int step = frame >= PlannedLastFrame ? 0 : frame * Project.Simulation.VisualizeEvery;
 		if (step != 0 && display.ExportFrom >= step)
 		{
 			display.ExportFrom = 0;
@@ -396,6 +783,27 @@ public partial class PreviewPane : UserControl
 	}
 
 	private void OnToggleLoop(object sender, ExecutedRoutedEventArgs e) => IsLooping = !IsLooping;
+
+	private void CanToggleLive(object sender, CanExecuteRoutedEventArgs e) =>
+		e.CanExecute = Run?.IsActive == true && e.OriginalSource is not TextBoxBase;
+
+	private void OnToggleLive(object sender, ExecutedRoutedEventArgs e) => IsLive = !IsLive;
+
+	/// <summary>
+	/// The pane's shortcut letters are its own even when their command cannot run right now (Live after the
+	/// run ended, a range key with nothing to clear): left unhandled, WPF would treat the letter as a menu
+	/// mnemonic, open the File menu and activate the window. Text boxes keep their keys.
+	/// </summary>
+	protected override void OnKeyDown(KeyEventArgs e)
+	{
+		base.OnKeyDown(e);
+		if (!e.Handled && e.OriginalSource is not TextBoxBase
+			&& e.Key is Key.I or Key.O or Key.X or Key.L or Key.F or Key.OemComma or Key.OemPeriod or Key.Space
+			&& Keyboard.Modifiers == ModifierKeys.None)
+		{
+			e.Handled = true;
+		}
+	}
 
 	/// <summary>Space inside the speed text box is neither a digit nor the play/pause toggle: swallowed.</summary>
 	private void OnSpeedBoxPreviewKeyDown(object sender, KeyEventArgs e)
@@ -455,46 +863,5 @@ public partial class PreviewPane : UserControl
 		next.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
 		next.Focus();
 		e.Handled = true;
-	}
-
-	/// <summary>
-	/// A 16:9 stand-in picture: decaying ripples from a source near the top-left corner in the
-	/// field's red/blue look, or the same source's glow in the intensity's blue look. Frozen so
-	/// it can serve as a dependency property default.
-	/// </summary>
-	private static BitmapSource CreatePlaceholder(bool intensity)
-	{
-		const int width = 480;
-		const int height = 270;
-		const double sourceX = 36.0;
-		const double sourceY = 36.0;
-		var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
-		var pixels = new int[width * height];
-		for (int y = 0; y < height; y++)
-		{
-			for (int x = 0; x < width; x++)
-			{
-				double dx = x - sourceX;
-				double dy = y - sourceY;
-				double r = Math.Sqrt(dx * dx + dy * dy);
-				int pixel;
-				if (intensity)
-				{
-					double v = Math.Exp(-r / 150.0);
-					pixel = (16 << 16) | ((int)(150 * v) << 8) | (int)(255 * v);
-				}
-				else
-				{
-					double v = Math.Sin(r * 0.7) * Math.Exp(-r / 200.0);
-					int red = v > 0 ? (int)(255 * v) : 0;
-					int blue = v < 0 ? (int)(-255 * v) : 0;
-					pixel = (red << 16) | blue;
-				}
-				pixels[y * width + x] = pixel;
-			}
-		}
-		bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, width * 4, 0);
-		bitmap.Freeze();
-		return bitmap;
 	}
 }

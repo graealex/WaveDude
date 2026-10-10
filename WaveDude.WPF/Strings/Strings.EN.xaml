@@ -17,6 +17,13 @@
 	<s:String x:Key="MenuView">_View</s:String>
 	<s:String x:Key="MenuViewPanes">_Panes</s:String>
 	<s:String x:Key="MenuViewTheme">_Theme</s:String>
+	<s:String x:Key="MenuSimulation">_Simulation</s:String>
+	<s:String x:Key="MenuSimulationRun">_Run</s:String>
+	<s:String x:Key="MenuSimulationPause">_Pause</s:String>
+	<s:String x:Key="MenuSimulationResume">_Resume</s:String>
+	<s:String x:Key="MenuSimulationStop">S_top</s:String>
+	<s:String x:Key="MenuSimulationUseGpu">Use the _GPU (OpenCL)</s:String>
+	<s:String x:Key="MenuSimulationAutoRerun">Re-run _automatically after edits</s:String>
 	<s:String x:Key="MenuHelp">_Help</s:String>
 	<s:String x:Key="MenuHelpAbout">_About Wave Dude</s:String>
 
@@ -69,9 +76,25 @@
 	<s:String x:Key="TipPreviewSetOut">Set the out point at this frame (O)</s:String>
 	<s:String x:Key="TipPreviewClearRange">Clear the in/out range (X)</s:String>
 	<s:String x:Key="TipPreviewLoop">Loop playback between the in and out points (L)</s:String>
+	<s:String x:Key="TipPreviewLive">Follow the newest frame while the run is in progress (F)</s:String>
+	<s:String x:Key="TipMarkerFormat">{0}: drag to move; with keyboard focus the arrow keys move it by a pixel, ten with Shift</s:String>
 	<s:String x:Key="LabelPreviewStep">step</s:String>
 	<s:String x:Key="TipPreviewStep">Simulation step of the frame shown</s:String>
 	<s:String x:Key="TipPreviewSplitter">Drag or use the arrow keys to resize; double-click or Enter resets to half</s:String>
+
+	<!-- the run's line in the status bar: {0} state, {1} steps done, {2} total steps, {3} engine -->
+	<s:String x:Key="RunStatusFormat">{0}: {1} / {2} steps, {3}</s:String>
+	<s:String x:Key="RunStateCreated">Preparing</s:String>
+	<s:String x:Key="RunStateStarting">Starting</s:String>
+	<s:String x:Key="RunStateRunning">Running</s:String>
+	<s:String x:Key="RunStatePaused">Paused</s:String>
+	<s:String x:Key="RunStateCompleted">Completed</s:String>
+	<s:String x:Key="RunStateCancelled">Stopped</s:String>
+	<s:String x:Key="RunStateFailed">Failed</s:String>
+	<s:String x:Key="RunStatusStale">, edited since</s:String>
+	<s:String x:Key="RunError">The simulation could not start.</s:String>
+	<s:String x:Key="RunErrorNoImage">The scene uses an image, but no image file is set.</s:String>
+	<s:String x:Key="RunErrorUnsavedImagePath">Save the project first, so the scene image can be found relative to it.</s:String>
 	<s:String x:Key="Ready">Ready</s:String>
 	<s:String x:Key="NoSelection">No selection</s:String>
 

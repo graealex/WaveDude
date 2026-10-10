@@ -26,7 +26,6 @@ public sealed class Simulation : ObservableObject
 
 	private int _steps = DefaultSteps;
 	private int _visualizeEvery = DefaultVisualizeEvery;
-	private bool _gpu;
 	private bool _fourthOrderLaplacian = true;
 	private double _waveSpeed = DefaultWaveSpeed;
 	private double _timeDecay = DefaultTimeDecay;
@@ -54,18 +53,6 @@ public sealed class Simulation : ObservableObject
 	{
 		get => _visualizeEvery;
 		set => SetProperty(ref _visualizeEvery, value);
-	}
-
-	/// <summary>Run on the OpenCL engine when a usable GPU is found; otherwise on the CPU.</summary>
-	[XmlAttribute]
-	[DefaultValue(false)]
-	[Category("Solver")]
-	[DisplayName("Use GPU")]
-	[Description("Run on the OpenCL engine when a usable GPU is found; otherwise on the CPU.")]
-	public bool Gpu
-	{
-		get => _gpu;
-		set => SetProperty(ref _gpu, value);
 	}
 
 	/// <summary>Use the 4th-order Laplacian stencil with sub-stepping instead of the 9-point one: more accurate, slower.</summary>
@@ -132,7 +119,7 @@ public sealed class Simulation : ObservableObject
 	[XmlIgnore]
 	[Browsable(false)]
 	public bool IsDefault =>
-		Steps == DefaultSteps && VisualizeEvery == DefaultVisualizeEvery && !Gpu && FourthOrderLaplacian
+		Steps == DefaultSteps && VisualizeEvery == DefaultVisualizeEvery && FourthOrderLaplacian
 		&& WaveSpeed == DefaultWaveSpeed && TimeDecay == DefaultTimeDecay
 		&& SourceFrequencyScale == DefaultSourceFrequencyScale && IntensityScale == DefaultIntensityScale;
 
@@ -148,5 +135,5 @@ public sealed class Simulation : ObservableObject
 	}
 
 	/// <summary>Step count and engine, for display in a property grid.</summary>
-	public override string ToString() => $"{Steps} steps, {(Gpu ? "GPU" : "CPU")}";
+	public override string ToString() => $"{Steps} steps";
 }

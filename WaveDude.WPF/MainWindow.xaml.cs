@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Configuration;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Shell;
 using Microsoft.Win32;
@@ -16,9 +17,9 @@ namespace WaveDude.WPF;
 /// <summary>
 /// Shell window: menu, status bar and the <see cref="DockHost"/> with the Project and
 /// Properties panes around the preview. The window is its own data context: it owns the open
-/// <see cref="Project"/>, its <see cref="Filename"/> and the tree's <see cref="SelectedItem"/>.
-/// Window placement is bound two-way to <see cref="Settings"/> in the XAML; the pane
-/// arrangement is stored there on closing.
+/// <see cref="Project"/>, its <see cref="Filename"/>, the tree's <see cref="SelectedItem"/> and the
+/// current <see cref="Run"/> (see <c>MainWindow.Simulation.cs</c>). Window placement is bound two-way
+/// to <see cref="Settings"/> in the XAML; the pane arrangement is stored there on closing.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -30,7 +31,7 @@ public partial class MainWindow : Window
 
 	/// <summary>Identifies the <see cref="Project"/> property.</summary>
 	public static readonly DependencyProperty ProjectProperty = DependencyProperty.Register(
-		nameof(Project), typeof(Project), typeof(MainWindow));
+		nameof(Project), typeof(Project), typeof(MainWindow), new PropertyMetadata(null, (d, e) => ((MainWindow)d).OnProjectReplaced((Project?)e.NewValue)));
 
 	/// <summary>Identifies the <see cref="Filename"/> property.</summary>
 	public static readonly DependencyProperty FilenameProperty = DependencyProperty.Register(
@@ -40,14 +41,14 @@ public partial class MainWindow : Window
 	/// <summary>Identifies the <see cref="SelectedItem"/> property.</summary>
 	public static readonly DependencyProperty SelectedItemProperty = DependencyProperty.Register(
 		nameof(SelectedItem), typeof(object), typeof(MainWindow),
-		new PropertyMetadata(null, (_, _) => CommandManager.InvalidateRequerySuggested()));
+		new PropertyMetadata(null, (d, e) => ((MainWindow)d).OnSelectedItemChanged(e.NewValue)));
 
 	public MainWindow()
 	{
 		Project = new Project();
 		InitializeComponent();
 
-		if (!TryLoadLayout())
+		if (!TryLoadLayout() && !dockHost.LoadLayout(DefaultLayout()))
 		{
 			// Messages stays hidden until asked for (View > Panes, status bar double-click)
 			dockHost.Show(projectDock);
@@ -55,7 +56,12 @@ public partial class MainWindow : Window
 		}
 
 		SourceInitialized += (_, _) => ThemeController.Instance.ApplyTitleBar(this);
-		Closing += (_, _) => Settings.Default.Layout = dockHost.SaveLayout();
+		Closing += (_, _) =>
+		{
+			Settings.Default.Layout = dockHost.SaveLayout();
+			ShutdownRun();
+			ShutdownScratch();
+		};
 	}
 
 	/// <summary>The open project. Never null: an empty project while nothing is loaded.</summary>
@@ -72,11 +78,21 @@ public partial class MainWindow : Window
 		set => SetValue(FilenameProperty, value);
 	}
 
-	/// <summary>The model object selected in the project tree, or null.</summary>
+	/// <summary>The model object selected in the project tree (or on the preview's pictures), or null.</summary>
 	public object? SelectedItem
 	{
 		get => GetValue(SelectedItemProperty);
 		set => SetValue(SelectedItemProperty, value);
+	}
+
+	/// <summary>A selection made elsewhere (a marker on the preview) is mirrored in the tree, which then raises its own change with the same item.</summary>
+	private void OnSelectedItemChanged(object? item)
+	{
+		CommandManager.InvalidateRequerySuggested();
+		if (item != null && !ReferenceEquals(projectTree.SelectedItem, item))
+		{
+			projectTree.Select(item);
+		}
 	}
 
 	/// <summary>
@@ -88,7 +104,9 @@ public partial class MainWindow : Window
 		try
 		{
 			fileName = Path.GetFullPath(fileName);
-			Project = Project.Load(fileName);
+			Project loaded = Project.Load(fileName);
+			DiscardRun();
+			Project = loaded;
 			Filename = fileName;
 			Logger.Info("Opened '{Path}'", fileName);
 			RememberRecent(fileName);
@@ -144,6 +162,7 @@ public partial class MainWindow : Window
 
 	private void OnFileNew(object sender, ExecutedRoutedEventArgs e)
 	{
+		DiscardRun();
 		Project = new Project();
 		Filename = null;
 		projectTree.SelectRoot();
@@ -198,6 +217,7 @@ public partial class MainWindow : Window
 
 	private void OnFileClose(object sender, ExecutedRoutedEventArgs e)
 	{
+		DiscardRun();
 		Project = new Project();
 		Filename = null;
 		projectTree.SelectRoot();
@@ -247,6 +267,32 @@ public partial class MainWindow : Window
 			Logger.Warn(ex, "Could not save the user settings");
 		}
 	}
+
+	/// <summary>
+	/// The arrangement of a first start (agreed 2026-10-09): a left column of a quarter of the width with the
+	/// Project tree in its upper third and the Properties pane below it, the preview in the rest; Messages hidden.
+	/// </summary>
+	private DockLayout DefaultLayout() => new()
+	{
+		Root = new DockLayout.SplitLayout
+		{
+			Orientation = Orientation.Horizontal,
+			Children =
+			{
+				new DockLayout.SplitLayout
+				{
+					Orientation = Orientation.Vertical,
+					Length = 1,
+					Children =
+					{
+						new DockLayout.GroupLayout { Items = { projectDock.Id }, Active = projectDock.Id, Length = 1 },
+						new DockLayout.GroupLayout { Items = { propertiesDock.Id }, Active = propertiesDock.Id, Length = 2 },
+					},
+				},
+				new DockLayout.DocumentLayout { Length = 3 },
+			},
+		},
+	};
 
 	private bool TryLoadLayout()
 	{

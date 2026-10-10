@@ -15,7 +15,8 @@ namespace WaveDude.WPF.Controls;
 /// <see cref="SetRangeStartCommand"/> / <see cref="SetRangeEndCommand"/> (the range itself is
 /// owned by the model, so the control never writes <see cref="RangeStart"/> or
 /// <see cref="RangeEnd"/>). Keyboard: Left/Right one frame, PageUp/PageDown ten, Home/End to
-/// the in/out points, the wheel one frame. Drawn in <see cref="OnRender"/>; colours come from
+/// the in/out points, the wheel one frame. While a run is in progress <see cref="Available"/> shades the
+/// frames that exist and bounds the playhead. Drawn in <see cref="OnRender"/>; colours come from
 /// the brush properties so a theme style can set them.
 /// </summary>
 public sealed class TimelineBar : FrameworkElement
@@ -81,6 +82,15 @@ public sealed class TimelineBar : FrameworkElement
 	/// <summary>Identifies the <see cref="AccentBrush"/> property: range band, brackets and keyboard focus.</summary>
 	public static readonly DependencyProperty AccentBrushProperty = DependencyProperty.Register(
 		nameof(AccentBrush), typeof(Brush), typeof(TimelineBar), new FrameworkPropertyMetadata(Brushes.DodgerBlue, FrameworkPropertyMetadataOptions.AffectsRender));
+
+	/// <summary>Identifies the <see cref="Available"/> property: frames computed so far.</summary>
+	public static readonly DependencyProperty AvailableProperty = DependencyProperty.Register(
+		nameof(Available), typeof(int), typeof(TimelineBar),
+		new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender, (d, _) => d.CoerceValue(ValueProperty)));
+
+	/// <summary>Identifies the <see cref="AvailableBrush"/> property: shading of the available frames.</summary>
+	public static readonly DependencyProperty AvailableBrushProperty = DependencyProperty.Register(
+		nameof(AvailableBrush), typeof(Brush), typeof(TimelineBar), new FrameworkPropertyMetadata(Brushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
 
 	private enum DragMode { None, Scrub, RangeStart, RangeEnd }
 
@@ -172,6 +182,23 @@ public sealed class TimelineBar : FrameworkElement
 		set => SetValue(AccentBrushProperty, value);
 	}
 
+	/// <summary>
+	/// Number of frames that exist so far while a run fills the axis; 0 when every frame of the axis is
+	/// there (no run). The bar shades them; whether <see cref="Value"/> may go beyond is the owner's call.
+	/// </summary>
+	public int Available
+	{
+		get => (int)GetValue(AvailableProperty);
+		set => SetValue(AvailableProperty, value);
+	}
+
+	/// <summary>Shading of the available frames (a translucent fill works best).</summary>
+	public Brush AvailableBrush
+	{
+		get => (Brush)GetValue(AvailableBrushProperty);
+		set => SetValue(AvailableBrushProperty, value);
+	}
+
 	private static void OnMaximumChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) => d.CoerceValue(ValueProperty);
 
 	private static object CoerceValue(DependencyObject d, object value) => Math.Clamp((int)value, 0, ((TimelineBar)d).Maximum);
@@ -232,6 +259,13 @@ public sealed class TimelineBar : FrameworkElement
 		var pen = new Pen(TickBrush, 1.0);
 		var bar = new Rect(0.5, BarTop + 0.5, w - 1.0, BarHeight - 1.0);
 		dc.DrawRectangle(Background, pen, bar);
+
+		// the frames a run has produced so far, as a band from the start
+		if (Available > 0 && Available <= Maximum)
+		{
+			double xa = Math.Round(XOf(Available - 1)) + 0.5;
+			dc.DrawRectangle(AvailableBrush, null, new Rect(bar.Left + 1, bar.Top + 1, Math.Max(0, xa - bar.Left - 1), bar.Height - 2));
+		}
 
 		// the in/out range: two brackets, plus a translucent band once it is narrower than the run
 		double x0 = Math.Round(XOf(RangeStart)) + 0.5;

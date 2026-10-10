@@ -7,6 +7,7 @@
         xmlns:panes="clr-namespace:WaveDude.WPF.Panes"
         xmlns:commands="clr-namespace:WaveDude.WPF.Commands"
         xmlns:p="clr-namespace:WaveDude.WPF.Properties"
+        xmlns:runs="clr-namespace:WaveDude.Runs;assembly=WaveDude"
         Icon="App.ico"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Width="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Width, Mode=TwoWay}"
@@ -22,6 +23,7 @@
 	<Window.Resources>
 		<converters:EqualityConverter x:Key="Equality" />
 		<converters:TitleConverter x:Key="TitleConverter" />
+		<converters:RunStatusConverter x:Key="RunStatus" />
 
 		<RoutedUICommand x:Key="FileOpenRecent" />
 		<RoutedUICommand x:Key="ShowMessages" Text="Show messages" />
@@ -87,6 +89,12 @@
 		<CommandBinding Command="{StaticResource FileExit}" Executed="OnFileExit" />
 		<CommandBinding Command="{StaticResource ShowMessages}" Executed="OnShowMessages" />
 
+		<!-- the run; handlers in MainWindow.Simulation.cs -->
+		<CommandBinding Command="{x:Static commands:SimulationCommands.Run}" CanExecute="CanRun" Executed="OnRun" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.TogglePause}" CanExecute="CanControlRun" Executed="OnTogglePause" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.Stop}" CanExecute="CanControlRun" Executed="OnStop" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.EnsureRun}" Executed="OnEnsureRun" />
+
 		<!-- project structure; handlers in MainWindow.Project.cs -->
 		<CommandBinding Command="{x:Static commands:ProjectCommands.AddSource}" Executed="OnAddSource" />
 		<CommandBinding Command="{x:Static commands:ProjectCommands.AddProbe}" Executed="OnAddProbe" />
@@ -127,6 +135,31 @@
 				          ItemsSource="{Binding Options, Source={x:Static theming:ThemeController.Instance}}"
 				          ItemContainerStyle="{StaticResource ThemeMenuItemStyle}" />
 			</MenuItem>
+			<MenuItem Header="{DynamicResource MenuSimulation}">
+				<MenuItem Command="{x:Static commands:SimulationCommands.Run}" Header="{DynamicResource MenuSimulationRun}" InputGestureText="F5" />
+				<!-- one entry pauses and resumes; the header follows whether a pause is pending -->
+				<MenuItem Command="{x:Static commands:SimulationCommands.TogglePause}" InputGestureText="F6">
+					<MenuItem.Style>
+						<Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+							<Setter Property="Header" Value="{DynamicResource MenuSimulationPause}" />
+							<Style.Triggers>
+								<DataTrigger Binding="{Binding Run.State}" Value="{x:Static runs:RunState.Paused}">
+									<Setter Property="Header" Value="{DynamicResource MenuSimulationResume}" />
+								</DataTrigger>
+							</Style.Triggers>
+						</Style>
+					</MenuItem.Style>
+				</MenuItem>
+				<MenuItem Command="{x:Static commands:SimulationCommands.Stop}" Header="{DynamicResource MenuSimulationStop}" InputGestureText="Shift+F5" />
+				<Separator />
+				<!-- the engine is the application's choice, not the project's: it does not change the result -->
+				<MenuItem Header="{DynamicResource MenuSimulationUseGpu}" IsCheckable="True"
+				          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=UseGpu, Mode=TwoWay}"
+				          AutomationProperties.AutomationId="MenuUseGpu" />
+				<MenuItem Header="{DynamicResource MenuSimulationAutoRerun}" IsCheckable="True"
+				          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=AutoRerun, Mode=TwoWay}"
+				          AutomationProperties.AutomationId="MenuAutoRerun" />
+			</MenuItem>
 			<MenuItem Header="{DynamicResource MenuHelp}">
 				<MenuItem Header="{DynamicResource MenuHelpAbout}" />
 			</MenuItem>
@@ -137,6 +170,20 @@
 			<StatusBar.InputBindings>
 				<MouseBinding Gesture="LeftDoubleClick" Command="{StaticResource ShowMessages}" />
 			</StatusBar.InputBindings>
+			<!-- the run's progress on the right: state, steps, engine; empty while there is no run -->
+			<StatusBarItem DockPanel.Dock="Right" HorizontalAlignment="Right">
+				<TextBlock AutomationProperties.AutomationId="StatusRun">
+					<TextBlock.Text>
+						<MultiBinding Converter="{StaticResource RunStatus}">
+							<Binding Path="Run.State" />
+							<Binding Path="Run.StepsDone" />
+							<Binding Path="Run.TotalSteps" />
+							<Binding Path="Run.EngineDescription" />
+							<Binding Path="IsRunStale" />
+						</MultiBinding>
+					</TextBlock.Text>
+				</TextBlock>
+			</StatusBarItem>
 			<StatusBarItem>
 				<TextBlock x:Name="txtStatus" Text="{DynamicResource Ready}" />
 			</StatusBarItem>
@@ -156,7 +203,10 @@
 			</docking:DockHost.Items>
 			<docking:DockHost.DocumentContent>
 				<Border BorderThickness="1" BorderBrush="{DynamicResource ToolWindowBorder}">
-					<panes:PreviewPane x:Name="previewPane" Project="{Binding Project}" />
+					<panes:PreviewPane x:Name="previewPane" Project="{Binding Project}" Run="{Binding Run}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+					                   IsStale="{Binding IsRunStale}" ScratchFrame="{Binding ScratchFrame}"
+					                   Position="{Binding PreviewPosition, Mode=TwoWay}"
+					                   Orientation="{Binding Source={x:Static p:Settings.Default}, Path=PreviewOrientation, Mode=TwoWay}" />
 				</Border>
 			</docking:DockHost.DocumentContent>
 		</docking:DockHost>

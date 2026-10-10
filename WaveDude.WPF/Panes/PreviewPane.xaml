@@ -11,6 +11,7 @@
 		<converters:EnumBooleanConverter x:Key="EnumBoolean" />
 		<converters:DoubleTextConverter x:Key="DoubleText" />
 		<converters:FrameToStepConverter x:Key="FrameToStep" />
+		<converters:NotNullConverter x:Key="NotNull" />
 
 		<StreamGeometry x:Key="PlayGeometry">M0,0 L9,5 L0,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="PauseGeometry">M0,0 L3,0 L3,10 L0,10 Z M6,0 L9,0 L9,10 L6,10 Z</StreamGeometry>
@@ -22,6 +23,9 @@
 		<StreamGeometry x:Key="SetOutGeometry">M11,0 L7,0 L7,2 L9,2 L9,8 L7,8 L7,10 L11,10 Z M5,2 L0,5 L5,8 Z</StreamGeometry>
 		<StreamGeometry x:Key="ClearRangeGeometry">M0,1.5 L1.5,0 L5,3.5 L8.5,0 L10,1.5 L6.5,5 L10,8.5 L8.5,10 L5,6.5 L1.5,10 L0,8.5 L3.5,5 Z</StreamGeometry>
 		<StreamGeometry x:Key="LoopGeometry">M5,1 A4,4 0 1 1 1,5 L3,5 A2,2 0 1 0 5,3 Z M5,0 L8,2 L5,4 Z</StreamGeometry>
+		<!-- "live": a dot inside a ring (even-odd fill makes the ring hollow) -->
+		<StreamGeometry x:Key="LiveGeometry">M0.5,5 A4.5,4.5 0 1 1 9.5,5 A4.5,4.5 0 1 1 0.5,5 Z M1.5,5 A3.5,3.5 0 1 0 8.5,5 A3.5,3.5 0 1 0 1.5,5 Z M3.5,5 A1.5,1.5 0 1 1 6.5,5 A1.5,1.5 0 1 1 3.5,5 Z</StreamGeometry>
+		<BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
 		<!-- filled-glyph transport button; Content is the geometry. A tab stop: keyboard focus shows as an accent border -->
 		<Style x:Key="TransportButton" TargetType="{x:Type Button}">
@@ -90,6 +94,65 @@
 			</Setter>
 		</Style>
 
+		<!-- the handles of the sources and probes on the pictures: a ring for a source, a square for a probe
+		     point, each with four crosshair ticks outside it and a gap around the exact pixel; every stroke is
+		     drawn twice, a dark halo first, so the glyph reads on any picture. The selected item's handle and
+		     the focused handle show the accent. Glyphs are 20 x 20 with the point at (10, 10) -->
+		<StreamGeometry x:Key="SourceGlyph">M4,10 A6,6 0 1 1 16,10 A6,6 0 1 1 4,10 M10,0 L10,2.5 M10,17.5 L10,20 M0,10 L2.5,10 M17.5,10 L20,10</StreamGeometry>
+		<StreamGeometry x:Key="ProbeGlyph">M4.5,4.5 L15.5,4.5 L15.5,15.5 L4.5,15.5 Z M10,0 L10,2.5 M10,17.5 L10,20 M0,10 L2.5,10 M17.5,10 L20,10</StreamGeometry>
+		<Style x:Key="MarkerBase" TargetType="{x:Type controls:MarkerThumb}">
+			<Setter Property="Width" Value="20" />
+			<Setter Property="Height" Value="20" />
+			<Setter Property="Cursor" Value="SizeAll" />
+			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+			<Setter Property="Foreground" Value="White" />
+			<Setter Property="Background" Value="#60000000" />
+			<Setter Property="BorderBrush" Value="White" />
+			<Setter Property="StrokeThickness" Value="1.5" />
+			<Style.Triggers>
+				<Trigger Property="IsSelectedMarker" Value="True">
+					<Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+					<Setter Property="Foreground" Value="{DynamicResource Accent}" />
+				</Trigger>
+				<Trigger Property="IsKeyboardFocused" Value="True">
+					<Setter Property="Background" Value="{DynamicResource DropPreviewFill}" />
+					<Setter Property="StrokeThickness" Value="2.5" />
+				</Trigger>
+				<Trigger Property="IsMouseOver" Value="True">
+					<Setter Property="StrokeThickness" Value="2.5" />
+				</Trigger>
+			</Style.Triggers>
+		</Style>
+		<Style x:Key="SourceMarker" TargetType="{x:Type controls:MarkerThumb}" BasedOn="{StaticResource MarkerBase}">
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type controls:MarkerThumb}">
+						<Grid Background="Transparent">
+							<Ellipse Width="12" Height="12" Fill="{TemplateBinding Background}" />
+							<Path Data="{StaticResource SourceGlyph}" Stroke="Black" StrokeThickness="{TemplateBinding HaloThickness}" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.75" />
+							<Path Data="{StaticResource SourceGlyph}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="{TemplateBinding StrokeThickness}" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+							<Ellipse Width="5" Height="5" Fill="Black" Opacity="0.75" />
+							<Ellipse Width="3" Height="3" Fill="{TemplateBinding Foreground}" />
+						</Grid>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<Style x:Key="ProbeMarker" TargetType="{x:Type controls:MarkerThumb}" BasedOn="{StaticResource MarkerBase}">
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type controls:MarkerThumb}">
+						<Grid Background="Transparent">
+							<Rectangle Width="11" Height="11" Fill="{TemplateBinding Background}" />
+							<Path Data="{StaticResource ProbeGlyph}" Stroke="Black" StrokeThickness="{TemplateBinding HaloThickness}" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.75" />
+							<Path Data="{StaticResource ProbeGlyph}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="{TemplateBinding StrokeThickness}" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+							<Rectangle Width="5" Height="5" Fill="Black" Opacity="0.75" />
+							<Rectangle Width="3" Height="3" Fill="{TemplateBinding Foreground}" />
+						</Grid>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
 		<!-- the time axis: theme colours for the custom-drawn bar -->
 		<Style TargetType="{x:Type controls:TimelineBar}">
 			<Setter Property="Background" Value="{DynamicResource ScrollBarBackground}" />
@@ -97,7 +160,14 @@
 			<Setter Property="TickBrush" Value="{DynamicResource ControlBorder}" />
 			<Setter Property="LabelBrush" Value="{DynamicResource GrayText}" />
 			<Setter Property="AccentBrush" Value="{DynamicResource Accent}" />
+			<Setter Property="AvailableBrush" Value="{DynamicResource DropPreviewFill}" />
 			<Setter Property="Margin" Value="4,2" />
+			<Style.Triggers>
+				<!-- the project was edited since the run: its frames are shaded grey instead of accent -->
+				<DataTrigger Binding="{Binding IsStale, ElementName=pane}" Value="True">
+					<Setter Property="AvailableBrush" Value="#50808080" />
+				</DataTrigger>
+			</Style.Triggers>
 		</Style>
 	</UserControl.Resources>
 
@@ -114,6 +184,7 @@
 		<CommandBinding Command="{x:Static commands:PreviewCommands.SetOutPoint}" CanExecute="CanEditRange" Executed="OnSetOutPoint" />
 		<CommandBinding Command="{x:Static commands:PreviewCommands.ClearRange}" CanExecute="CanClearRange" Executed="OnClearRange" />
 		<CommandBinding Command="{x:Static commands:PreviewCommands.ToggleLoop}" CanExecute="CanTransport" Executed="OnToggleLoop" />
+		<CommandBinding Command="{x:Static commands:PreviewCommands.ToggleLive}" CanExecute="CanToggleLive" Executed="OnToggleLive" />
 	</UserControl.CommandBindings>
 	<!-- plain letters are not valid KeyGestures on a command, so these live here; CanTransport keeps them out of text boxes -->
 	<UserControl.InputBindings>
@@ -124,11 +195,12 @@
 		<KeyBinding Key="O" Command="{x:Static commands:PreviewCommands.SetOutPoint}" />
 		<KeyBinding Key="X" Command="{x:Static commands:PreviewCommands.ClearRange}" />
 		<KeyBinding Key="L" Command="{x:Static commands:PreviewCommands.ToggleLoop}" />
+		<KeyBinding Key="F" Command="{x:Static commands:PreviewCommands.ToggleLive}" />
 	</UserControl.InputBindings>
 
 	<DockPanel>
 
-		<!-- transport bar: play, pause, frame steps, in/out/clear, loop, frame and step readout, speed,
+		<!-- transport bar: play, pause, frame steps, in/out/clear, loop, live, frame and step readout, speed,
 		     split. Tab order (TabIndex) is left to right; the DockPanel declares the right-docked items
 		     first, so it cannot be the declaration order. The timeline is the row above (declared after
 		     this one, since both dock to the bottom) and follows in the tab order. -->
@@ -160,12 +232,16 @@
 				<ToggleButton DockPanel.Dock="Left" TabIndex="8" Style="{StaticResource TransportToggle}" Content="{StaticResource LoopGeometry}"
 				              IsChecked="{Binding IsLooping, ElementName=pane}" ToolTip="{DynamicResource TipPreviewLoop}"
 				              AutomationProperties.Name="{DynamicResource TipPreviewLoop}" AutomationProperties.AutomationId="PreviewLoop" />
+				<ToggleButton DockPanel.Dock="Left" TabIndex="9" Style="{StaticResource TransportToggle}" Content="{StaticResource LiveGeometry}"
+				              IsChecked="{Binding IsLive, ElementName=pane}" ToolTip="{DynamicResource TipPreviewLive}"
+				              IsEnabled="{Binding Run.IsActive, ElementName=pane, FallbackValue=False}"
+				              AutomationProperties.Name="{DynamicResource TipPreviewLive}" AutomationProperties.AutomationId="PreviewLive" />
 				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
 
 				<!-- right-docked items: the first declared is the rightmost -->
 				<!-- one tab stop, the checked radio (IsTabStop follows IsChecked); the arrow keys move to the
 				     neighbour and check it, in code, since WPF's directional navigation skips non-tab-stops -->
-				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="10"
+				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="11"
 				            KeyDown="OnSplitGroupKeyDown">
 					<RadioButton Style="{StaticResource TransportToggle}" Content="{StaticResource SideBySideGeometry}" GroupName="Split"
 					             ToolTip="{DynamicResource TipPreviewSideBySide}"
@@ -179,7 +255,7 @@
 					             IsTabStop="{Binding IsChecked, RelativeSource={RelativeSource Self}, Mode=OneWay}" />
 				</StackPanel>
 				<Rectangle DockPanel.Dock="Right" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
-				<ComboBox x:Name="speedBox" DockPanel.Dock="Right" TabIndex="9" Width="64" IsEditable="True" ItemsSource="{x:Static local:PreviewPane.SpeedPresets}"
+				<ComboBox x:Name="speedBox" DockPanel.Dock="Right" TabIndex="10" Width="64" IsEditable="True" ItemsSource="{x:Static local:PreviewPane.SpeedPresets}"
 				          Text="{Binding Speed, ElementName=pane, Mode=TwoWay, Converter={StaticResource DoubleText}}" ToolTip="{DynamicResource TipPreviewSpeed}"
 				          AutomationProperties.Name="{DynamicResource LabelPreviewSpeed}" AutomationProperties.AutomationId="PreviewSpeed"
 				          PreviewKeyDown="OnSpeedBoxPreviewKeyDown" />
@@ -212,7 +288,8 @@
 
 		<!-- the time axis, full width above the transport bar -->
 		<controls:TimelineBar x:Name="timeline" DockPanel.Dock="Bottom"
-		                      Maximum="{Binding LastFrame, ElementName=pane}" Value="{Binding Position, ElementName=pane}"
+		                      Maximum="{Binding PlannedLastFrame, ElementName=pane}" Available="{Binding Available, ElementName=pane}"
+		                      Value="{Binding Position, ElementName=pane}"
 		                      RangeStart="{Binding InPoint, ElementName=pane}" RangeEnd="{Binding OutPoint, ElementName=pane}"
 		                      SetRangeStartCommand="{x:Static commands:PreviewCommands.SetInPoint}"
 		                      SetRangeEndCommand="{x:Static commands:PreviewCommands.SetOutPoint}"
@@ -235,10 +312,21 @@
 					<Setter Property="Template">
 						<Setter.Value>
 							<ControlTemplate TargetType="{x:Type HeaderedContentControl}">
-								<DockPanel>
-									<TextBlock DockPanel.Dock="Top" Style="{StaticResource FormSection}" Margin="0,0,0,4" Text="{TemplateBinding Header}" />
-									<Image Source="{TemplateBinding Content}" Stretch="Uniform" AutomationProperties.AutomationId="{TemplateBinding Tag}" />
-								</DockPanel>
+								<!-- the label goes above the picture, or rotated to its left when the cell is wider than the picture -->
+								<controls:PictureFrame>
+									<TextBlock Style="{StaticResource FormSection}" Text="{TemplateBinding Header}" />
+									<!-- the picture with the source/probe handles over it; both fill the same rectangle -->
+									<Grid>
+										<Image Source="{TemplateBinding Content}" Stretch="Uniform" AutomationProperties.AutomationId="{TemplateBinding Tag}" />
+										<!-- styled here, not implicitly: WPF applies implicit styles inside a template only to Controls, and the overlay is a Panel -->
+										<controls:SceneOverlay SourceStyle="{StaticResource SourceMarker}" ProbeStyle="{StaticResource ProbeMarker}"
+										                       LineBrush="White" LabelBrush="White" AccentBrush="{DynamicResource Accent}"
+										                       Project="{Binding Project, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                       CanvasWidth="{Binding CanvasWidth, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                       CanvasHeight="{Binding CanvasHeight, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                       SelectedItem="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}, Mode=TwoWay}" />
+									</Grid>
+								</controls:PictureFrame>
 							</ControlTemplate>
 						</Setter.Value>
 					</Setter>
@@ -303,12 +391,14 @@
 				<RowDefinition Height="*" />
 			</Grid.RowDefinitions>
 			<HeaderedContentControl Style="{StaticResource PictureCell}" Header="{DynamicResource SectionField}"
-			                        Content="{Binding FieldImage, ElementName=pane}" Tag="PreviewFieldImage" />
+			                        Content="{Binding FieldImage, ElementName=pane}" Tag="PreviewFieldImage"
+			                        Visibility="{Binding FieldSettings.Preview, ElementName=pane, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}" />
 			<GridSplitter Style="{StaticResource PictureSplitter}" ToolTip="{DynamicResource TipPreviewSplitter}"
 			              AutomationProperties.Name="{DynamicResource TipPreviewSplitter}" AutomationProperties.AutomationId="PreviewSplitter"
 			              MouseDoubleClick="OnSplitterMouseDoubleClick" KeyDown="OnSplitterKeyDown" />
 			<HeaderedContentControl Style="{StaticResource SecondPictureCell}" Header="{DynamicResource SectionIntensity}"
-			                        Content="{Binding IntensityImage, ElementName=pane}" Tag="PreviewIntensityImage" />
+			                        Content="{Binding IntensityImage, ElementName=pane}" Tag="PreviewIntensityImage"
+			                        Visibility="{Binding IntensitySettings.Preview, ElementName=pane, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}" />
 		</Grid>
 
 	</DockPanel>

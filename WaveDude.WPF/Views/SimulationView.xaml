@@ -18,8 +18,6 @@
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionSolver}" />
 			<controls:FormPanel>
-				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Simulation.Gpu}"
-				          IsChecked="{Binding Gpu}" ToolTip="{meta:Hint model:Simulation.Gpu}" />
 				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Simulation.FourthOrderLaplacian}"
 				          IsChecked="{Binding FourthOrderLaplacian}" ToolTip="{meta:Hint model:Simulation.FourthOrderLaplacian}" />
 
