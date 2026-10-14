@@ -21,6 +21,12 @@ public static class Native
 	[DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 	[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 	[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
+	[DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+	// resizes the window in place without activating it (SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)
+	public static void Resize(IntPtr hwnd, int width, int height) { SetWindowPos(hwnd, IntPtr.Zero, 0, 0, width, height, 0x0002 | 0x0004 | 0x0010); }
+	public static int WindowWidth(IntPtr hwnd) { RECT r; GetWindowRect(hwnd, out r); return r.Right - r.Left; }
+	public static int WindowHeight(IntPtr hwnd) { RECT r; GetWindowRect(hwnd, out r); return r.Bottom - r.Top; }
 	[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 
 	// PW_RENDERFULLCONTENT: ask DWM for the composed content, which a hardware-rendered WPF window needs
@@ -66,12 +72,24 @@ public static class Native
 
 	// WM_CHAR: text input independent of the keyboard layout
 	public static void Char(IntPtr hwnd, char c) { PostMessage(hwnd, 0x0102, (IntPtr)c, (IntPtr)1); }
+	// WM_SYSKEYDOWN / WM_SYSKEYUP (bit 29 = the Alt context), what the keyboard driver sends for Alt+key and F10;
+	// WPF's menus and access keys listen to these, not to plain WM_KEYDOWN
+	public static void SysKey(IntPtr hwnd, int vk, bool alt)
+	{
+		long context = alt ? (1L << 29) : 0;
+		PostMessage(hwnd, 0x0104, (IntPtr)vk, (IntPtr)(1 | context));
+		PostMessage(hwnd, 0x0105, (IntPtr)vk, (IntPtr)(1 | context | (1L << 30) | (1L << 31)));
+	}
+	// WM_SETFOCUS, posted: WPF's keyboard provider then assigns its focused element (no OS activation involved)
+	public static void SetFocusMessage(IntPtr hwnd) { PostMessage(hwnd, 0x0007, IntPtr.Zero, IntPtr.Zero); }
+	// WM_SYSCHAR: the character of an Alt+letter, which WPF turns into an access key (menu mnemonic)
+	public static void SysChar(IntPtr hwnd, char c) { PostMessage(hwnd, 0x0106, (IntPtr)c, (IntPtr)(1 | (1L << 29))); }
 }
 "@
 
 $A = [System.Windows.Automation.AutomationElement]
 $VK_BACK = 0x08; $VK_TAB = 0x09; $VK_SPACE = 0x20; $VK_END = 0x23; $VK_HOME = 0x24
-$VK_LEFT = 0x25; $VK_RIGHT = 0x27; $VK_PRIOR = 0x21; $VK_NEXT = 0x22; $VK_RETURN = 0x0D; $VK_ESCAPE = 0x1B
+$VK_LEFT = 0x25; $VK_UP = 0x26; $VK_RIGHT = 0x27; $VK_DOWN = 0x28; $VK_PRIOR = 0x21; $VK_NEXT = 0x22; $VK_RETURN = 0x0D; $VK_ESCAPE = 0x1B
 $VK_F4 = 0x73; $VK_F5 = 0x74; $VK_F6 = 0x75
 $VK_F = 0x46; $VK_I = 0x49; $VK_O = 0x4F; $VK_X = 0x58; $VK_L = 0x4C; $VK_COMMA = 0xBC; $VK_PERIOD = 0xBE
 $script:failures = 0
@@ -105,7 +123,7 @@ function Position() { return [int](((Frame) -split " / ")[0]) }
 function Playing() { return (Find "PreviewPause").Current.IsEnabled }
 function Selected([string]$id) { return (Pattern (Find $id) "SelectionItem").Current.IsSelected }
 function SpeedText() { return (Pattern (Find "PreviewSpeed") "Value").Current.Value }
-function Focused([string]$id) { return (Find $id).Current.HasKeyboardFocus }
+function Focused([string]$id) { return (FocusedId) -eq $id }
 function StepText() { return (Find "PreviewStep").Current.Name }
 function ToggleOn([string]$id) { return (Pattern (Find $id) "Toggle").Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On }
 function LoopOn() { return ToggleOn "PreviewLoop" }
@@ -134,32 +152,45 @@ function TreeItemSelected([string]$name) {
 	if ($e -eq $null) { return $false }
 	return (Pattern $e "SelectionItem").Current.IsSelected
 }
-function FocusedId() {
-	foreach ($id in "PreviewPlay", "PreviewPause", "PreviewStepBack", "PreviewStepForward", "PreviewSetIn", "PreviewSetOut", "PreviewClearRange", "PreviewLoop",
-	                "PreviewLive", "PreviewSpeed", "PreviewSideBySide", "PreviewStacked", "PreviewTimeline", "PreviewSplitter") {
-		if (Focused $id) { return $id }
-	}
-	# the editable combo keeps focus in its inner text box
+# the element with keyboard focus, in one UI Automation query (asking 17 ids one by one cost half a second per
+# Tab and made FocusOn crawl, 2026-10-14): its automation id, "PreviewSpeed" for the editable combo's inner text
+# box, else "(other: <type> '<name>')"; "(none)" when nothing in the window has focus (the window was never activated)
+function FocusedElement() {
 	$c = New-Object System.Windows.Automation.PropertyCondition($A::HasKeyboardFocusProperty, $true)
-	if ((Find "PreviewSpeed").FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c) -ne $null) { return "PreviewSpeed" }
-	$other = $script:win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
-	if ($other -ne $null) { return "(other: " + $other.Current.ControlType.ProgrammaticName + " '" + $other.Current.Name + "')" }
-	# nothing in the window reports focus: ask the system (only meaningful while the app is foreground)
-	$fe = $A::FocusedElement
-	if ($fe -ne $null -and $fe.Current.ProcessId -eq $script:p.Id) { return "(focused: " + $fe.Current.ControlType.ProgrammaticName + " '" + $fe.Current.Name + "' " + $fe.Current.ClassName + ")" }
-	return "(none)"
+	return $script:win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
 }
-function Key([int]$vk, [int]$settle = 150) { [Native]::Key($script:hwnd, $vk); Start-Sleep -Milliseconds $settle }
+function FocusedId() {
+	$e = FocusedElement
+	if ($e -eq $null) { return "(none)" }
+	$id = $e.Current.AutomationId
+	if ($id -ne "" -and -not $id.StartsWith("PART_")) { return $id }
+	# the editable combo keeps focus in its inner text box (a template part, "PART_EditableTextBox"): the combo names it
+	$walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+	$parent = $walker.GetParent($e)
+	for ($i = 0; $i -lt 4 -and $parent -ne $null; $i++) {
+		if ($parent.Current.AutomationId -eq "PreviewSpeed") { return "PreviewSpeed" }
+		$parent = $walker.GetParent($parent)
+	}
+	return "(other: " + $e.Current.ControlType.ProgrammaticName + " '" + $e.Current.Name + "')"
+}
+# the settle covers the app's handling of the key before the next UI Automation read; 60 ms is plenty for a binding
+# update, a layout change wants ~150, a scratch frame or a run is waited for with WaitFor instead (2026-10-14)
+function Key([int]$vk, [int]$settle = 60) { [Native]::Key($script:hwnd, $vk); Start-Sleep -Milliseconds $settle }
+# resizes the app window by the given amounts (no activation) and lets the layout settle
+function ResizeApp([int]$dw, [int]$dh) {
+	[Native]::Resize($script:hwnd, ([Native]::WindowWidth($script:hwnd) + $dw), ([Native]::WindowHeight($script:hwnd) + $dh))
+	Start-Sleep -Milliseconds 500
+}
 # Tab (posted) until the wanted element holds focus; the cycle runs through the whole window
 function FocusOn([string]$id) {
 	for ($i = 0; $i -lt 80; $i++) {
-		if ((Focused $id) -or (FocusedId) -eq $id) { return }
-		Key $VK_TAB
+		if ((FocusedId) -eq $id) { return }
+		Key $VK_TAB 30
 	}
 	throw "could not reach '$id' with Tab; focus is at $(FocusedId)"
 }
 # polls a condition; returns whether it became true within the timeout
-function WaitFor([scriptblock]$condition, [int]$timeoutMs = 10000, [int]$pollMs = 100) {
+function WaitFor([scriptblock]$condition, [int]$timeoutMs = 10000, [int]$pollMs = 50) {
 	$deadline = [DateTime]::Now.AddMilliseconds($timeoutMs)
 	while ([DateTime]::Now -lt $deadline) {
 		if (& $condition) { return $true }
@@ -184,7 +215,8 @@ function Start-App([string]$Exe, [string]$ProjectFile = "") {
 	if ($script:win -eq $null) { throw "main window not found" }
 	$script:p.Refresh()
 	$script:hwnd = $script:p.MainWindowHandle
-	Start-Sleep -Milliseconds 800
+	# ready when the status bar's run item exists (the window is fully built), instead of a fixed wait
+	$null = WaitFor { try { (Find "StatusRun") -ne $null } catch { $false } } 5000 50
 
 	$script:park = New-Object System.Windows.Forms.Form
 	$script:park.StartPosition = "Manual"
@@ -192,14 +224,21 @@ function Start-App([string]$Exe, [string]$ProjectFile = "") {
 	$script:park.Size = New-Object System.Drawing.Size(10, 10)
 	$script:park.ShowInTaskbar = $false
 	$script:park.Show(); $script:park.Activate(); [System.Windows.Forms.Application]::DoEvents()
-	Start-Sleep -Milliseconds 500
+	Start-Sleep -Milliseconds 200
 	for ($i = 0; $i -lt 3 -and (Foreground) -eq "APP"; $i++) {
 		[Native]::ShowWindow($script:hwnd, 6) | Out-Null         # SW_MINIMIZE: the OS activates something else
-		Start-Sleep -Milliseconds 300
+		Start-Sleep -Milliseconds 150
 		$script:park.Activate(); [System.Windows.Forms.Application]::DoEvents()
-		Start-Sleep -Milliseconds 300
+		Start-Sleep -Milliseconds 150
 		[Native]::ShowWindow($script:hwnd, 4) | Out-Null         # SW_SHOWNOACTIVATE
-		Start-Sleep -Milliseconds 500
+		Start-Sleep -Milliseconds 250
+	}
+	# a window that Windows never activated (the user was busy elsewhere) has no focused element, and posted keys
+	# then go nowhere; a posted WM_SETFOCUS makes WPF assign its keyboard focus without activating the window
+	if ((FocusedId) -eq "(none)") {
+		[Native]::SetFocusMessage($script:hwnd)
+		Start-Sleep -Milliseconds 150
+		if ((FocusedId) -eq "(none)") { Write-Output "note: no element has keyboard focus; keys may be lost" }
 	}
 	Write-Output ("window: '{0}'  foreground: {1}" -f $script:win.Current.Name, (Foreground))
 }

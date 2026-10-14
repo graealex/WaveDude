@@ -1,6 +1,6 @@
 # Wave Dude 2D — project notes for Claude
 
-Last updated 2026-10-09. Update this file when the facts below change.
+Last updated 2026-10-14. Update this file when the facts below change.
 
 ## What this is
 
@@ -72,8 +72,80 @@ WPF shell as it stands:
   automatic run is not started while a scratch frame computes. **A picture changes only when a frame
   for the position itself arrives** (scratch or stored); with nothing for it yet the last picture
   stays. Showing the run's newest frame meanwhile was tried twice and rejected both times: it reads
-  as a replay from frame 0 (2026-10-10). A skipped scratch frame (predicted cost over
+  as a replay from frame 0 (2026-10-10). That rule also holds without a run: the presenter is
+  cleared only when both the run and the scratch frame are gone (the project replaced), not on
+  every scrub step, which flashed the empty picture between frames (2026-10-13). A skipped scratch frame (predicted cost over
   `ScratchRunner.Budget`, 6 s) is said in the status bar once per frame.
+- **Colour schemes and the scene image** (2026-10-13, decisions provisional, see the list at the end
+  of this bullet): a `ColorScheme` is a list of `ColorStop`s, each a colour at a position 0..1
+  (`Stops`; the table interpolates between neighbours and holds the end colours outside), observable
+  (a stop's edit raises `Stops` on the scheme), XML-serialisable as attributes plus one
+  `<Stop At="0.125" Color="#3020F4" />` per stop; `Rgb` prints and parses hex and has a
+  `TypeConverter`, so a text box binds to a stop's `Color` directly. The author's files consolidate
+  losslessly: his 9 evenly spaced stops stay 9 stops at k/8 (all 11 tables equal their
+  interpolation, so his `colors` list was redundant there; his program reads only the table), the 12
+  sampled colormaps were 255 stops at i/254 at first and are now **slimmed to their bends**
+  (`ColorScheme.Simplify`, Ramer–Douglas–Peucker with a largest-channel tolerance of 3/255, applied
+  once with `library_check -- simplify-schemes ColorSchemeList 3`, 2026-10-14): 3 to 21 stops each
+  (Copper 3, Orange_hot 4, Hot_orange 5, Blue_to_yellow 7, Simply_red 7, Flare_inv 8, Greens 9,
+  rainbow 12, magma 13, inferno 16, Ice_and_fire 21, Orange_symmetry 21). The stop arithmetic
+  reproduces the author's resampling bit for bit for evenly spaced stops. **The shipped schemes are now `ColorSchemeList/*.wdscheme`** (converted 2026-10-13
+  with `library_check -- convert-schemes <folder>`, a one-off kept in the harness), embedded as
+  before; JSON is still read for files from the author's program, and the JSON export keeps his
+  layout. `.wdscheme` is registered like `.wdproj` (`FileAssociation.Register` takes the ProgId and
+  description); a double-clicked scheme file is added to the open project and selected.
+  `Project.ColorSchemes` holds the project's own schemes (loaded files, edited copies) inside the
+  `.wdproj`; `ColorSchemeCatalog.Resolve/LutFor(project, …)` look there first, then the user folder,
+  then the built-ins.
+  `Controls/ColorSchemePicker` (a `ComboBox`, value = the scheme name) lists the project's schemes
+  tagged "project", then the shared ones of the layer's `Kind`, each with a gradient strip, plus
+  "Load from file…" (JSON or `.wdscheme` into the project) and "Edit a copy in the project…" (clone,
+  reduced to 9 stops, selected in the tree). The tree has a "Colour schemes" folder (add, duplicate,
+  remove, move, drag like sources); `Views/ColorSchemeView` edits name, kind, category and one row
+  per stop (position as a number box, swatch, hex), with "Add stop" (into the widest gap) and a
+  remove button per row, plus "Reduce to 9 stops" for a 255-stop table, and a "Based on" combo that
+  copies any shared or project scheme's stops into the one being edited (a new scheme starts grey).
+  Edits
+  recolour the preview at once (`ProjectWatcher` reports them as display changes,
+  `PreviewPane.RefreshColors`). The scene image is picked with Scene > Browse… and **embedded**:
+  `Scene.ImageData` holds the file's bytes (base64 element, `XmlSerializer`'s own encoding),
+  `Scene.Image` just its name, the view shows "w × h, KB"; `LoadSceneImage` decodes the bytes once
+  per array, a path is still honoured for old files. Open decisions: base64 vs BaseXML for the
+  bytes (base64 is what `XmlSerializer` does natively; BaseXML would need an in-house codec); a colour
+  picker dialog for the stops (hex text only today; the WinForms `ColorDialog` would need
+  `UseWindowsForms`); renaming a project scheme does not update the layers that refer to it.
+- **Scene image in the preview** (2026-10-13, the user's choice after the author's app was checked):
+  the original shows the scene image itself as the picking background of its Sources/Probes tabs and
+  lays a "glowing edges" outline (per-channel Sobel × 0.25, clamped) over the field and intensity
+  previews, blended additively, gain 0–5 per preview, off by default, UI state only, baked into
+  exports when on. Here: `GlowingEdges` in the library (`Compute`, and `BlendAdditive` for the
+  export, both harness-checked); `DisplayLayer.Overlay` (default **on**), `OverlayGain` (0–5, 1),
+  `OverlayInExport` (default **off**; no export code exists yet, it must honour it with
+  `BlendAdditive`) stored in the project; `MainWindow.UpdateScenePixels` hands the decoded image
+  to `PreviewPane.ScenePixels` on project replace and scene edits; the pane shows the image itself
+  where no frame exists (and takes the canvas size from it, which was wrong for image scenes
+  before), and draws `SceneBitmaps.Overlay` as a translucent `Image` over each picture (attached
+  `PreviewPane.OverlayImage` on the picture cells). WPF composites source-over, not additively:
+  the layer's alpha is the edge strength × gain and its colour the edge colour at full brightness,
+  so the preview and a baked export differ slightly at strong edges.
+- **Languages** (2026-10-14): `Strings/Strings.EN|DE|FR|NL.xaml` carry the same keys (menu headers
+  with their mnemonics; the shortcut letters I/O/X/L/F/F5 stay). `Localization/LanguageController`
+  mirrors the theme controller: View > Language lists "System" then the tables by their own names,
+  the choice is the persisted setting `Language` ("" = system, which falls back to English), and the
+  change swaps the merged string dictionary at once. Everything read through `DynamicResource`
+  changes live; the dock pane titles, the theme menu entries, the tree's folder labels
+  (`NamedCollection.Label` reads its resource key on demand and raises a change on a language switch;
+  `Key` keeps the automation ids stable) and the picker's action rows are re-read on the change too,
+  through `LanguageController.PropertyChanged` (2026-10-14, after "Sondes" and "Propriétés" stayed
+  French). The Properties
+  pane is localised through generated keys: `Label.<Type>.<Member>`, `Hint.<Type>.<Member>` and
+  `Enum.<Type>.<Member>`; the `meta:Label`/`meta:Hint` extensions return a `DynamicResource` when
+  the key exists (live) and the attribute text otherwise, `EnumNameConverter` looks the key up first.
+  The model's `DisplayName`/`Description` attributes stay the English source; `_tools/…` is not
+  needed: the generator was a one-off script, the English block in `Strings.EN.xaml` is what the
+  attributes said on 2026-10-14. **Adding a model property means adding its keys to all four
+  tables** (the key-set check in the notes' verification list catches a missing one). Not
+  localised: log messages.
 - Preview document: `Panes/PreviewPane`. Two pictures (field,
   intensity) side by side or stacked (`Orientation`, persisted as the `PreviewOrientation` user
   setting), each centred in its cell with its label laid out by `Controls/PictureFrame` (label above
@@ -133,7 +205,8 @@ WPF shell as it stands:
   or wraps to the in point while looping.
 - **Keyboard first.** Every control must be reachable and operable with Tab and the arrow keys and
   show its keyboard focus (accent border); the user tests without the mouse. The preview pane is
-  the model: explicit `TabIndex` order, the radio group is one tab stop (`IsTabStop` bound to
+  the model: explicit `TabIndex` order, the menu bar is not in the Tab cycle (F10 focuses it,
+  2026-10-14), the radio group is one tab stop (`IsTabStop` bound to
   `IsChecked`, arrows handled in code because WPF's directional navigation skips non-tab-stops),
   Play/Pause hand focus to each other when they get disabled, `AutomationProperties.AutomationId`
   on everything a harness needs. Every shortcut a harness must press needs an **unmodified** key
@@ -153,8 +226,8 @@ below). Baseline commit `1266f10` is the first compiling, cleaned, documented st
 after it (AVI fix, style pass, engine refactor, WPF shell) is uncommitted at the time of writing.
 
 Repo root also holds runtime data that is tracked on purpose: `ColorSchemeList/` (the shipped colour
-schemes, `*.json`; **embedded into `WaveDude.dll`** as resources `ColorSchemes/<file>` by the library's
-csproj, loaded by `ColorSchemeStore.LoadBuiltIn`; the user's own schemes come from
+schemes, `*.wdscheme` XML since 2026-10-13; **embedded into `WaveDude.dll`** as resources
+`ColorSchemes/<file>` by the library's csproj, loaded by `ColorSchemeStore.LoadBuiltIn`; the user's own schemes come from
 `%LOCALAPPDATA%\WaveDude\ColorSchemes` and shadow built-ins of the same name; agreed 2026-10-10, no
 external files) and `Project/` (a sample project root). `.vs/`, `bin/`, `obj/` are ignored.
 
@@ -184,7 +257,11 @@ No automated tests in the solution; standalone harnesses exist under `_tools/` (
 
 ## Verification harnesses (`_tools/`)
 
-Run these after touching the code they cover.
+**Run only the check that covers the change** (the user's rule, 2026-10-14, after every small edit had
+been followed by minutes of GUI harness runs): a clean build plus one targeted probe or screenshot is
+the proof for a local change (a label, a glyph, one binding); `library_check` (about 20 s, no GUI) for
+library changes; a UI harness only when the flow it covers changed, and only that one. Never re-run
+passing harnesses for comfort, never all of them after an edit.
 
 - `_tools/library_check/` — an SDK console project (not in the `.sln`) referencing `WaveDude.csproj`:
   `dotnet run --project _tools/library_check -c Release`. 70+ checks over the library: scene from BGRA
@@ -193,7 +270,10 @@ Run these after touching the code they cover.
   determinism (same project seed → bit-identical field, different seed → different, **CPU = GPU on
   randomized gaps**); `Emitter.FromSource` mapping; `FrameStore` round trip in `%TEMP%` (zero-copy
   and copying reads, ordering, capacity, deletion); `FrameRenderer` index mapping; every shipped
-  colour scheme loads and `Save` reproduces the file; a headless `SimulationRun` (CPU, Completed,
+  shipped `.wdscheme` loads (11 with the author's 9 stops, 12 with 255), `SaveXml` reproduces the
+  shipped file byte for byte, the JSON export keeps the author's layout, stops at uneven positions
+  interpolate as expected, `AddStop` fills the widest gap; a project file round-trips its own schemes
+  and the embedded scene image bytes; editing a stop notifies once; a headless `SimulationRun` (CPU, Completed,
   frames and probe trace counted) and a GPU run paused, resumed and stopped; a 1 GB full-HD store
   must dispose in under 1.5 s (no flush); `CaptureFrame`/`AwaitFrame` (deferred, both planes),
   `Reset` reproducing a run and `SetEmitters` matching a fresh engine, on both engines. Prints
@@ -213,13 +293,14 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   walks the RIFF tree (44 structural checks: header offsets, strh dwQuality = -1, movi size, idx1 offsets, EOF).
 
 - `_tools/ui_check/PreviewCheck.ps1` drives the WPF preview pane end to end on the default project
-  (41 checks: play/pause at the 60 fps clock, speed incl. locale spelling, timeline keys, frame
+  (43 checks: play/pause at the 60 fps clock, speed incl. locale spelling, timeline keys, frame
   steps, in/out/loop, split radios, splitter, tab order, focus hand-off, foreground untouched).
-  `_tools/ui_check/RunCheck.ps1` runs simulations (26 checks): `tiny.wdproj` (64×48, 200 steps) with
+  `_tools/ui_check/RunCheck.ps1` runs simulations (33 checks): `tiny.wdproj` (64×48, 200 steps) with
   F5 to completion, live follow, `,` detaching, the field picture differing between frames (MD5 of
   a `PrintWindow` crop), `F` re-attaching, playback of the stored frames, a second run, the source
-  handle sitting at the source's canvas position on both pictures and moving with the arrow keys
-  while the tree selection follows, a scratch frame replacing the black canvas after an edit with
+  handle sitting at the source's canvas position on both pictures, staying there when the window
+  is resized (`SetWindowPos` without activation; the handles once lagged a layout pass behind the
+  labels, 2026-10-10) and moving with the arrow keys while the tree selection follows, a scratch frame replacing the black canvas after an edit with
   no run, and after the run: an edit marks it stale, the shown frame is recomputed from scratch,
   the automatic re-run completes with the position kept and reproduces the original picture; then
   `tiny_long.wdproj` (2 000 000 steps, a frame every 1000) for F6 pause/resume and Esc stop with the
@@ -227,6 +308,17 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   alone, and a second edit stopping it at once before a fresh one starts. Both dot-source `Common.ps1` (native helpers, lookups, `Start-App`/`Stop-App`,
   `CanvasPoint` for the picture's uniform mapping, `TreeItemSelected`). The split orientation is a
   persisted user setting, so a harness must set the layout it expects instead of assuming it.
+  `_tools/ui_check/LanguageCheck.ps1` (11 checks) drives View > Language by keyboard: F10 focuses the
+  menu bar (a plain F10 is handled by `MainWindow.OnPreviewKeyDown`, since WPF's own menu mode needs a
+  real Alt/F10), Down opens a menu, Left/Right move between menus, Enter picks; switches to German,
+  checks menus, tooltips and property labels, restarts the app to check the setting was kept, and
+  switches back to System. A window Windows never activated has no focused element and loses posted
+  keys; `Start-App` posts `WM_SETFOCUS` then (`FocusedId` "(none)"). Settles are 60 ms per key
+  (`Key`'s default), 100–300 ms where layout follows, `WaitFor` for anything the app computes.
+  `FocusedId` is **one** UI Automation query for the element with keyboard focus (a template part's
+  id such as `PART_EditableTextBox` is mapped to its owner); asking 17 ids one by one cost half a
+  second per Tab and made `FocusOn` crawl. Timings after the 2026-10-14 clean-up: RunCheck 67 s
+  (was 455), PreviewCheck 12 s (was 36), LanguageCheck 17 s (was 76).
   Run `powershell -ExecutionPolicy Bypass -File _tools/ui_check/<script>.ps1` (`-Trace` adds
   foreground/focus per line); exit code = failures. **How UI harnesses must work here**: the user may
   be using the machine, so no mouse, no `SendKeys`, no `SetForegroundWindow`. Post `WM_KEYDOWN`/
@@ -270,17 +362,22 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
 
 - Namespaces: `WaveDude.Engine` (engines, `SceneData`, `Emitter`, `EngineOptions`, `OpenClApi`),
   `WaveDude.Probes` (`ProbeSpec`, sampler, collector, series, trace, update), `WaveDude.Rendering`
-  (`Rgb`, `ColorScheme`, `ColorLut`, `ColorSchemeStore` with `System.Text.Json`, built-in schemes
-  embedded, `FrameRenderer`),
+  (`Rgb` with hex text and a `TypeConverter`, `ColorScheme` as one evenly spaced colour list that is
+  observable and XML-serialisable, `ColorLut`, `ColorSchemeStore` reading the author's JSON and
+  reading/writing XML, built-in schemes embedded, `FrameRenderer`),
   `WaveDude.Runs` (`RunSpec`, `SimulationRun`, `RunState`, `FrameStore`, `FrameLayer(s)`,
   `FrameCache`, `ScenePixels`). All copied from `Wave_Dude_2D` and adapted; the legacy app keeps
   its own copies and does not reference the library. Not ported: video sinks (`MfVideoWriter`,
   `AviMjpegWriter`, `AviFrameSink`), GDI+ painters (`ProbeGraphPainter`, `ProbeOverlay`), the glow
-  overlay; export will render from the store instead.
+  overlay (now ported as `GlowingEdges`); export will render from the store instead.
 - **The engine choice is not in the project** (2026-10-09, the user's call: the old app's flag was an
   artefact): `Simulation > Use the GPU (OpenCL)` is the persisted user setting `UseGpu` (default on),
   passed to `RunSpec.Create(project, image, preferGpu)`; the CPU is the fallback with a note when no
-  device works. A `Gpu` attribute in an old `.wdproj` is ignored by the serializer.
+  device works. A `Gpu` attribute in an old `.wdproj` is ignored by the serializer. Nothing but the
+  menu item writes the setting; every change is logged with a time stamp and a CPU run caused by it
+  says so (2026-10-10, after the GPU was found off twice with no known cause). Note that each exe path
+  (Debug, Release, Publish) has its own `user.config` folder under `%LOCALAPPDATA%\WaveDude.WPF`, so
+  check the one of the build that was running.
 - **Engine contract** (`IWaveEngine`): padded grid (`Stride = Width + 2`), one driver thread at a
   time, `PrepareFrame` before reading, CPU `FieldData` is a different array every sub-step, GPU
   `FieldData` a host copy. Added 2026-10-09: `CaptureFrame(FrameSnapshot, needIntensity)` /
@@ -476,6 +573,88 @@ probes for `*.sln` (was `*.vbproj`, which never matched above the C# exe); NaN-s
 `ProbeGraphPainter`/`ProbeSettings`; `ProbeSampler` uses `!= Amplitude`; `Form1.StopRole` parity test;
 `HelpForm` disclaimer is the author's GPL wording.
 
+## Author feedback (Jeroen Vleggaar, e-mail of 2026-10-10)
+
+Thirteen points on a sneak peek of the WPF app; status as of 2026-10-12:
+- Done: (3) handles misplaced after a pane move (the arrange-size bug above); (13) Enter commits a
+  text edit, Escape reverts it (`Controls/EditBehavior`, set by the base `TextBox` style; the default
+  binding waited for Tab) and every numeric field is a `Controls/NumberBox` (2026-10-12: a `TextBox`
+  with up/down repeat buttons; Up/Down step by `Increment`, PageUp/PageDown by ten, the wheel while
+  focused; each step clamps to `Minimum`/`Maximum`, commits through the `Text` binding at once and
+  selects the text; the views set the model's ranges); (6) a read-only **wavelength** row in the source view
+  (`Simulation.Wavelength`: λ = c / f, the author's `UpdateLambdaLabel` formula; "(nominal)" with the
+  9-point stencil, which disperses; the Properties pane got a `Project` DP for it); (8) the probe
+  measurement combo offers only what the layer allows (`Probe.MeasurementsFor`, the layer setter
+  coerces) and the intensity measurements read "Value" / "Integrated value" (`[Description]` on the
+  enum members, honoured by `EnumNameConverter`); (9) the four random amounts of an array sit under
+  their own header "Random offsets, added per emitter"; (2) the in/out tooltips say "export range".
+- Done 2026-10-13: (1) a Run button (ring with a triangle, F5) left of Play, (4) two toggles left of
+  the split radios show or hide each picture (bound to the layer's `Preview`, so hiding the intensity
+  also stops storing it; the remaining picture takes the whole area and the splitter collapses,
+  `UpdatePictureLayout`), (6/3) the scene image and its outline in the preview.
+  (11) check boxes on the source and probe rows of the tree (bound to `Enabled` / `Active`,
+  `ProjectCommands.ToggleEnabled` on Space and in the context menu; disabled rows read grey; rows
+  carry `Tree:<name>` automation ids and the boxes `Enabled:<name>`).
+  (1, second half) the step buttons now draw the frame-step look, "◀|" "|▶", instead of the players'
+  skip glyphs, and the Run glyph is a 14 px ring (2026-10-13).
+- Still open: "re-run automatically does not always work" (by design: display and probe edits do
+  not re-run, and the run waits 1.5 s of quiet).
+- Roadmap already: (7) probe graphs, (10) export, (12) project format (the user answered: images
+  embedded or relative, output next to the file, the JSON format imported).
+- The author also suggests dropping the 9-point Laplacian (confusing; only useful to show dispersion).
+
+## Handoff 2026-10-14: state and next work
+
+Everything up to here is committed in five commits (editors, colour schemes + scene image, preview
+outline/toggles/tree, localisation, harnesses). Working state: a project with sources, probes, an
+embedded scene image and its own colour schemes is edited in the tree and the Properties pane, the
+preview shows scratch frames and stored runs with the scene outline, runs go to a temp frame store,
+the language switches live, and three UI harnesses plus `library_check` are green (RunCheck 67 s,
+PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next session is meant for
+**probes** and **export**; here is what exists for each and what is decided.
+
+**Probes (nothing drawn yet).**
+- Recorded: `SimulationRun.Traces` (`ProbeTrace` per active probe, `ProbeSeries` of samples per
+  visualised step, line probes as profiles), filled on the UI context in `ProbeUpdate` batches
+  (at most 20 Hz). `ScratchRunner` does not sample probes; only a run has traces (decide whether a
+  scratch frame should carry a single sample).
+- Model: `Probe` has everything the author's graph box used: `Kind` (point/line), `Layer`,
+  `Measurement` (amplitude | value | integrated value), `BoxSize`, `BoxX/BoxY` (canvas pixels),
+  `ScaleMode` (running window / full run), `Window` (steps), `AutoScaleX/Y`, `YMin/YMax`,
+  `StartAfter`. The handles on the pictures exist (`SceneOverlay`, ids `Probe:<name>:A|B`).
+- Spec: the author's `ProbeGraphPainter.cs` / `ProbeOverlay.cs` in `Wave_Dude_2D/` (GDI+, not
+  ported) draw the box over the output picture; `HelpForm.cs` describes the controls. Agreed plan: a
+  **probe signal lane** under the timeline on the same time axis (roadmap item 5), and the graph box
+  over the picture as the author had it. Rendering belongs in the library as pixel/geometry code (no
+  GDI+); the WPF side draws it (an `OnRender` layer like `TimelineBar`). Author's point 7.
+
+**Export (nothing wired).**
+- Frames: `FrameStore.CopyLayer(frame, layer, Span<Half>)` of a run (finished, or after
+  `Run.Completion`), rendered with `FrameRenderer.RenderField/RenderIntensity` and the layer's LUT
+  (`ColorSchemeCatalog.LutFor(project, name, blackLevel)`, brightness), then, per layer and only when
+  `DisplayLayer.OverlayInExport`, `GlowingEdges.BlendAdditive` with the layer's `OverlayGain` (the
+  author bakes the outline additively; the preview only composites it). Range:
+  `Display.ExportFrom/ExportTo` in **steps** (0 = start/end), one frame per `VisualizeEvery` steps.
+  Which outputs: `DisplayLayer.Export`. Encoder settings: `Video.Fps`, `Video.Quality`.
+- Writers: none in the library yet; the legacy `Wave_Dude_2D/MfVideoWriter.cs` (+ `IMF*Native`,
+  Media Foundation SinkWriter, .mp4) and `AviMjpegWriter.cs` (MJPEG fallback, spec-exact, see
+  `_tools/avi_check`) compile anywhere and were listed as movable as-is; stills can use WPF's
+  `PngBitmapEncoder` on the rendered `int[]`. The author names exports with a running number
+  (`_0001`, one above the highest in the folder) and stores them next to the project; the user told
+  him output goes relative to the project file (the folder of `Filename`; an unsaved project must be
+  saved first, like `RunErrorUnsavedImagePath`).
+- Needs: a progress item (status text only today), cancellation, a menu entry (Simulation or File),
+  and a decision whether export needs a finished run (simplest: export the frames that exist).
+  Author's point 10.
+
+**Also open, smaller.** Import of the author's JSON projects (`Wave_Dude_Examples/*/configuration.json`;
+the legacy `ProjectConfig`/`ProjectStore` read them; the user promised the author an importer);
+a colour picker dialog for stops (hex only now; WinForms `ColorDialog` needs `UseWindowsForms`);
+offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
+refer to it; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
+dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
+pan (roadmap); Help > About has no content; dock pane titles are not exposed to UI Automation.
+
 ## Roadmap
 
 1. ~~Make it compile~~ · 2. ~~clean up / document~~ · 2b. ~~AVI fix, style pass, engine refactor~~
@@ -484,9 +663,10 @@ probes for `*.sln` (was `*.vbproj`, which never matched above the C# exe); NaN-s
    keep the `dotnet run` harness for now).
 4. ~~**Make the engine loop `Task`-based**~~ (`SimulationRun`, 2026-10-09).
 5. **WPF UI** in `WaveDude.WPF`: the preview shows a live run and replays it from the frame store
-   (done 2026-10-09). Next, in this order of value: **export from the store** (video and stills,
-   rendered with the current display settings, the export range), the **probe signal lane** and
-   probe markers on the pictures, a progress bar (the theme choice is persisted already).
+   (done 2026-10-09); editors, colour schemes, scene image and outline, languages (done 2026-10-14,
+   see the handoff section). Next, in this order of value: **probes** (graph box and signal lane),
+   **export from the store** (video and stills, rendered with the current display settings, the
+   export range, the outline when opted in), a progress bar.
    Store: a RAM-first frame store with a budget and background spill (see the numbers above),
    so a run is compute-bound instead of disk-bound.
    Timeline, agreed 2026-10-09 (the scrub bar, in/out range, transport keys and the available-frames

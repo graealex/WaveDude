@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics;
 using NLog;
 using WaveDude.Engine;
@@ -121,6 +122,36 @@ internal static class Program
 		if (args.Length > 0 && args[0] == "bench")
 		{
 			Bench(args.Length > 1 ? int.Parse(args[1]) : 1920, args.Length > 2 ? int.Parse(args[2]) : 1080);
+			return 0;
+		}
+		if (args.Length > 2 && args[0] == "simplify-schemes")
+		{
+			// one-off: slims every .wdscheme of a folder with more than the editor's 9 stops to its bends (2026-10-14)
+			double tolerance = double.Parse(args[2], CultureInfo.InvariantCulture);
+			foreach (string file in Directory.GetFiles(args[1], "*" + ColorSchemeStore.XmlExtension))
+			{
+				ColorScheme scheme = ColorSchemeStore.LoadXml(file);
+				int before = scheme.Stops.Count;
+				if (before <= ColorScheme.StopCount)
+				{
+					continue;
+				}
+				scheme.Simplify(tolerance);
+				ColorSchemeStore.SaveXml(scheme, file);
+				Console.WriteLine($"{Path.GetFileName(file)}: {before} -> {scheme.Stops.Count} stops");
+			}
+			return 0;
+		}
+		if (args.Length > 1 && args[0] == "convert-schemes")
+		{
+			// one-off: the author's JSON files of a folder become .wdscheme files beside them (2026-10-13)
+			foreach (string file in Directory.GetFiles(args[1], "*.json"))
+			{
+				ColorScheme scheme = ColorSchemeStore.Load(file);
+				string target = ColorSchemeStore.PathFor(args[1], Path.GetFileNameWithoutExtension(file));
+				ColorSchemeStore.SaveXml(scheme, target);
+				Console.WriteLine($"{Path.GetFileName(file)} -> {Path.GetFileName(target)} ({scheme.Stops.Count} stops)");
+			}
 			return 0;
 		}
 		const int W = 64, H = 48, Steps = 200;
@@ -578,20 +609,79 @@ internal static class Program
 		Check(schemes.Count >= 20 && schemes.All(s => s.IsBuiltIn && s.FilePath == ""), "at least 20 schemes embedded, marked built-in");
 		List<ColorScheme> fromFiles = ColorSchemeStore.LoadFolder(folder, null);
 		Check(fromFiles.Count == schemes.Count && fromFiles.Select(s => s.Name).SequenceEqual(schemes.Select(s => s.Name)), "the embedded set equals the repo's ColorSchemeList folder");
+		Check(fromFiles.Count > 0 && fromFiles.All(s => s.FilePath.EndsWith(ColorSchemeStore.XmlExtension, StringComparison.OrdinalIgnoreCase)), "the shipped schemes are XML (.wdscheme)");
 		ColorScheme? field = ColorSchemeStore.Find(schemes, Display.DefaultFieldColorScheme);
 		ColorScheme? intensity = ColorSchemeStore.Find(schemes, Display.DefaultIntensityColorScheme);
 		Check(field != null && intensity != null, "default field and intensity schemes found (case-insensitive)");
-		Check(field != null && field.HasStops && field.Stops!.Length == ColorScheme.StopCount, "Default_Field has 9 stops");
-		Check(intensity != null && intensity.SchemeType == ColorScheme.SchemeTypeIntensity, "Default_Intensity is typed intensity");
+		Check(field != null && field.IsStopScheme, "Default_Field is a 9-stop scheme (its table consolidated into the stops)");
+		Check(intensity != null && intensity.Kind == ColorSchemeKind.Intensity, "Default_Intensity is typed intensity");
+		Check(schemes.Count(s => s.IsStopScheme && s.IsEvenlySpaced) == 11 && schemes.All(s => s.Stops.Count <= 24), "11 shipped schemes have the author's 9 evenly spaced stops, the 12 sampled colormaps are slimmed to at most 24");
+		// simplification: a ramp with one bend, sampled at 255 points, keeps its two ends and the bend only
+		var ramp = new ColorScheme("ramp", Enumerable.Range(0, 255).Select(i => i <= 127 ? new Rgb((byte)(i * 2), 0, 0) : new Rgb(254, (byte)((i - 127) * 2), 0)));
+		int sampled = ramp.Stops.Count;
+		ramp.Simplify(1.0);
+		Check(sampled == 255 && ramp.Stops.Count == 3 && Math.Abs(ramp.Stops[1].Position - 127 / 254.0) < 1e-9 && ramp.GetEntry(127) == new Rgb(254, 0, 0) && ramp.GetEntry(254) == new Rgb(254, 254, 0),
+			"Simplify keeps only the bend of a two-segment ramp and the table still hits it");
+		Check(Rgb.Parse("#FF8000") == new Rgb(255, 128, 0) && Rgb.Parse("[10, 20, 30]") == new Rgb(10, 20, 30) && new Rgb(1, 2, 3).ToString() == "#010203", "Rgb parses hex and triplets and prints #RRGGBB");
 		if (field != null)
 		{
+			// the author's JSON layout still comes out of a 9-stop scheme (what his program reads)
 			string temp = Path.Combine(Path.GetTempPath(), "library_check-scheme.json");
 			ColorSchemeStore.Save(field.Clone(field.Name), temp);
-			string original = File.ReadAllText(Path.Combine(folder, "Default_Field.json"));
-			string saved = File.ReadAllText(temp);
+			string json = File.ReadAllText(temp);
 			File.Delete(temp);
-			Check(saved.ReplaceLineEndings() == original.ReplaceLineEndings(), "Save reproduces the shipped file");
+			Check(json.Contains("\"stops\": [[253,253,253]") && json.Contains("\"scheme_type\": \"field\""), "JSON export writes the author's stops and type");
+			// the program's own format: the shipped XML round-trips byte for byte, standalone and inside a project
+			string xmlPath = Path.Combine(Path.GetTempPath(), "library_check-scheme" + ColorSchemeStore.XmlExtension);
+			ColorSchemeStore.SaveXml(field.Clone(field.Name), xmlPath);
+			string xml = File.ReadAllText(xmlPath);
+			ColorScheme back = ColorSchemeStore.LoadXml(xmlPath);
+			File.Delete(xmlPath);
+			string shipped = File.ReadAllText(Path.Combine(folder, "Default_Field" + ColorSchemeStore.XmlExtension));
+			Check(xml.ReplaceLineEndings() == shipped.ReplaceLineEndings(), "SaveXml reproduces the shipped .wdscheme file");
+			Check(xml.Contains("<Stop At=\"0.125\" Color=\"#") && !xml.Contains("xmlns"), "XML writes one Stop element per stop with its position and #RRGGBB, no namespaces");
+			Check(back.Name == field.Name && back.Kind == field.Kind && back.Stops.Select(s => (s.Position, s.Color)).SequenceEqual(field.Stops.Select(s => (s.Position, s.Color))), "XML round trip keeps name, kind and the 9 stops with positions");
+			var uneven = new ColorScheme("uneven", [new Rgb(0, 0, 0)]);
+			uneven.SetStops([new ColorStop(0.0, new Rgb(0, 0, 0)), new ColorStop(0.25, new Rgb(255, 255, 255)), new ColorStop(1.0, new Rgb(0, 0, 255))]);
+			Check(uneven.GetEntry(0) == new Rgb(0, 0, 0) && uneven.GetEntry(127) == new Rgb(170, 170, 255) && uneven.GetEntry(254) == new Rgb(0, 0, 255) && uneven.GetEntry(32) == new Rgb(129, 129, 129), "stops at any position interpolate between their neighbours (0, 0.25, 1)");
+			ColorStop added = uneven.AddStop();
+			Check(uneven.Stops.Count == 4 && Math.Abs(added.Position - 0.625) < 1e-9 && uneven.Stops.IndexOf(added) == 2, "AddStop fills the widest gap, in position order");
+			var project = new Project();
+			project.ColorSchemes.Add(field.Clone("Mine"));
+			project.Scene.ImageData = [1, 2, 3, 4, 250, 0, 255];
+			project.Scene.Image = "scene.png";
+			project.Scene.Mode = SceneMode.Image;
+			using var stream = new MemoryStream();
+			project.Save(stream);
+			stream.Position = 0;
+			Project loaded = Project.Load(stream);
+			Check(loaded.ColorSchemes.Count == 1 && loaded.ColorSchemes[0].Name == "Mine" && loaded.ColorSchemes[0].Colors.SequenceEqual(field.Colors), "a project file embeds its own schemes");
+			Check(loaded.Scene.ImageData != null && loaded.Scene.ImageData.SequenceEqual(project.Scene.ImageData) && loaded.Scene.Image == "scene.png", "a project file embeds the scene image bytes (base64)");
+			var edited = loaded.ColorSchemes[0];
+			int changes = 0;
+			edited.PropertyChanged += (_, args) => changes += args.PropertyName == nameof(ColorScheme.Stops) ? 1 : 0;
+			edited.Stops[4].Color = new Rgb(1, 2, 3);
+			Check(changes == 1 && edited.GetEntry(127) == new Rgb(1, 2, 3), "editing one stop notifies once and rebuilds the table");
 		}
+		// the author's glowing edges: a vertical black|white step at x = 2 of a 5 x 5 image
+		var image = new byte[5 * 5 * 4];
+		for (int y = 0; y < 5; y++)
+		{
+			for (int x = 2; x < 5; x++)
+			{
+				int o = (y * 5 + x) * 4;
+				image[o] = image[o + 1] = image[o + 2] = 255;
+				image[o + 3] = 255;
+			}
+		}
+		byte[] edges = GlowingEdges.Compute(image, 5, 5, 20);
+		int At(int x, int y) => edges[(y * 5 + x) * 4];
+		Check(At(1, 1) == 255 && At(2, 2) == 255 && At(3, 2) == 0 && At(0, 2) == 0 && At(2, 0) == 0 && edges[(2 * 5 + 2) * 4 + 3] == 255,
+			"glowing edges: the two columns beside the step light up (Sobel x 0.25 clamps at 255), the flat area and the outer ring stay black");
+		int[] frame = new int[25];
+		Array.Fill(frame, unchecked((int)0xFF404040));
+		GlowingEdges.BlendAdditive(frame, 5, 5, edges, 0.5);
+		Check(frame[2 * 5 + 2] == unchecked((int)0xFFBFBFBF) && frame[2 * 5 + 3] == unchecked((int)0xFF404040), "additive blend adds edge x gain per channel and leaves flat pixels alone");
 	}
 
 	private static void CheckRun()
