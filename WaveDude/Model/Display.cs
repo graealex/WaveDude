@@ -102,11 +102,20 @@ public sealed class DisplayLayer : ObservableObject
 	/// <summary>Default <see cref="Brightness"/>.</summary>
 	public const double DefaultBrightness = 30.0;
 
+	/// <summary>Default <see cref="OverlayGain"/>: the edge picture as computed.</summary>
+	public const double DefaultOverlayGain = 1.0;
+
+	/// <summary>Largest <see cref="OverlayGain"/>, the author's control's maximum.</summary>
+	public const double MaxOverlayGain = 5.0;
+
 	private string _colorScheme = "";
 	private double _brightness = DefaultBrightness;
 	private double _blackLevel;
 	private bool _preview = true;
 	private bool _export;
+	private bool _overlay = true;
+	private double _overlayGain = DefaultOverlayGain;
+	private bool _overlayInExport;
 
 	/// <summary>Name of the colour scheme mapped onto the values.</summary>
 	[XmlAttribute]
@@ -164,6 +173,46 @@ public sealed class DisplayLayer : ObservableObject
 		set => SetProperty(ref _export, value);
 	}
 
+	/// <summary>
+	/// Whether the preview lays the scene image's "glowing edges" outline over this output (the author's
+	/// "Display overlay"; on by default here, 2026-10-13), so the scene layout shows under the field or
+	/// intensity. Only an image scene has one.
+	/// </summary>
+	[XmlAttribute]
+	[DefaultValue(true)]
+	[Category("Scene outline")]
+	[DisplayName("Outline in the preview")]
+	[Description("Lay the scene image's glowing-edges outline over this output in the preview.")]
+	public bool Overlay
+	{
+		get => _overlay;
+		set => SetProperty(ref _overlay, value);
+	}
+
+	/// <summary>Multiplier of the outline's brightness, 0 to <see cref="MaxOverlayGain"/>; 1 shows the edge picture as computed, 0 hides it.</summary>
+	[XmlAttribute]
+	[DefaultValue(DefaultOverlayGain)]
+	[Category("Scene outline")]
+	[DisplayName("Outline brightness")]
+	[Description("Multiplier of the outline: 1 as computed, higher lifts faint edges, 0 hides it.")]
+	public double OverlayGain
+	{
+		get => _overlayGain;
+		set => SetProperty(ref _overlayGain, value);
+	}
+
+	/// <summary>Whether an export bakes the outline into this output's frames (additively, as the author's program does); off by default.</summary>
+	[XmlAttribute]
+	[DefaultValue(false)]
+	[Category("Scene outline")]
+	[DisplayName("Outline in the export")]
+	[Description("Bake the outline into exported frames and videos of this output.")]
+	public bool OverlayInExport
+	{
+		get => _overlayInExport;
+		set => SetProperty(ref _overlayInExport, value);
+	}
+
 	/// <summary>Clamps every value into its valid range; an empty scheme name falls back to <paramref name="defaultScheme"/>.</summary>
 	public void Normalize(string defaultScheme)
 	{
@@ -173,6 +222,7 @@ public sealed class DisplayLayer : ObservableObject
 		}
 		Brightness = Math.Clamp(Brightness, 1e-4, 1e5);
 		BlackLevel = Math.Clamp(BlackLevel, -10.0, 1.0);
+		OverlayGain = Math.Clamp(OverlayGain, 0.0, MaxOverlayGain);
 	}
 
 	/// <summary>The colour scheme name, for display in a property grid.</summary>

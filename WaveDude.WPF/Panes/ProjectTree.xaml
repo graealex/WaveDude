@@ -4,11 +4,14 @@
              xmlns:local="clr-namespace:WaveDude.WPF.Panes"
              xmlns:commands="clr-namespace:WaveDude.WPF.Commands"
              xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
-             xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
+             xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude"
+             xmlns:rendering="clr-namespace:WaveDude.Rendering;assembly=WaveDude">
 
 	<UserControl.Resources>
 		<converters:EnumerateConverter x:Key="Enumerate" />
 		<converters:NamedCollectionConverter x:Key="NamedCollections" />
+		<converters:ColorSchemeBrushConverter x:Key="ColorSchemeBrush" />
+		<converters:TreeIdConverter x:Key="TreeId" />
 
 		<StreamGeometry x:Key="PlusGeometry">M4,0 L4,8 M0,4 L8,4</StreamGeometry>
 		<StreamGeometry x:Key="MinusGeometry">M0,4 L8,4</StreamGeometry>
@@ -80,6 +83,7 @@
 			<!-- keys act on the selection; only while the tree has focus -->
 			<TreeView.InputBindings>
 				<KeyBinding Key="Delete" Command="{x:Static commands:ProjectCommands.Remove}" />
+				<KeyBinding Key="Space" Command="{x:Static commands:ProjectCommands.ToggleEnabled}" />
 				<KeyBinding Key="D" Modifiers="Ctrl" Command="{x:Static commands:ProjectCommands.Duplicate}" />
 				<KeyBinding Key="Up" Modifiers="Alt" Command="{x:Static commands:ProjectCommands.MoveUp}" />
 				<KeyBinding Key="Down" Modifiers="Alt" Command="{x:Static commands:ProjectCommands.MoveDown}" />
@@ -89,6 +93,8 @@
 				<Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
 					<Setter Property="IsExpanded" Value="True" />
 					<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+					<!-- "Tree:<name>" so a harness can Tab to a row and act on it -->
+					<Setter Property="AutomationProperties.AutomationId" Value="{Binding Converter={StaticResource TreeId}}" />
 					<!-- context menu: the node is the data context, the row is the command target -->
 					<Setter Property="ContextMenu">
 						<Setter.Value>
@@ -102,6 +108,7 @@
 								<MenuItem Header="{DynamicResource MenuProjectAddSource}" Command="{x:Static commands:ProjectCommands.AddSource}" />
 								<MenuItem Header="{DynamicResource MenuProjectAddProbe}" Command="{x:Static commands:ProjectCommands.AddProbe}" />
 								<Separator />
+								<MenuItem Header="{DynamicResource MenuProjectToggleEnabled}" Command="{x:Static commands:ProjectCommands.ToggleEnabled}" InputGestureText="Space" />
 								<MenuItem Header="{DynamicResource MenuProjectDuplicate}" Command="{x:Static commands:ProjectCommands.Duplicate}" InputGestureText="Ctrl+D" />
 								<MenuItem Header="{DynamicResource MenuProjectRemove}" Command="{x:Static commands:ProjectCommands.Remove}" InputGestureText="Del" />
 								<Separator />
@@ -117,12 +124,13 @@
 				<!-- one template per model type; children come from the bound properties, lists become folders -->
 				<HierarchicalDataTemplate DataType="{x:Type model:Project}">
 					<HierarchicalDataTemplate.ItemsSource>
-						<MultiBinding Converter="{StaticResource NamedCollections}" ConverterParameter=",,,Sources,Probes">
+						<MultiBinding Converter="{StaticResource NamedCollections}" ConverterParameter=",,,TreeSources,TreeProbes,TreeColorSchemes">
 							<Binding Path="Scene" />
 							<Binding Path="Simulation" />
 							<Binding Path="Display" />
 							<Binding Path="Sources" />
 							<Binding Path="Probes" />
+							<Binding Path="ColorSchemes" />
 						</MultiBinding>
 					</HierarchicalDataTemplate.ItemsSource>
 					<TextBlock Text="{DynamicResource TreeProject}" />
@@ -156,6 +164,34 @@
 						        ToolTip="{DynamicResource TipMoveDown}" AutomationProperties.Name="{DynamicResource TipMoveDown}" Command="{x:Static commands:ProjectCommands.MoveDown}" CommandParameter="{Binding}" />
 						<Button DockPanel.Dock="Right" Style="{StaticResource GlyphButton}" Content="{StaticResource ChevronUpGeometry}"
 						        ToolTip="{DynamicResource TipMoveUp}" AutomationProperties.Name="{DynamicResource TipMoveUp}" Command="{x:Static commands:ProjectCommands.MoveUp}" CommandParameter="{Binding}" />
+						<!-- the enabled check box (Space on the selected row toggles it too); the name greys out when off -->
+						<CheckBox DockPanel.Dock="Left" Focusable="False" IsTabStop="False" MinHeight="0" Margin="0,0,4,0" VerticalAlignment="Center"
+						          IsChecked="{Binding Enabled}" ToolTip="{DynamicResource TipSourceEnabled}"
+						          AutomationProperties.Name="{DynamicResource TipSourceEnabled}" AutomationProperties.AutomationId="{Binding Name, StringFormat='Enabled:{0}'}" />
+						<TextBlock Text="{Binding Name}" VerticalAlignment="Center">
+							<TextBlock.Style>
+								<Style TargetType="{x:Type TextBlock}">
+									<Style.Triggers>
+										<DataTrigger Binding="{Binding Enabled}" Value="False">
+											<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
+										</DataTrigger>
+									</Style.Triggers>
+								</Style>
+							</TextBlock.Style>
+						</TextBlock>
+					</DockPanel>
+				</DataTemplate>
+				<!-- a project colour scheme: its gradient and name -->
+				<DataTemplate DataType="{x:Type rendering:ColorScheme}">
+					<DockPanel>
+						<Button DockPanel.Dock="Right" Style="{StaticResource GlyphButton}" Content="{StaticResource MinusGeometry}"
+						        ToolTip="{DynamicResource TipRemove}" AutomationProperties.Name="{DynamicResource TipRemove}" Command="{x:Static commands:ProjectCommands.Remove}" CommandParameter="{Binding}" />
+						<Button DockPanel.Dock="Right" Style="{StaticResource GlyphButton}" Content="{StaticResource ChevronDownGeometry}"
+						        ToolTip="{DynamicResource TipMoveDown}" AutomationProperties.Name="{DynamicResource TipMoveDown}" Command="{x:Static commands:ProjectCommands.MoveDown}" CommandParameter="{Binding}" />
+						<Button DockPanel.Dock="Right" Style="{StaticResource GlyphButton}" Content="{StaticResource ChevronUpGeometry}"
+						        ToolTip="{DynamicResource TipMoveUp}" AutomationProperties.Name="{DynamicResource TipMoveUp}" Command="{x:Static commands:ProjectCommands.MoveUp}" CommandParameter="{Binding}" />
+						<Rectangle DockPanel.Dock="Left" Width="36" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" StrokeThickness="0.5"
+						           Stroke="{DynamicResource TextBoxBorder}" Fill="{Binding Stops, Converter={StaticResource ColorSchemeBrush}}" />
 						<TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
 					</DockPanel>
 				</DataTemplate>
@@ -167,7 +203,21 @@
 						        ToolTip="{DynamicResource TipMoveDown}" AutomationProperties.Name="{DynamicResource TipMoveDown}" Command="{x:Static commands:ProjectCommands.MoveDown}" CommandParameter="{Binding}" />
 						<Button DockPanel.Dock="Right" Style="{StaticResource GlyphButton}" Content="{StaticResource ChevronUpGeometry}"
 						        ToolTip="{DynamicResource TipMoveUp}" AutomationProperties.Name="{DynamicResource TipMoveUp}" Command="{x:Static commands:ProjectCommands.MoveUp}" CommandParameter="{Binding}" />
-						<TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+						<!-- the enabled check box (Space on the selected row toggles it too); the name greys out when off -->
+						<CheckBox DockPanel.Dock="Left" Focusable="False" IsTabStop="False" MinHeight="0" Margin="0,0,4,0" VerticalAlignment="Center"
+						          IsChecked="{Binding Active}" ToolTip="{DynamicResource TipProbeActive}"
+						          AutomationProperties.Name="{DynamicResource TipProbeActive}" AutomationProperties.AutomationId="{Binding Name, StringFormat='Enabled:{0}'}" />
+						<TextBlock Text="{Binding Name}" VerticalAlignment="Center">
+							<TextBlock.Style>
+								<Style TargetType="{x:Type TextBlock}">
+									<Style.Triggers>
+										<DataTrigger Binding="{Binding Active}" Value="False">
+											<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
+										</DataTrigger>
+									</Style.Triggers>
+								</Style>
+							</TextBlock.Style>
+						</TextBlock>
 					</DockPanel>
 				</DataTemplate>
 			</TreeView.Resources>

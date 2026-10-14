@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WaveDude.Model;
+using WaveDude.Rendering;
 using WaveDude.Runs;
 using WaveDude.WPF.Commands;
 using WaveDude.WPF.Converters;
@@ -59,6 +60,8 @@ public partial class PreviewPane : UserControl
 
 	/// <summary>The picture shown while there is no run: black, in the canvas's size so the overlay and the aspect ratio are right.</summary>
 	private BitmapSource _blackFrame = BlackFrame(16, 9);
+	private BitmapSource? _sceneBitmap;
+	private byte[]? _edges;
 
 	/// <summary>Identifies the <see cref="Project"/> property.</summary>
 	public static readonly DependencyProperty ProjectProperty = DependencyProperty.Register(
@@ -134,6 +137,26 @@ public partial class PreviewPane : UserControl
 	/// <summary>Identifies the <see cref="FieldImage"/> property.</summary>
 	public static readonly DependencyProperty FieldImageProperty = DependencyProperty.Register(
 		nameof(FieldImage), typeof(ImageSource), typeof(PreviewPane));
+
+	/// <summary>Identifies the <see cref="ScenePixels"/> property.</summary>
+	public static readonly DependencyProperty ScenePixelsProperty = DependencyProperty.Register(
+		nameof(ScenePixels), typeof(ScenePixels), typeof(PreviewPane), new PropertyMetadata(null, (d, _) => ((PreviewPane)d).OnScenePixelsChanged()));
+
+	/// <summary>Identifies the <see cref="FieldOverlay"/> property.</summary>
+	public static readonly DependencyProperty FieldOverlayProperty = DependencyProperty.Register(
+		nameof(FieldOverlay), typeof(ImageSource), typeof(PreviewPane));
+
+	/// <summary>Identifies the <see cref="IntensityOverlay"/> property.</summary>
+	public static readonly DependencyProperty IntensityOverlayProperty = DependencyProperty.Register(
+		nameof(IntensityOverlay), typeof(ImageSource), typeof(PreviewPane));
+
+	/// <summary>Attached to each picture cell: the overlay layer its template draws over the frame.</summary>
+	public static readonly DependencyProperty OverlayImageProperty = DependencyProperty.RegisterAttached(
+		"OverlayImage", typeof(ImageSource), typeof(PreviewPane));
+
+	public static ImageSource? GetOverlayImage(DependencyObject element) => (ImageSource?)element.GetValue(OverlayImageProperty);
+
+	public static void SetOverlayImage(DependencyObject element, ImageSource? value) => element.SetValue(OverlayImageProperty, value);
 
 	/// <summary>Identifies the <see cref="IntensityImage"/> property.</summary>
 	public static readonly DependencyProperty IntensityImageProperty = DependencyProperty.Register(
@@ -350,6 +373,31 @@ public partial class PreviewPane : UserControl
 		set => SetValue(FieldImageProperty, value);
 	}
 
+	/// <summary>
+	/// The decoded scene image of an image scene, null for a blank canvas (2026-10-13). It is the picture
+	/// shown where no frame exists, gives the canvas its size before any run, and is the source of the
+	/// glowing-edges overlays (<see cref="FieldOverlay"/>, <see cref="IntensityOverlay"/>).
+	/// </summary>
+	public ScenePixels? ScenePixels
+	{
+		get => (ScenePixels?)GetValue(ScenePixelsProperty);
+		set => SetValue(ScenePixelsProperty, value);
+	}
+
+	/// <summary>The outline layer over the field picture; null when off, at gain 0, or without a scene image.</summary>
+	public ImageSource? FieldOverlay
+	{
+		get => (ImageSource?)GetValue(FieldOverlayProperty);
+		private set => SetValue(FieldOverlayProperty, value);
+	}
+
+	/// <summary>The outline layer over the intensity picture; null when off, at gain 0, or without a scene image.</summary>
+	public ImageSource? IntensityOverlay
+	{
+		get => (ImageSource?)GetValue(IntensityOverlayProperty);
+		private set => SetValue(IntensityOverlayProperty, value);
+	}
+
 	/// <summary>Picture of the intensity at <see cref="Position"/>; the presenter's bitmap, or a black frame without a run (or without an intensity plane).</summary>
 	public ImageSource? IntensityImage
 	{
@@ -506,9 +554,11 @@ public partial class PreviewPane : UserControl
 			UpdateCanvas(run.Store);
 			_presenter.Show(Position);
 		}
-		else if (run == null && _presenter.Source != null)
+		else if (run == null && scratch == null && _presenter.Source != null)
 		{
-			// nothing at all any more (project closed or replaced)
+			// nothing at all any more (project closed or replaced: the window reset the scratch frame too). With a
+			// scratch frame for another position pending, the last picture stays: clearing here made every scrub
+			// without a run flash the empty picture before the new frame arrived (2026-10-13)
 			_presenter.Source = null;
 			UpdateCanvas(null);
 		}
@@ -521,16 +571,47 @@ public partial class PreviewPane : UserControl
 
 	private void UpdateCanvas(IFrameSource? source)
 	{
-		int width = Math.Max(1, source?.Width ?? Run?.Spec.Width ?? (int)GetValue(SceneWidthProperty));
-		int height = Math.Max(1, source?.Height ?? Run?.Spec.Height ?? (int)GetValue(SceneHeightProperty));
+		// the scene image's size wins over the project's numbers, which only apply to a blank canvas
+		int width = Math.Max(1, source?.Width ?? Run?.Spec.Width ?? ScenePixels?.Width ?? (int)GetValue(SceneWidthProperty));
+		int height = Math.Max(1, source?.Height ?? Run?.Spec.Height ?? ScenePixels?.Height ?? (int)GetValue(SceneHeightProperty));
 		CanvasWidth = width;
 		CanvasHeight = height;
 		if (_blackFrame.PixelWidth != width || _blackFrame.PixelHeight != height)
 		{
 			_blackFrame = BlackFrame(width, height);
 		}
-		FieldImage = _presenter.FieldBitmap ?? _blackFrame;
-		IntensityImage = _presenter.IntensityBitmap ?? _blackFrame;
+		// without a frame, an image scene shows the scene image itself (the author's picking background), a canvas black
+		BitmapSource empty = _sceneBitmap is { } scene && scene.PixelWidth == width && scene.PixelHeight == height ? scene : _blackFrame;
+		FieldImage = _presenter.FieldBitmap ?? empty;
+		IntensityImage = _presenter.IntensityBitmap ?? empty;
+	}
+
+	/// <summary>A new scene image (or none): rebuilds the picture, the edge picture and both overlays, and re-derives the canvas.</summary>
+	private void OnScenePixelsChanged()
+	{
+		ScenePixels? pixels = ScenePixels;
+		_sceneBitmap = pixels == null ? null : SceneBitmaps.Image(pixels);
+		_edges = pixels == null ? null : GlowingEdges.Compute(pixels.Bgra, pixels.Width, pixels.Height, pixels.StrideBytes);
+		UpdateOverlay(FrameLayer.Field);
+		UpdateOverlay(FrameLayer.Intensity);
+		UpdateCanvas();
+	}
+
+	/// <summary>Rebuilds one layer's outline from its settings: null when switched off, at gain 0, or without a scene image.</summary>
+	private void UpdateOverlay(FrameLayer layer)
+	{
+		DisplayLayer? settings = layer == FrameLayer.Field ? FieldSettings : IntensitySettings;
+		ImageSource? overlay = _edges != null && ScenePixels is { } pixels && settings is { Overlay: true }
+			? SceneBitmaps.Overlay(_edges, pixels.Width, pixels.Height, settings.OverlayGain)
+			: null;
+		if (layer == FrameLayer.Field)
+		{
+			FieldOverlay = overlay;
+		}
+		else
+		{
+			IntensityOverlay = overlay;
+		}
 	}
 
 	/// <summary>The canvas follows the project's size while nothing is shown.</summary>
@@ -603,18 +684,75 @@ public partial class PreviewPane : UserControl
 			settings.PropertyChanged += handler;
 		}
 		ApplyLayer(layer);
+		UpdateOverlay(layer);
+		UpdatePictureLayout();
 	}
 
-	private void OnFieldSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e) => ApplyLayer(FrameLayer.Field);
+	private void OnFieldSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e) => OnLayerSettingChanged(FrameLayer.Field, e.PropertyName);
 
-	private void OnIntensitySettingsPropertyChanged(object? sender, PropertyChangedEventArgs e) => ApplyLayer(FrameLayer.Intensity);
+	private void OnIntensitySettingsPropertyChanged(object? sender, PropertyChangedEventArgs e) => OnLayerSettingChanged(FrameLayer.Intensity, e.PropertyName);
+
+	/// <summary>An outline setting rebuilds that layer's overlay; anything else re-applies the palette.</summary>
+	private void OnLayerSettingChanged(FrameLayer layer, string? property)
+	{
+		if (property is nameof(DisplayLayer.Overlay) or nameof(DisplayLayer.OverlayGain))
+		{
+			UpdateOverlay(layer);
+		}
+		else if (property != nameof(DisplayLayer.OverlayInExport))
+		{
+			ApplyLayer(layer);
+		}
+		if (property == nameof(DisplayLayer.Preview))
+		{
+			UpdatePictureLayout();
+		}
+	}
+
+	/// <summary>
+	/// A hidden picture gives its room to the other one (2026-10-13): with one picture off, the other
+	/// spans the whole grid and the splitter is collapsed; with both on, the cells go back to the
+	/// style's placement (the local values are cleared so the orientation triggers apply again) and the
+	/// user's split survives, since the column and row sizes are never touched.
+	/// </summary>
+	private void UpdatePictureLayout()
+	{
+		bool field = FieldSettings?.Preview ?? true;
+		bool intensity = IntensitySettings?.Preview ?? true;
+		bool single = field != intensity;
+		pictureSplitter.Visibility = single ? Visibility.Collapsed : Visibility.Visible;
+		foreach (HeaderedContentControl cell in new[] { fieldCell, intensityCell })
+		{
+			if (single)
+			{
+				cell.SetValue(Grid.ColumnProperty, 0);
+				cell.SetValue(Grid.RowProperty, 0);
+				cell.SetValue(Grid.ColumnSpanProperty, 3);
+				cell.SetValue(Grid.RowSpanProperty, 3);
+			}
+			else
+			{
+				cell.ClearValue(Grid.ColumnProperty);
+				cell.ClearValue(Grid.RowProperty);
+				cell.ClearValue(Grid.ColumnSpanProperty);
+				cell.ClearValue(Grid.RowSpanProperty);
+			}
+		}
+	}
 
 	/// <summary>Hands a layer's palette, brightness and visibility to the presenter, which redraws the frame shown.</summary>
 	private void ApplyLayer(FrameLayer layer)
 	{
 		DisplayLayer? settings = layer == FrameLayer.Field ? FieldSettings : IntensitySettings;
-		int[]? lut = settings == null ? null : ColorSchemeCatalog.Instance.LutFor(settings.ColorScheme, settings.BlackLevel);
+		int[]? lut = settings == null ? null : ColorSchemeCatalog.Instance.LutFor(Project, settings.ColorScheme, settings.BlackLevel);
 		_presenter.SetLayer(layer, lut, (float)(settings?.Brightness ?? DisplayLayer.DefaultBrightness), settings?.Preview ?? true);
+	}
+
+	/// <summary>Rebuilds both palettes and redraws: a project colour scheme changed, or the project was replaced.</summary>
+	public void RefreshColors()
+	{
+		ApplyLayer(FrameLayer.Field);
+		ApplyLayer(FrameLayer.Intensity);
 	}
 
 	// ---------------------------------------------------------------- playback

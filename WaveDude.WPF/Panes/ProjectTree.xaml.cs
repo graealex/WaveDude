@@ -1,3 +1,4 @@
+using WaveDude.Rendering;
 using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
@@ -113,7 +114,7 @@ public partial class ProjectTree : UserControl
 		{
 			return; // row buttons are clicks, not drags
 		}
-		if (FindAncestor<TreeViewItem>(origin) is { DataContext: Source or Probe } row)
+		if (FindAncestor<TreeViewItem>(origin) is { DataContext: Source or Probe or ColorScheme } row)
 		{
 			_dragCandidate = row.DataContext;
 			_dragStart = e.GetPosition(tree);
@@ -233,6 +234,7 @@ public partial class ProjectTree : UserControl
 	{
 		Source => Project?.Sources,
 		Probe => Project?.Probes,
+		ColorScheme => Project?.ColorSchemes,
 		_ => null,
 	};
 

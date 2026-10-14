@@ -13,16 +13,24 @@
 		<converters:FrameToStepConverter x:Key="FrameToStep" />
 		<converters:NotNullConverter x:Key="NotNull" />
 
+		<!-- "run": a play triangle inside a ring (the author asked for an explicit start button, 2026-10-13) -->
+		<StreamGeometry x:Key="RunGeometry">M0,7 A7,7 0 1 1 14,7 A7,7 0 1 1 0,7 Z M1.4,7 A5.6,5.6 0 1 0 12.6,7 A5.6,5.6 0 1 0 1.4,7 Z M5.2,3.5 L10.8,7 L5.2,10.5 Z</StreamGeometry>
+		<!-- the two pictures: a wave for the field, a sun for the intensity -->
+		<StreamGeometry x:Key="FieldGeometry">M0,6 C1.5,1 2.5,1 4,6 C5.5,11 6.5,11 8,6 C9,3 10,3 11,6 L11,7.5 C10,5 9,5 8,7.5 C6.5,12.5 5.5,12.5 4,7.5 C2.5,2.5 1.5,2.5 0,7.5 Z</StreamGeometry>
+		<StreamGeometry x:Key="IntensityGeometry">M3,5 A2,2 0 1 1 7,5 A2,2 0 1 1 3,5 Z M4.4,0 L5.6,0 L5.6,2 L4.4,2 Z M4.4,8 L5.6,8 L5.6,10 L4.4,10 Z M0,4.4 L2,4.4 L2,5.6 L0,5.6 Z M8,4.4 L10,4.4 L10,5.6 L8,5.6 Z</StreamGeometry>
 		<StreamGeometry x:Key="PlayGeometry">M0,0 L9,5 L0,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="PauseGeometry">M0,0 L3,0 L3,10 L0,10 Z M6,0 L9,0 L9,10 L6,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="SideBySideGeometry">M0,0 L5,0 L5,10 L0,10 Z M7,0 L12,0 L12,10 L7,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="StackedGeometry">M0,0 L12,0 L12,4 L0,4 Z M0,6 L12,6 L12,10 L0,10 Z</StreamGeometry>
-		<StreamGeometry x:Key="StepBackGeometry">M0,0 L2,0 L2,10 L0,10 Z M9,0 L3,5 L9,10 Z</StreamGeometry>
-		<StreamGeometry x:Key="StepForwardGeometry">M7,0 L9,0 L9,10 L7,10 Z M0,0 L6,5 L0,10 Z</StreamGeometry>
+		<!-- frame step: the triangle leaves a bar behind it ("◀|" "|▶", the editors' frame-step look); a bar in front of the
+		     triangle is the players' skip to start/end, which the author read it as (point 1, changed 2026-10-13) -->
+		<StreamGeometry x:Key="StepBackGeometry">M7,0 L9,0 L9,10 L7,10 Z M0,5 L6,0 L6,10 Z</StreamGeometry>
+		<StreamGeometry x:Key="StepForwardGeometry">M0,0 L2,0 L2,10 L0,10 Z M3,0 L9,5 L3,10 Z</StreamGeometry>
 		<StreamGeometry x:Key="SetInGeometry">M0,0 L4,0 L4,2 L2,2 L2,8 L4,8 L4,10 L0,10 Z M6,2 L11,5 L6,8 Z</StreamGeometry>
 		<StreamGeometry x:Key="SetOutGeometry">M11,0 L7,0 L7,2 L9,2 L9,8 L7,8 L7,10 L11,10 Z M5,2 L0,5 L5,8 Z</StreamGeometry>
 		<StreamGeometry x:Key="ClearRangeGeometry">M0,1.5 L1.5,0 L5,3.5 L8.5,0 L10,1.5 L6.5,5 L10,8.5 L8.5,10 L5,6.5 L1.5,10 L0,8.5 L3.5,5 Z</StreamGeometry>
-		<StreamGeometry x:Key="LoopGeometry">M5,1 A4,4 0 1 1 1,5 L3,5 A2,2 0 1 0 5,3 Z M5,0 L8,2 L5,4 Z</StreamGeometry>
+		<!-- "repeat": two arrows chasing each other (the loop-shaped one read oddly, 2026-10-14) -->
+		<StreamGeometry x:Key="LoopGeometry">M1,2 L8,2 L8,0 L12,3 L8,6 L8,4 L3,4 L3,6 L1,6 Z M11,8 L4,8 L4,10 L0,7 L4,4 L4,6 L9,6 L9,4 L11,4 Z</StreamGeometry>
 		<!-- "live": a dot inside a ring (even-odd fill makes the ring hollow) -->
 		<StreamGeometry x:Key="LiveGeometry">M0.5,5 A4.5,4.5 0 1 1 9.5,5 A4.5,4.5 0 1 1 0.5,5 Z M1.5,5 A3.5,3.5 0 1 0 8.5,5 A3.5,3.5 0 1 0 1.5,5 Z M3.5,5 A1.5,1.5 0 1 1 6.5,5 A1.5,1.5 0 1 1 3.5,5 Z</StreamGeometry>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility" />
@@ -64,6 +72,7 @@
 
 		<!-- glyph toggle (and radio) button; the checked one stays pressed. Used for the loop toggle and
 		     the split radios, whose group is one tab stop with Left/Right inside (see the StackPanel below) -->
+		<!-- the toggles share the buttons' look, including the greyed, half-transparent disabled state (Live without a run, 2026-10-14) -->
 		<Style x:Key="TransportToggle" TargetType="{x:Type ToggleButton}">
 			<Setter Property="Width" Value="22" />
 			<Setter Property="Height" Value="22" />
@@ -87,6 +96,10 @@
 							<Trigger Property="IsChecked" Value="True">
 								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonPressed}" />
 								<Setter Property="Foreground" Value="White" />
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
+								<Setter Property="Opacity" Value="0.5" />
 							</Trigger>
 						</ControlTemplate.Triggers>
 					</ControlTemplate>
@@ -206,6 +219,11 @@
 		     this one, since both dock to the bottom) and follows in the tab order. -->
 		<Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource ToolWindowBorder}" BorderThickness="0,1,0,0" Padding="4,3">
 			<DockPanel KeyboardNavigation.TabNavigation="Local">
+				<!-- an explicit "run the simulation" next to Play (Play alone starts one only when needed) -->
+				<Button DockPanel.Dock="Left" TabIndex="0" Style="{StaticResource TransportButton}" Content="{StaticResource RunGeometry}"
+				        Command="{x:Static commands:SimulationCommands.Run}" ToolTip="{DynamicResource TipPreviewRun}"
+				        AutomationProperties.Name="{DynamicResource TipPreviewRun}" AutomationProperties.AutomationId="PreviewRun" />
+				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
 				<Button x:Name="playButton" DockPanel.Dock="Left" TabIndex="1" Style="{StaticResource TransportButton}" Content="{StaticResource PlayGeometry}"
 				        Command="MediaCommands.Play" ToolTip="{DynamicResource TipPreviewPlay}"
 				        AutomationProperties.Name="{DynamicResource TipPreviewPlay}" AutomationProperties.AutomationId="PreviewPlay" />
@@ -241,7 +259,7 @@
 				<!-- right-docked items: the first declared is the rightmost -->
 				<!-- one tab stop, the checked radio (IsTabStop follows IsChecked); the arrow keys move to the
 				     neighbour and check it, in code, since WPF's directional navigation skips non-tab-stops -->
-				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="11"
+				<StackPanel x:Name="splitGroup" DockPanel.Dock="Right" Orientation="Horizontal" KeyboardNavigation.TabIndex="13"
 				            KeyDown="OnSplitGroupKeyDown">
 					<RadioButton Style="{StaticResource TransportToggle}" Content="{StaticResource SideBySideGeometry}" GroupName="Split"
 					             ToolTip="{DynamicResource TipPreviewSideBySide}"
@@ -254,6 +272,17 @@
 					             IsChecked="{Binding Orientation, ElementName=pane, Converter={StaticResource EnumBoolean}, ConverterParameter={x:Static Orientation.Vertical}}"
 					             IsTabStop="{Binding IsChecked, RelativeSource={RelativeSource Self}, Mode=OneWay}" />
 				</StackPanel>
+				<!-- show or hide each picture (the layer's Preview setting; the author wanted one picture at a time, point 4) -->
+				<ToggleButton DockPanel.Dock="Right" TabIndex="12" Style="{StaticResource TransportToggle}" Content="{StaticResource IntensityGeometry}"
+				              IsChecked="{Binding IntensitySettings.Preview, ElementName=pane, Mode=TwoWay}"
+				              IsEnabled="{Binding IntensitySettings, ElementName=pane, Converter={StaticResource NotNull}}"
+				              ToolTip="{DynamicResource TipPreviewShowIntensity}"
+				              AutomationProperties.Name="{DynamicResource TipPreviewShowIntensity}" AutomationProperties.AutomationId="PreviewShowIntensity" />
+				<ToggleButton DockPanel.Dock="Right" TabIndex="11" Style="{StaticResource TransportToggle}" Content="{StaticResource FieldGeometry}"
+				              IsChecked="{Binding FieldSettings.Preview, ElementName=pane, Mode=TwoWay}"
+				              IsEnabled="{Binding FieldSettings, ElementName=pane, Converter={StaticResource NotNull}}"
+				              ToolTip="{DynamicResource TipPreviewShowField}"
+				              AutomationProperties.Name="{DynamicResource TipPreviewShowField}" AutomationProperties.AutomationId="PreviewShowField" />
 				<Rectangle DockPanel.Dock="Right" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
 				<ComboBox x:Name="speedBox" DockPanel.Dock="Right" TabIndex="10" Width="64" IsEditable="True" ItemsSource="{x:Static local:PreviewPane.SpeedPresets}"
 				          Text="{Binding Speed, ElementName=pane, Mode=TwoWay, Converter={StaticResource DoubleText}}" ToolTip="{DynamicResource TipPreviewSpeed}"
@@ -318,6 +347,9 @@
 									<!-- the picture with the source/probe handles over it; both fill the same rectangle -->
 									<Grid>
 										<Image Source="{TemplateBinding Content}" Stretch="Uniform" AutomationProperties.AutomationId="{TemplateBinding Tag}" />
+										<!-- the scene outline, a translucent layer of the same pixel size, so it lands exactly on the frame -->
+										<Image Source="{Binding Path=(local:PreviewPane.OverlayImage), RelativeSource={RelativeSource TemplatedParent}}"
+										       Stretch="Uniform" IsHitTestVisible="False" />
 										<!-- styled here, not implicitly: WPF applies implicit styles inside a template only to Controls, and the overlay is a Panel -->
 										<controls:SceneOverlay SourceStyle="{StaticResource SourceMarker}" ProbeStyle="{StaticResource ProbeMarker}"
 										                       LineBrush="White" LabelBrush="White" AccentBrush="{DynamicResource Accent}"
@@ -390,14 +422,16 @@
 				<RowDefinition Height="Auto" />
 				<RowDefinition Height="*" />
 			</Grid.RowDefinitions>
-			<HeaderedContentControl Style="{StaticResource PictureCell}" Header="{DynamicResource SectionField}"
+			<HeaderedContentControl x:Name="fieldCell" Style="{StaticResource PictureCell}" Header="{DynamicResource SectionField}"
 			                        Content="{Binding FieldImage, ElementName=pane}" Tag="PreviewFieldImage"
+			                        local:PreviewPane.OverlayImage="{Binding FieldOverlay, ElementName=pane}"
 			                        Visibility="{Binding FieldSettings.Preview, ElementName=pane, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}" />
-			<GridSplitter Style="{StaticResource PictureSplitter}" ToolTip="{DynamicResource TipPreviewSplitter}"
+			<GridSplitter x:Name="pictureSplitter" Style="{StaticResource PictureSplitter}" ToolTip="{DynamicResource TipPreviewSplitter}"
 			              AutomationProperties.Name="{DynamicResource TipPreviewSplitter}" AutomationProperties.AutomationId="PreviewSplitter"
 			              MouseDoubleClick="OnSplitterMouseDoubleClick" KeyDown="OnSplitterKeyDown" />
-			<HeaderedContentControl Style="{StaticResource SecondPictureCell}" Header="{DynamicResource SectionIntensity}"
+			<HeaderedContentControl x:Name="intensityCell" Style="{StaticResource SecondPictureCell}" Header="{DynamicResource SectionIntensity}"
 			                        Content="{Binding IntensityImage, ElementName=pane}" Tag="PreviewIntensityImage"
+			                        local:PreviewPane.OverlayImage="{Binding IntensityOverlay, ElementName=pane}"
 			                        Visibility="{Binding IntensitySettings.Preview, ElementName=pane, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}" />
 		</Grid>
 

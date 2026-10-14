@@ -1,7 +1,9 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using WaveDude.Model;
+using WaveDude.Rendering;
 using WaveDude.Runs;
 using WaveDude.WPF.Properties;
 using WaveDude.WPF.Rendering;
@@ -44,6 +46,7 @@ public partial class MainWindow
 	private DispatcherTimer? _scratchTimer;
 	private DispatcherTimer? _rerunTimer;
 	private (string Path, DateTime Written, ScenePixels Pixels)? _imageCache;
+	private (byte[] Data, ScenePixels Pixels)? _embeddedCache;
 
 	/// <summary>Whether the project was edited in a way that changes the simulation since the current run started.</summary>
 	public bool IsRunStale
@@ -72,6 +75,13 @@ public partial class MainWindow
 		_watcher?.Dispose();
 		_watcher = null;
 		_imageCache = null;
+		_embeddedCache = null;
+		// the new project's own schemes and scene image; the pane does not exist yet when the constructor sets the first project
+		Dispatcher.InvokeAsync(() =>
+		{
+			previewPane?.RefreshColors();
+			UpdateScenePixels();
+		}, DispatcherPriority.Background);
 		IsRunStale = false;
 		ScratchFrame = null;
 		if (project != null)
@@ -85,9 +95,19 @@ public partial class MainWindow
 
 	private void OnProjectChanged(object? sender, ProjectChange change)
 	{
+		if (change.Item is ColorScheme or ObservableCollection<ColorScheme>)
+		{
+			// a project scheme edited, added or removed: recolour the frame shown
+			previewPane.RefreshColors();
+			return;
+		}
 		if (!change.AffectsSimulation)
 		{
 			return;
+		}
+		if (change.Item is Scene)
+		{
+			UpdateScenePixels();
 		}
 		if (Run != null)
 		{
@@ -227,12 +247,41 @@ public partial class MainWindow
 		}
 	}
 
+	/// <summary>Hands the preview the decoded scene image (null for a canvas, or when it cannot be read: that is logged once the run reports it).</summary>
+	private void UpdateScenePixels()
+	{
+		if (previewPane == null)
+		{
+			return;
+		}
+		try
+		{
+			previewPane.ScenePixels = LoadSceneImage();
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or FileFormatException or RunSpecException)
+		{
+			Logger.Debug("Scene image not shown: {Message}", ex.Message);
+			previewPane.ScenePixels = null;
+		}
+	}
+
 	/// <summary>The decoded scene image for an image scene, decoded once per file version; null for a blank canvas.</summary>
 	private ScenePixels? LoadSceneImage()
 	{
 		if (Project.Scene.Mode != SceneMode.Image)
 		{
 			return null;
+		}
+		if (Project.Scene.ImageData is { } data)
+		{
+			// embedded: decoded once per byte array (a new pick is a new array)
+			if (_embeddedCache is { } embedded && ReferenceEquals(embedded.Data, data))
+			{
+				return embedded.Pixels;
+			}
+			ScenePixels decoded = SceneImageLoader.Load(data);
+			_embeddedCache = (data, decoded);
+			return decoded;
 		}
 		string path = ResolveScenePath();
 		DateTime written = File.GetLastWriteTimeUtc(path);
