@@ -1,13 +1,17 @@
 using NLog;
+using WaveDude.Model;
 using WaveDude.Rendering;
 
 namespace WaveDude.WPF.Rendering;
 
 /// <summary>
-/// The colour schemes: the user's own from <see cref="ColorSchemeStore.UserFolder"/> first (a user scheme
-/// with a built-in name shadows it), then the ones built into the library, loaded once, and a cache of the
-/// palettes built from them for the display settings in use. UI thread only; the cached <c>int[]</c>
-/// palettes are immutable and may be handed to rendering threads.
+/// The colour schemes available to a project: the project's own (<see cref="Project.ColorSchemes"/>,
+/// consulted first, so a project scheme shadows a built-in of the same name), then the user's folder
+/// (<see cref="ColorSchemeStore.UserFolder"/>), then the ones built into the library; the last two
+/// are loaded once. Also a cache of the palettes built from the shared schemes for the display
+/// settings in use; a project scheme's palette is built on every request, since it may be mid-edit
+/// and 255 entries cost nothing. UI thread only; the <c>int[]</c> palettes are immutable and may be
+/// handed to rendering threads.
 /// </summary>
 public sealed class ColorSchemeCatalog
 {
@@ -39,7 +43,7 @@ public sealed class ColorSchemeCatalog
 		_luts.Clear();
 	}
 
-	/// <summary>Every scheme that loaded, in file name order.</summary>
+	/// <summary>The shared schemes (user folder, then built-in), in file name order; not the project's.</summary>
 	public IReadOnlyList<ColorScheme> Schemes
 	{
 		get
@@ -52,12 +56,42 @@ public sealed class ColorSchemeCatalog
 		}
 	}
 
+	/// <summary>The scheme a name refers to in <paramref name="project"/>: its own first, then the shared ones; null when unknown.</summary>
+	public ColorScheme? Resolve(Project? project, string name) =>
+		(project == null ? null : ColorSchemeStore.Find(project.ColorSchemes, name)) ?? ColorSchemeStore.Find(Schemes, name);
+
 	/// <summary>
-	/// The palette of the scheme called <paramref name="name"/> with the given black level, cached; null
-	/// (greyscale) when no such scheme exists, which is logged once per name.
+	/// The schemes a picker offers for one output: the project's own (all of them), then the shared ones
+	/// whose <see cref="ColorScheme.Kind"/> is <paramref name="kind"/> or unspecified.
 	/// </summary>
-	public int[]? LutFor(string name, double blackLevel)
+	public IEnumerable<ColorScheme> Choices(Project? project, ColorSchemeKind kind)
 	{
+		if (project != null)
+		{
+			foreach (ColorScheme scheme in project.ColorSchemes)
+			{
+				yield return scheme;
+			}
+		}
+		foreach (ColorScheme scheme in Schemes)
+		{
+			if (scheme.Kind == kind || scheme.Kind == ColorSchemeKind.Unspecified)
+			{
+				yield return scheme;
+			}
+		}
+	}
+
+	/// <summary>
+	/// The palette of the scheme called <paramref name="name"/> with the given black level; null (greyscale)
+	/// when no such scheme exists, which is logged once per name. Shared schemes are cached; a project scheme is built fresh.
+	/// </summary>
+	public int[]? LutFor(Project? project, string name, double blackLevel)
+	{
+		if (project != null && ColorSchemeStore.Find(project.ColorSchemes, name) is { } own)
+		{
+			return ColorLut.Build(own, blackLevel: blackLevel).Argb;
+		}
 		(string, double) key = (name, blackLevel);
 		if (_luts.TryGetValue(key, out int[]? lut))
 		{

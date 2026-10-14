@@ -1,5 +1,7 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using WaveDude.Rendering;
 
 namespace WaveDude.Model;
 
@@ -16,7 +18,8 @@ public sealed record ProjectChange(object Item, string? Property)
 	{
 		Scene or Simulation or Source or SourceArray => true,
 		Project => Property is nameof(Project.Seed) or nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Sources),
-		NotifyCollectionChangedEventArgs => true,
+		ObservableCollection<ColorScheme> => false,
+		INotifyCollectionChanged => true,
 		_ => false,
 	};
 }
@@ -52,7 +55,7 @@ public sealed class ProjectWatcher : IDisposable
 
 	private void OnProjectPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		if (e.PropertyName is nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Display) or nameof(Project.Sources) or nameof(Project.Probes))
+		if (e.PropertyName is nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Display) or nameof(Project.Sources) or nameof(Project.Probes) or nameof(Project.ColorSchemes))
 		{
 			Resubscribe();
 		}
@@ -74,7 +77,8 @@ public sealed class ProjectWatcher : IDisposable
 	private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
 	{
 		Resubscribe();
-		Changed?.Invoke(this, new ProjectChange(e, null));
+		// the item is the collection itself, so a handler can tell which list changed
+		Changed?.Invoke(this, new ProjectChange(sender ?? e, null));
 	}
 
 	private void Resubscribe()
@@ -99,6 +103,11 @@ public sealed class ProjectWatcher : IDisposable
 		foreach (Probe probe in _project.Probes)
 		{
 			Subscribe(probe);
+		}
+		SubscribeCollection(_project.ColorSchemes);
+		foreach (ColorScheme scheme in _project.ColorSchemes)
+		{
+			Subscribe(scheme);
 		}
 	}
 

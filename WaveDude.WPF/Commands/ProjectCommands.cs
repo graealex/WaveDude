@@ -29,4 +29,10 @@ public static class ProjectCommands
 
 	/// <summary>Swaps a source or probe with its successor.</summary>
 	public static readonly RoutedUICommand MoveDown = new("Move down", nameof(MoveDown), typeof(ProjectCommands));
+
+	/// <summary>Flips a source's Enabled or a probe's Active (the tree's check boxes; Space on the selected row).</summary>
+	public static readonly RoutedUICommand ToggleEnabled = new("Enable or disable", nameof(ToggleEnabled), typeof(ProjectCommands));
+
+	/// <summary>Picks an image file and embeds it as the scene image.</summary>
+	public static readonly RoutedUICommand BrowseSceneImage = new("Browse for a scene image", nameof(BrowseSceneImage), typeof(ProjectCommands));
 }

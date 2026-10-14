@@ -9,7 +9,7 @@ namespace WaveDude.WPF;
 
 /// <summary>
 /// Registers the project file extension with Windows Explorer, so that a double-click on a
-/// <c>.wdproj</c> file (or "Open with") starts this executable with the file as its first
+/// <c>.wdproj</c> or <c>.wdscheme</c> file (or "Open with") starts this executable with the file as its first
 /// argument; <see cref="App.OnStartup"/> hands that argument to <see cref="MainWindow.OpenFile"/>.
 /// </summary>
 /// <remarks>
@@ -32,10 +32,16 @@ namespace WaveDude.WPF;
 internal static class FileAssociation
 {
 	/// <summary>Registry class name of a project file; the extension key points at it.</summary>
-	private const string ProgId = "WaveDude.Project";
+	public const string ProjectProgId = "WaveDude.Project";
 
-	/// <summary>What Explorer shows as the file type.</summary>
-	private const string TypeDescription = "Wave Dude project";
+	/// <summary>What Explorer shows as a project file's type.</summary>
+	public const string ProjectDescription = "Wave Dude project";
+
+	/// <summary>Registry class name of a colour scheme file (<c>.wdscheme</c>, 2026-10-13).</summary>
+	public const string SchemeProgId = "WaveDude.ColorScheme";
+
+	/// <summary>What Explorer shows as a scheme file's type.</summary>
+	public const string SchemeDescription = "Wave Dude colour scheme";
 
 	/// <summary><c>SHChangeNotify</c> event: the file associations changed, flush the icon and type caches.</summary>
 	private const uint SHCNE_ASSOCCHANGED = 0x08000000;
@@ -47,14 +53,15 @@ internal static class FileAssociation
 
 	/// <summary>
 	/// Makes files with <paramref name="extension"/> (leading dot included) open with
-	/// <paramref name="executable"/>, machine-wide when this process may write there, else for the
-	/// current user. Call once at start-up; it is cheap when nothing has changed.
+	/// <paramref name="executable"/> under the class <paramref name="progId"/> shown as
+	/// <paramref name="description"/>, machine-wide when this process may write there, else for the
+	/// current user. Call once per file type at start-up; it is cheap when nothing has changed.
 	/// </summary>
-	public static void Register(string extension, string executable)
+	public static void Register(string extension, string progId, string description, string executable)
 	{
 		try
 		{
-			Apply(Registry.ClassesRoot, "HKEY_CLASSES_ROOT", extension, executable);
+			Apply(Registry.ClassesRoot, "HKEY_CLASSES_ROOT", extension, progId, description, executable);
 			return;
 		}
 		catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
@@ -70,7 +77,7 @@ internal static class FileAssociation
 				Logger.Warn("HKEY_CURRENT_USER\\Software\\Classes does not exist; {Extension} not registered", extension);
 				return;
 			}
-			Apply(classes, @"HKEY_CURRENT_USER\Software\Classes", extension, executable);
+			Apply(classes, @"HKEY_CURRENT_USER\Software\Classes", extension, progId, description, executable);
 		}
 		catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
 		{
@@ -79,11 +86,11 @@ internal static class FileAssociation
 	}
 
 	/// <summary>Writes the four keys under <paramref name="classes"/> unless they already hold these values.</summary>
-	private static void Apply(RegistryKey classes, string classesName, string extension, string executable)
+	private static void Apply(RegistryKey classes, string classesName, string extension, string progId, string description, string executable)
 	{
 		string command = $"\"{executable}\" \"%1\"";
 		string icon = $"\"{executable}\",0";
-		if (IsCurrent(classes, extension, command, icon))
+		if (IsCurrent(classes, extension, progId, command, icon))
 		{
 			// HKEY_CLASSES_ROOT is the merged view, so a per-user registration satisfies this check too
 			Logger.Debug("{Extension} already opens with '{Executable}' (seen through {Classes})", extension, executable, classesName);
@@ -92,11 +99,11 @@ internal static class FileAssociation
 
 		using (RegistryKey extensionKey = classes.CreateSubKey(extension))
 		{
-			extensionKey.SetValue("", ProgId);
+			extensionKey.SetValue("", progId);
 		}
-		using (RegistryKey progIdKey = classes.CreateSubKey(ProgId))
+		using (RegistryKey progIdKey = classes.CreateSubKey(progId))
 		{
-			progIdKey.SetValue("", TypeDescription);
+			progIdKey.SetValue("", description);
 			using RegistryKey iconKey = progIdKey.CreateSubKey("DefaultIcon");
 			iconKey.SetValue("", icon);
 			using RegistryKey commandKey = progIdKey.CreateSubKey(@"shell\open\command");
@@ -109,10 +116,10 @@ internal static class FileAssociation
 	}
 
 	/// <summary>True when the extension, the open command and the icon already read as expected (read access only).</summary>
-	private static bool IsCurrent(RegistryKey classes, string extension, string command, string icon) =>
-		ReadDefault(classes, extension) == ProgId
-		&& ReadDefault(classes, $@"{ProgId}\shell\open\command") == command
-		&& ReadDefault(classes, $@"{ProgId}\DefaultIcon") == icon;
+	private static bool IsCurrent(RegistryKey classes, string extension, string progId, string command, string icon) =>
+		ReadDefault(classes, extension) == progId
+		&& ReadDefault(classes, $@"{progId}\shell\open\command") == command
+		&& ReadDefault(classes, $@"{progId}\DefaultIcon") == icon;
 
 	private static string? ReadDefault(RegistryKey classes, string subKey)
 	{

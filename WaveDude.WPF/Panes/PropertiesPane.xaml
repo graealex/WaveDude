@@ -4,7 +4,8 @@
              xmlns:local="clr-namespace:WaveDude.WPF.Panes"
              xmlns:views="clr-namespace:WaveDude.WPF.Views"
              xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
-             xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
+             xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude"
+             xmlns:rendering="clr-namespace:WaveDude.Rendering;assembly=WaveDude">
 
 	<!-- one view per model type; the content control picks the template by the selected object's type -->
 	<UserControl.Resources>
@@ -25,6 +26,9 @@
 		</DataTemplate>
 		<DataTemplate DataType="{x:Type model:Probe}">
 			<views:ProbeView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type rendering:ColorScheme}">
+			<views:ColorSchemeView />
 		</DataTemplate>
 		<DataTemplate DataType="{x:Type converters:NamedCollection}">
 			<views:CollectionView />

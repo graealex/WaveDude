@@ -14,6 +14,19 @@ public static class SceneImageLoader
 	public static ScenePixels Load(string path)
 	{
 		using FileStream stream = File.OpenRead(path);
+		return Load(stream);
+	}
+
+	/// <summary>Decodes an image file's bytes (an embedded scene image).</summary>
+	public static ScenePixels Load(byte[] bytes)
+	{
+		using var stream = new MemoryStream(bytes, writable: false);
+		return Load(stream);
+	}
+
+	/// <summary>Decodes an image stream (any format WPF has a decoder for) into BGRA pixels.</summary>
+	public static ScenePixels Load(Stream stream)
+	{
 		BitmapDecoder decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
 		var converted = new FormatConvertedBitmap(decoder.Frames[0], PixelFormats.Bgra32, null, 0);
 		int width = converted.PixelWidth;

@@ -2,30 +2,47 @@ using System.Globalization;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
+using System.Xml.Serialization;
 
 namespace WaveDude.Rendering;
 
 /// <summary>
-/// Reads and writes <see cref="ColorScheme"/> objects as JSON files (one file per scheme, e.g. in the
-/// scheme folder).
+/// Reads and writes <see cref="ColorScheme"/> files: the program's XML (<see cref="SaveXml"/> /
+/// <see cref="LoadXml(string)"/>, extension <see cref="XmlExtension"/>, the same element a project file embeds;
+/// the shipped schemes are these, embedded in the assembly) and the author's JSON (<see cref="Parse"/>,
+/// read for files a user brings along from his program).
 /// </summary>
 /// <remarks>
-/// File format, the same as the files exported from Python (e.g. in its <c>color_schemes</c> folder): an
-/// object with "name", "origin", optional "category" and "scheme_type" ("field" or "intensity"),
-/// "bits_per_channel" (always 8), "entry_count" (<see cref="ColorScheme.EntryCount"/>) and a "colors"
-/// list of <c>[r,g,b]</c> triplets, plus, only for schemes made in the stop editor, a "stops" list of
-/// <see cref="ColorScheme.StopCount"/> triplets. Reading uses <see cref="JsonDocument"/>; writing emits
-/// the text by hand so the file stays human-readable and byte-identical to the shipped files. The shipped
-/// schemes are embedded in this assembly (<see cref="LoadBuiltIn"/>; the repository's <c>ColorSchemeList</c>
-/// folder is their source); the user's own schemes live in <see cref="UserFolder"/>. Called only from the
-/// UI thread (start-up and a scheme editor).
+/// JSON format, the files exported from the author's Python: an object with "name", "origin", optional
+/// "category" and "scheme_type" ("field" or "intensity"), "bits_per_channel" (8), "entry_count" (255) and a
+/// "colors" list of <c>[r,g,b]</c> triplets, plus, for schemes made in the stop editor, a "stops" list of 9
+/// triplets. Reading consolidates (2026-10-13): when the table equals the interpolation of the stops, which
+/// holds for every shipped file, the scheme keeps the 9 stops only; otherwise the table. Writing JSON
+/// (<see cref="Save"/>) emits the author's layout, so a stop scheme round-trips byte for byte; the "colors"
+/// table there is redundant for a stop scheme (his program reads only the table). The shipped schemes are
+/// embedded in this assembly as XML (<see cref="LoadBuiltIn"/>; the repository's <c>ColorSchemeList</c>
+/// folder is their source, converted from his JSON on 2026-10-13); the user's own schemes live in
+/// <see cref="UserFolder"/>. UI thread.
 /// </remarks>
 public static class ColorSchemeStore
 {
+	/// <summary>Extension of a standalone XML scheme file.</summary>
+	public const string XmlExtension = ".wdscheme";
+
 	/// <summary>Prefix of the embedded scheme resources (see the csproj's <c>LogicalName</c>).</summary>
 	private const string ResourcePrefix = "ColorSchemes/";
 
-	/// <summary>The user's own scheme folder, <c>%LOCALAPPDATA%\WaveDude\ColorSchemes</c>; created on first use by <see cref="Save"/>, may not exist.</summary>
+	private static readonly XmlSerializer Serializer = new(typeof(ColorScheme));
+	private static readonly XmlSerializerNamespaces NoNamespaces = new([XmlQualifiedName.Empty]);
+	private static readonly XmlWriterSettings WriterSettings = new()
+	{
+		Indent = true,
+		IndentChars = "\t",
+		Encoding = new UTF8Encoding(false),
+	};
+
+	/// <summary>The user's own scheme folder, <c>%LOCALAPPDATA%\WaveDude\ColorSchemes</c>; created on first use by a save, may not exist.</summary>
 	public static string UserFolder { get; } =
 		Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WaveDude", "ColorSchemes");
 
@@ -45,12 +62,21 @@ public static class ColorSchemeStore
 			try
 			{
 				using Stream stream = assembly.GetManifestResourceStream(name) ?? throw new InvalidDataException("The resource stream is missing.");
-				using var reader = new StreamReader(stream, Encoding.UTF8);
-				ColorScheme scheme = Parse(reader.ReadToEnd(), Path.GetFileNameWithoutExtension(name[ResourcePrefix.Length..]));
+				string fallbackName = Path.GetFileNameWithoutExtension(name[ResourcePrefix.Length..]);
+				ColorScheme scheme;
+				if (name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+				{
+					using var reader = new StreamReader(stream, Encoding.UTF8);
+					scheme = Parse(reader.ReadToEnd(), fallbackName);
+				}
+				else
+				{
+					scheme = LoadXml(stream, fallbackName);
+				}
 				scheme.IsBuiltIn = true;
 				schemes.Add(scheme);
 			}
-			catch (Exception ex) when (ex is InvalidDataException or JsonException)
+			catch (Exception ex) when (ex is InvalidDataException or JsonException or FormatException or InvalidOperationException)
 			{
 				errors?.Add(name + ": " + ex.Message);
 			}
@@ -58,14 +84,17 @@ public static class ColorSchemeStore
 		return schemes;
 	}
 
+	/// <summary>Reads a scheme file of either format by its extension: <c>.json</c> through <see cref="Parse"/>, anything else as XML.</summary>
+	/// <exception cref="InvalidDataException">Not a scheme in either format.</exception>
+	/// <exception cref="JsonException">A JSON file that is not valid JSON.</exception>
+	/// <exception cref="InvalidOperationException">An XML file that is not a scheme.</exception>
+	public static ColorScheme LoadFile(string filePath) =>
+		string.Equals(Path.GetExtension(filePath), ".json", StringComparison.OrdinalIgnoreCase) ? Load(filePath) : LoadXml(filePath);
+
 	/// <summary>
-	/// Reads one scheme file. The table comes from "colors" (resampled to 255 entries) when that list has at
-	/// least two entries, otherwise it is interpolated from "stops"; a "stops" list is attached as editable
-	/// stops only if it has exactly <see cref="ColorScheme.StopCount"/> entries (otherwise it is ignored).
-	/// "name" falls back to the file name, "scheme_type" is normalised (see <see cref="NormalizeSchemeType"/>),
-	/// and <see cref="ColorScheme.FilePath"/> is set to <paramref name="filePath"/>.
+	/// Reads one JSON scheme file (see the remarks of the class); "name" falls back to the file name and
+	/// <see cref="ColorScheme.FilePath"/> is set to <paramref name="filePath"/>.
 	/// </summary>
-	/// <param name="filePath">Full path of the JSON file.</param>
 	/// <exception cref="InvalidDataException">The file is not a JSON object, has no usable color list or contains malformed triplets.</exception>
 	/// <exception cref="JsonException">The file is not valid JSON.</exception>
 	public static ColorScheme Load(string filePath)
@@ -75,7 +104,7 @@ public static class ColorSchemeStore
 		return scheme;
 	}
 
-	/// <summary>Parses scheme JSON; <paramref name="fallbackName"/> stands in for a missing "name".</summary>
+	/// <summary>Parses scheme JSON; <paramref name="fallbackName"/> stands in for a missing "name". Consolidates stops and table (see the class remarks).</summary>
 	/// <exception cref="InvalidDataException">Not a JSON object, no usable color list or malformed triplets.</exception>
 	/// <exception cref="JsonException">Not valid JSON.</exception>
 	public static ColorScheme Parse(string json, string fallbackName)
@@ -93,36 +122,73 @@ public static class ColorSchemeStore
 		{
 			stops = null;
 		}
-		ColorScheme scheme;
-		if (colors != null && colors.Count >= 2)
+		IReadOnlyList<Rgb> kept;
+		if (stops != null && (colors == null || colors.Count < 2 || ColorScheme.IsInterpolationOf(colors, stops)))
 		{
-			scheme = new ColorScheme(schemeName, colors);
+			kept = stops;
 		}
-		else if (stops != null)
+		else if (colors != null && colors.Count >= 2)
 		{
-			scheme = ColorScheme.FromStops(schemeName, stops);
+			kept = colors;
 		}
 		else
 		{
 			throw new InvalidDataException("The file contains no usable 'colors' list.");
 		}
-		if (stops != null)
-		{
-			scheme.AttachStops(stops);
-		}
-		scheme.Origin = GetString(root, "origin", scheme.Origin);
+		var scheme = new ColorScheme(schemeName, kept);
+		scheme.Description = GetString(root, "origin", scheme.Description);
 		scheme.Category = GetString(root, "category", scheme.Category);
-		scheme.SchemeType = NormalizeSchemeType(GetString(root, "scheme_type", scheme.SchemeType));
+		scheme.Kind = KindOf(GetString(root, "scheme_type", ""));
 		return scheme;
 	}
 
+	/// <summary>Reads a standalone XML scheme file; <see cref="ColorScheme.FilePath"/> is set.</summary>
+	/// <exception cref="InvalidOperationException">The file is not an XML colour scheme.</exception>
+	/// <exception cref="FormatException">A colour is not <c>#RRGGBB</c>.</exception>
+	public static ColorScheme LoadXml(string filePath)
+	{
+		using FileStream stream = File.OpenRead(filePath);
+		ColorScheme scheme = LoadXml(stream, Path.GetFileNameWithoutExtension(filePath));
+		scheme.FilePath = filePath;
+		return scheme;
+	}
+
+	/// <summary>Reads an XML scheme from a stream; <paramref name="fallbackName"/> stands in for a missing name. Positions are clamped and sorted.</summary>
+	/// <exception cref="InvalidOperationException">The document is not a colour scheme.</exception>
+	public static ColorScheme LoadXml(Stream stream, string fallbackName)
+	{
+		using var reader = XmlReader.Create(stream);
+		if (Serializer.Deserialize(reader) is not ColorScheme scheme)
+		{
+			throw new InvalidOperationException("The document is not a colour scheme.");
+		}
+		if (scheme.Name.Length == 0)
+		{
+			scheme.Name = fallbackName;
+		}
+		scheme.Normalize();
+		return scheme;
+	}
+
+	/// <summary>Writes a standalone XML scheme file (the project file embeds the same element); creates the folder, writes through a temporary file, sets <see cref="ColorScheme.FilePath"/>.</summary>
+	public static void SaveXml(ColorScheme scheme, string filePath)
+	{
+		PrepareWrite(filePath, out string tempPath);
+		using (FileStream stream = File.Create(tempPath))
+		using (var writer = XmlWriter.Create(stream, WriterSettings))
+		{
+			Serializer.Serialize(writer, scheme, NoNamespaces);
+		}
+		File.Move(tempPath, filePath, overwrite: true);
+		scheme.FilePath = filePath;
+	}
+
 	/// <summary>
-	/// Loads every <c>*.json</c> file in <paramref name="folder"/>, in case-insensitive file name order.
-	/// Files that fail to load are skipped and reported as "file: message" lines in <paramref name="errors"/>.
+	/// Reads every <c>*.json</c> and <c>*.wdscheme</c> file of a folder, in name order; a missing folder gives an empty list.
+	/// Unreadable files are reported in <paramref name="errors"/> and skipped.
 	/// </summary>
-	/// <param name="folder">Folder to scan; an empty or missing folder yields an empty list.</param>
+	/// <param name="folder">The folder to read; "" or a missing folder gives an empty list.</param>
 	/// <param name="errors">Receives one line per unreadable file; may be null to discard them.</param>
-	/// <returns>The schemes that loaded successfully.</returns>
 	public static List<ColorScheme> LoadFolder(string folder, List<string>? errors)
 	{
 		var schemes = new List<ColorScheme>();
@@ -130,15 +196,15 @@ public static class ColorSchemeStore
 		{
 			return schemes;
 		}
-		var files = new List<string>(Directory.GetFiles(folder, "*.json"));
+		var files = Directory.GetFiles(folder, "*.json").Concat(Directory.GetFiles(folder, "*" + XmlExtension)).ToList();
 		files.Sort(StringComparer.OrdinalIgnoreCase);
 		foreach (string file in files)
 		{
 			try
 			{
-				schemes.Add(Load(file));
+				schemes.Add(LoadFile(file));
 			}
-			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException or InvalidOperationException or FormatException)
 			{
 				errors?.Add(Path.GetFileName(file) + ": " + ex.Message);
 			}
@@ -146,37 +212,34 @@ public static class ColorSchemeStore
 		return schemes;
 	}
 
-	/// <summary>The scheme called <paramref name="name"/> (case-insensitive, so a file's "name" matches the model's stored name regardless of letter case), or null.</summary>
+	/// <summary>The scheme called <paramref name="name"/>, compared case-insensitively ("Default_intensity" finds "Default_Intensity"); null when absent.</summary>
 	public static ColorScheme? Find(IEnumerable<ColorScheme> schemes, string name) =>
-		schemes.FirstOrDefault(scheme => string.Equals(scheme.Name, name, StringComparison.OrdinalIgnoreCase));
+		schemes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
 
 	/// <summary>
-	/// Writes <paramref name="scheme"/> as a UTF-8 (no BOM) JSON file, eight color triplets per line, with
-	/// "category" / "scheme_type" omitted when empty and "stops" present only for stop schemes. Creates the
-	/// target directory, writes to <c>&lt;filePath&gt;.tmp</c> first and then replaces the target, and finally
-	/// sets <see cref="ColorScheme.FilePath"/> on the scheme.
+	/// Writes the author's JSON layout: "stops" for a scheme of 9 evenly spaced stops, then the interpolated
+	/// "colors" table (redundant then, but what his program reads), eight triplets per line. Creates the folder, writes through a temporary file and sets
+	/// <see cref="ColorScheme.FilePath"/>.
 	/// </summary>
-	/// <param name="scheme">Scheme to write.</param>
-	/// <param name="filePath">Destination file path (usually from <see cref="PathFor"/>).</param>
 	public static void Save(ColorScheme scheme, string filePath)
 	{
 		var json = new StringBuilder();
 		json.AppendLine("{");
 		json.AppendLine("  \"name\": " + Quote(scheme.Name) + ",");
-		json.AppendLine("  \"origin\": " + Quote(scheme.Origin) + ",");
+		json.AppendLine("  \"origin\": " + Quote(scheme.Description) + ",");
 		if (!string.IsNullOrEmpty(scheme.Category))
 		{
 			json.AppendLine("  \"category\": " + Quote(scheme.Category) + ",");
 		}
-		if (!string.IsNullOrEmpty(scheme.SchemeType))
+		if (scheme.Kind != ColorSchemeKind.Unspecified)
 		{
-			json.AppendLine("  \"scheme_type\": " + Quote(scheme.SchemeType) + ",");
+			json.AppendLine("  \"scheme_type\": " + Quote(scheme.Kind.ToString().ToLowerInvariant()) + ",");
 		}
 		json.AppendLine("  \"bits_per_channel\": 8,");
 		json.AppendLine("  \"entry_count\": " + ColorScheme.EntryCount.ToString(CultureInfo.InvariantCulture) + ",");
-		if (scheme.Stops is { } stops)
+		if (scheme.IsStopScheme && scheme.IsEvenlySpaced)
 		{
-			json.AppendLine("  \"stops\": [" + string.Join(", ", stops) + "],");
+			json.AppendLine("  \"stops\": [" + string.Join(", ", scheme.Colors.Select(Triplet)) + "],");
 		}
 		Rgb[] entries = scheme.Entries;
 		json.AppendLine("  \"colors\": [");
@@ -184,7 +247,7 @@ public static class ColorSchemeStore
 		{
 			int rowEnd = Math.Min(rowStart + 7, entries.Length - 1);
 			json.Append("    ");
-			json.Append(string.Join(", ", entries[rowStart..(rowEnd + 1)]));
+			json.Append(string.Join(", ", entries[rowStart..(rowEnd + 1)].Select(Triplet)));
 			if (rowEnd < entries.Length - 1)
 			{
 				json.Append(',');
@@ -193,23 +256,13 @@ public static class ColorSchemeStore
 		}
 		json.AppendLine("  ]");
 		json.AppendLine("}");
-		string? directoryName = Path.GetDirectoryName(filePath);
-		if (!string.IsNullOrEmpty(directoryName))
-		{
-			Directory.CreateDirectory(directoryName);
-		}
-		// write to a temporary file first so a failed save never leaves a half-written scheme behind
-		string tempPath = filePath + ".tmp";
+		PrepareWrite(filePath, out string tempPath);
 		File.WriteAllText(tempPath, json.ToString(), new UTF8Encoding(false));
 		File.Move(tempPath, filePath, overwrite: true);
 		scheme.FilePath = filePath;
 	}
 
-	/// <summary>
-	/// Turns a scheme name into a file name (without extension): invalid file name characters become
-	/// '_', surrounding whitespace and trailing dots are removed.
-	/// </summary>
-	/// <returns>The sanitised name, or "color_scheme" when nothing usable is left.</returns>
+	/// <summary>A scheme name as a file name: invalid characters become '_', trailing dots go; "color_scheme" for an empty name.</summary>
 	public static string SafeFileName(string schemeName)
 	{
 		if (string.IsNullOrEmpty(schemeName))
@@ -226,20 +279,32 @@ public static class ColorSchemeStore
 		return result.Length == 0 ? "color_scheme" : result;
 	}
 
-	/// <summary>The file path a scheme named <paramref name="schemeName"/> is stored at in <paramref name="folder"/>: <see cref="SafeFileName"/> plus ".json".</summary>
-	public static string PathFor(string folder, string schemeName) => Path.Combine(folder, SafeFileName(schemeName) + ".json");
+	/// <summary>The XML file path a scheme of this name gets inside <paramref name="folder"/>.</summary>
+	public static string PathFor(string folder, string schemeName) => Path.Combine(folder, SafeFileName(schemeName) + XmlExtension);
 
-	/// <summary>Maps a raw "scheme_type" value to <see cref="ColorScheme.SchemeTypeField"/> or <see cref="ColorScheme.SchemeTypeIntensity"/> (trimmed, case-insensitive); anything else becomes "".</summary>
-	private static string NormalizeSchemeType(string value)
+	/// <summary>The author's "scheme_type" text as a kind: "field", "intensity", anything else unspecified.</summary>
+	public static ColorSchemeKind KindOf(string schemeType) => schemeType.Trim().ToLowerInvariant() switch
 	{
-		string normalized = value.Trim().ToLowerInvariant();
-		return normalized is ColorScheme.SchemeTypeField or ColorScheme.SchemeTypeIntensity ? normalized : "";
+		"field" => ColorSchemeKind.Field,
+		"intensity" => ColorSchemeKind.Intensity,
+		_ => ColorSchemeKind.Unspecified,
+	};
+
+	/// <summary>Creates the folder and names the temporary file a write goes through, so a failed save never leaves a half-written scheme behind.</summary>
+	private static void PrepareWrite(string filePath, out string tempPath)
+	{
+		string? directoryName = Path.GetDirectoryName(filePath);
+		if (!string.IsNullOrEmpty(directoryName))
+		{
+			Directory.CreateDirectory(directoryName);
+		}
+		tempPath = filePath + ".tmp";
 	}
 
-	/// <summary>
-	/// Reads <paramref name="key"/> from the JSON object as a string (numbers and booleans are converted with
-	/// the invariant culture), or <paramref name="fallback"/> when the key is missing or null.
-	/// </summary>
+	/// <summary>The author's JSON spelling of a colour, <c>[r,g,b]</c>.</summary>
+	private static string Triplet(Rgb color) =>
+		"[" + color.R.ToString(CultureInfo.InvariantCulture) + "," + color.G.ToString(CultureInfo.InvariantCulture) + "," + color.B.ToString(CultureInfo.InvariantCulture) + "]";
+
 	private static string GetString(JsonElement root, string key, string fallback)
 	{
 		if (!root.TryGetProperty(key, out JsonElement value))
@@ -256,12 +321,6 @@ public static class ColorSchemeStore
 		};
 	}
 
-	/// <summary>
-	/// Converts a JSON list of <c>[r,g,b]</c> lists into colors. Each inner list needs at least three
-	/// numbers (extra values are ignored); non-integers are rounded and every channel is clamped to 0..255.
-	/// </summary>
-	/// <param name="node">The value of "colors" or "stops".</param>
-	/// <exception cref="InvalidDataException">The node or one of its items is not a list, a triplet is too short or a channel is not a number.</exception>
 	private static List<Rgb> ParseColorList(JsonElement node)
 	{
 		if (node.ValueKind != JsonValueKind.Array)
@@ -293,7 +352,6 @@ public static class ColorSchemeStore
 		return colors;
 	}
 
-	/// <summary>Returns <paramref name="text"/> as a double-quoted JSON string literal; escapes quotes, backslashes and control characters, leaves non-ASCII as UTF-8.</summary>
 	private static string Quote(string text)
 	{
 		var quoted = new StringBuilder();
@@ -308,14 +366,14 @@ public static class ColorSchemeStore
 				case '\\':
 					quoted.Append("\\\\");
 					break;
-				case '\t':
-					quoted.Append("\\t");
-					break;
 				case '\n':
 					quoted.Append("\\n");
 					break;
 				case '\r':
 					quoted.Append("\\r");
+					break;
+				case '\t':
+					quoted.Append("\\t");
 					break;
 				default:
 					if (c < ' ')
@@ -332,5 +390,4 @@ public static class ColorSchemeStore
 		quoted.Append('"');
 		return quoted.ToString();
 	}
-
 }

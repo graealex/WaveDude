@@ -9,27 +9,27 @@
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionField}" />
-			<local:DisplayLayerView DataContext="{Binding Field}" />
+			<local:DisplayLayerView DataContext="{Binding Field}" Kind="Field" />
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionIntensity}" />
-			<local:DisplayLayerView DataContext="{Binding Intensity}" />
+			<local:DisplayLayerView DataContext="{Binding Intensity}" Kind="Intensity" />
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionExportRange}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Display.ExportFrom}" />
-				<TextBox Text="{Binding ExportFrom}" ToolTip="{meta:Hint model:Display.ExportFrom}" />
+				<controls:NumberBox Text="{Binding ExportFrom}" Minimum="0" ToolTip="{meta:Hint model:Display.ExportFrom}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Display.ExportTo}" />
-				<TextBox Text="{Binding ExportTo}" ToolTip="{meta:Hint model:Display.ExportTo}" />
+				<controls:NumberBox Text="{Binding ExportTo}" Minimum="0" ToolTip="{meta:Hint model:Display.ExportTo}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionVideo}" />
 			<controls:FormPanel DataContext="{Binding Video}">
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Video.Fps}" />
-				<TextBox Text="{Binding Fps}" ToolTip="{meta:Hint model:Video.Fps}" />
+				<controls:NumberBox Text="{Binding Fps}" Minimum="1" Maximum="240" ToolTip="{meta:Hint model:Video.Fps}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Video.Quality}" />
-				<TextBox Text="{Binding Quality}" ToolTip="{meta:Hint model:Video.Quality}" />
+				<controls:NumberBox Text="{Binding Quality}" Minimum="1" Maximum="100" ToolTip="{meta:Hint model:Video.Quality}" />
 			</controls:FormPanel>
 		</StackPanel>
 	</ScrollViewer>

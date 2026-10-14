@@ -13,7 +13,7 @@
 
   <!-- the shipped colour schemes are part of the binary; the repo's ColorSchemeList folder is their source -->
   <ItemGroup>
-    <EmbeddedResource Include="..\ColorSchemeList\*.json" LogicalName="ColorSchemes/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\ColorSchemeList\*.wdscheme;..\ColorSchemeList\*.json" LogicalName="ColorSchemes/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,21 +2,33 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:WaveDude.WPF.Controls"
+             xmlns:local="clr-namespace:WaveDude.WPF.Views"
+             xmlns:panes="clr-namespace:WaveDude.WPF.Panes"
              xmlns:meta="clr-namespace:WaveDude.WPF.Markup"
              xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
 
 	<controls:FormPanel>
 		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.ColorScheme}" />
-		<TextBox Text="{Binding ColorScheme, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:DisplayLayer.ColorScheme}" />
+		<!-- the picker lists the project's schemes and the shared ones of this layer's kind, with previews -->
+		<controls:ColorSchemePicker SelectedName="{Binding ColorScheme}" ToolTip="{meta:Hint model:DisplayLayer.ColorScheme}" AutomationProperties.AutomationId="SchemePicker"
+		                            Kind="{Binding Kind, RelativeSource={RelativeSource AncestorType={x:Type local:DisplayLayerView}}}"
+		                            Project="{Binding Project, RelativeSource={RelativeSource AncestorType={x:Type panes:PropertiesPane}}}" />
 
 		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.Brightness}" />
-		<TextBox Text="{Binding Brightness}" ToolTip="{meta:Hint model:DisplayLayer.Brightness}" />
+		<controls:NumberBox Text="{Binding Brightness}" Minimum="0.0001" Maximum="100000" ToolTip="{meta:Hint model:DisplayLayer.Brightness}" />
 
 		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.BlackLevel}" />
-		<TextBox Text="{Binding BlackLevel}" ToolTip="{meta:Hint model:DisplayLayer.BlackLevel}" />
+		<controls:NumberBox Text="{Binding BlackLevel}" Minimum="-10" Maximum="1" Increment="0.01" ToolTip="{meta:Hint model:DisplayLayer.BlackLevel}" />
 
 		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.Preview}"
 		          IsChecked="{Binding Preview}" ToolTip="{meta:Hint model:DisplayLayer.Preview}" />
+		<!-- the scene image's glowing-edges outline: over the preview (opt-out), baked into exports (opt-in) -->
+		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.Overlay}"
+		          IsChecked="{Binding Overlay}" ToolTip="{meta:Hint model:DisplayLayer.Overlay}" />
+		<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:DisplayLayer.OverlayGain}" />
+		<controls:NumberBox Text="{Binding OverlayGain}" Minimum="0" Maximum="5" Increment="0.05" ToolTip="{meta:Hint model:DisplayLayer.OverlayGain}" />
+		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.OverlayInExport}"
+		          IsChecked="{Binding OverlayInExport}" ToolTip="{meta:Hint model:DisplayLayer.OverlayInExport}" />
 		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.Export}"
 		          IsChecked="{Binding Export}" ToolTip="{meta:Hint model:DisplayLayer.Export}" />
 	</controls:FormPanel>

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using WaveDude.Model;
 
 namespace WaveDude.WPF.Panes;
 
@@ -16,6 +17,10 @@ public partial class PropertiesPane : UserControl
 	public static readonly DependencyProperty SelectedObjectProperty = DependencyProperty.Register(
 		nameof(SelectedObject), typeof(object), typeof(PropertiesPane));
 
+	/// <summary>Identifies the <see cref="Project"/> property.</summary>
+	public static readonly DependencyProperty ProjectProperty = DependencyProperty.Register(
+		nameof(Project), typeof(Project), typeof(PropertiesPane));
+
 	public PropertiesPane()
 	{
 		InitializeComponent();
@@ -26,6 +31,13 @@ public partial class PropertiesPane : UserControl
 	{
 		get => GetValue(SelectedObjectProperty);
 		set => SetValue(SelectedObjectProperty, value);
+	}
+
+	/// <summary>The project the selected object belongs to, for views that need its other parts (a source's wavelength needs the solver settings).</summary>
+	public Project? Project
+	{
+		get => (Project?)GetValue(ProjectProperty);
+		set => SetValue(ProjectProperty, value);
 	}
 
 	/// <summary>Puts the caret into the first text box of the current view once it is built, selecting its text.</summary>

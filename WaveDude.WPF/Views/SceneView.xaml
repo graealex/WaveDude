@@ -2,12 +2,15 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:WaveDude.WPF.Controls"
+             xmlns:commands="clr-namespace:WaveDude.WPF.Commands"
+             xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
              xmlns:meta="clr-namespace:WaveDude.WPF.Markup"
              xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
 
 	<UserControl.Resources>
+		<converters:ImageInfoConverter x:Key="ImageInfo" />
 		<!-- the size applies to a blank canvas, the image path to an image scene -->
-		<Style x:Key="CanvasOnly" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+		<Style x:Key="CanvasOnly" TargetType="{x:Type controls:NumberBox}" BasedOn="{StaticResource {x:Type controls:NumberBox}}">
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding Mode}" Value="Image">
 					<Setter Property="IsEnabled" Value="False" />
@@ -32,19 +35,29 @@
 				          SelectedItem="{Binding Mode}" ToolTip="{meta:Hint model:Scene.Mode}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.Image}" />
-				<TextBox Style="{StaticResource ImageOnly}" Text="{Binding Image, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:Scene.Image}" />
+				<!-- the name of the embedded image (or a legacy path), and the picker that embeds a file -->
+				<DockPanel>
+					<Button DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,0" Content="{DynamicResource ButtonBrowse}"
+					        ToolTip="{DynamicResource TipBrowseSceneImage}" Command="{x:Static commands:ProjectCommands.BrowseSceneImage}"
+					        AutomationProperties.AutomationId="SceneBrowse" />
+					<TextBox Style="{StaticResource ImageOnly}" Text="{Binding Image, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:Scene.Image}" />
+				</DockPanel>
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{DynamicResource LabelEmbeddedImage}" />
+				<TextBlock VerticalAlignment="Center" Text="{Binding ImageData, Converter={StaticResource ImageInfo}}"
+				           ToolTip="{DynamicResource TipEmbeddedImage}" AutomationProperties.AutomationId="SceneImageInfo" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.Width}" />
-				<TextBox Style="{StaticResource CanvasOnly}" Text="{Binding Width}" ToolTip="{meta:Hint model:Scene.Width}" />
+				<controls:NumberBox Style="{StaticResource CanvasOnly}" Text="{Binding Width}" Minimum="8" Maximum="16384" ToolTip="{meta:Hint model:Scene.Width}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.Height}" />
-				<TextBox Style="{StaticResource CanvasOnly}" Text="{Binding Height}" ToolTip="{meta:Hint model:Scene.Height}" />
+				<controls:NumberBox Style="{StaticResource CanvasOnly}" Text="{Binding Height}" Minimum="8" Maximum="16384" ToolTip="{meta:Hint model:Scene.Height}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.DampingEdge}" />
-				<TextBox Text="{Binding DampingEdge}" ToolTip="{meta:Hint model:Scene.DampingEdge}" />
+				<controls:NumberBox Text="{Binding DampingEdge}" Minimum="0" Maximum="8192" ToolTip="{meta:Hint model:Scene.DampingEdge}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.RefractiveIndex}" />
-				<TextBox Text="{Binding RefractiveIndex}" ToolTip="{meta:Hint model:Scene.RefractiveIndex}" />
+				<controls:NumberBox Text="{Binding RefractiveIndex}" Minimum="1" Maximum="2.55" Increment="0.01" ToolTip="{meta:Hint model:Scene.RefractiveIndex}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionImageSources}" />
@@ -53,7 +66,7 @@
 				          IsChecked="{Binding ImageSources}" ToolTip="{meta:Hint model:Scene.ImageSources}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.ImageSourceScale}" />
-				<TextBox Text="{Binding ImageSourceScale}" IsEnabled="{Binding ImageSources}" ToolTip="{meta:Hint model:Scene.ImageSourceScale}" />
+				<controls:NumberBox Text="{Binding ImageSourceScale}" Minimum="0" Maximum="1000" Increment="0.1" IsEnabled="{Binding ImageSources}" ToolTip="{meta:Hint model:Scene.ImageSourceScale}" />
 
 				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Scene.ObjectSources}"
 				          IsChecked="{Binding ObjectSources}" ToolTip="{meta:Hint model:Scene.ObjectSources}" />

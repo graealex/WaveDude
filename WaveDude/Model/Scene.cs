@@ -52,6 +52,7 @@ public sealed class Scene : ObservableObject
 	private bool _imageSources;
 	private double _imageSourceScale = DefaultImageSourceScale;
 	private bool _objectSources = true;
+	private byte[]? _imageData;
 
 	/// <summary>Blank canvas of <see cref="Width"/> × <see cref="Height"/>, or a canvas built from <see cref="Image"/>.</summary>
 	[XmlAttribute]
@@ -72,12 +73,28 @@ public sealed class Scene : ObservableObject
 	[DefaultValue("")]
 	[Category("Canvas")]
 	[DisplayName("Scene image")]
-	[Description("Image the canvas is built from: red = refractive index, green = sources, blue = damping. Relative to the project folder.")]
+	[Description("Image the canvas is built from: red = refractive index, green = sources, blue = damping. The name of the embedded image, or a path relative to the project folder.")]
 	public string Image
 	{
 		get => _image;
 		set => SetProperty(ref _image, value);
 	}
+
+	/// <summary>
+	/// The scene image file embedded in the project (2026-10-13): its bytes as they were on disk (PNG, BMP,
+	/// JPEG…), base64 in the XML; null when the scene has no image or refers to one by path through
+	/// <see cref="Image"/>. The application decodes it. Replacing it is a simulation-affecting change.
+	/// </summary>
+	[XmlElement("ImageData", DataType = "base64Binary")]
+	[Browsable(false)]
+	public byte[]? ImageData
+	{
+		get => _imageData;
+		set => SetProperty(ref _imageData, value);
+	}
+
+	/// <summary>Only an embedded image is written.</summary>
+	public bool ShouldSerializeImageData() => _imageData != null;
 
 	/// <summary>Width of a blank canvas in pixels.</summary>
 	[XmlAttribute]
@@ -165,7 +182,7 @@ public sealed class Scene : ObservableObject
 	[XmlIgnore]
 	[Browsable(false)]
 	public bool IsDefault =>
-		Mode == SceneMode.Canvas && Image.Length == 0 && Width == DefaultWidth && Height == DefaultHeight
+		Mode == SceneMode.Canvas && Image.Length == 0 && ImageData == null && Width == DefaultWidth && Height == DefaultHeight
 		&& DampingEdge == 0 && RefractiveIndex == DefaultRefractiveIndex && !ImageSources
 		&& ImageSourceScale == DefaultImageSourceScale && ObjectSources;
 

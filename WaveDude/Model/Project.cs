@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Xml;
 using System.Xml.Serialization;
 using NLog;
+using WaveDude.Rendering;
 
 namespace WaveDude.Model;
 
@@ -27,6 +28,7 @@ public sealed class Project : ObservableObject
 	private Display _display = new();
 	private ObservableCollection<Source> _sources = new();
 	private ObservableCollection<Probe> _probes = new();
+	private ObservableCollection<ColorScheme> _colorSchemes = new();
 
 	private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 	private static readonly XmlSerializer Serializer = new(typeof(Project));
@@ -130,6 +132,18 @@ public sealed class Project : ObservableObject
 		set => SetProperty(ref _probes, value);
 	}
 
+	/// <summary>
+	/// The project's own colour schemes (2026-10-13): edited copies and loaded files, stored in the project
+	/// file so it stays self-contained. A display layer's scheme name finds these before the shared ones.
+	/// </summary>
+	[XmlElement("ColorScheme")]
+	[Browsable(false)]
+	public ObservableCollection<ColorScheme> ColorSchemes
+	{
+		get => _colorSchemes;
+		set => SetProperty(ref _colorSchemes, value);
+	}
+
 	/// <summary>Tells <see cref="XmlSerializer"/> to leave an all-default scene out of the file.</summary>
 	public bool ShouldSerializeScene() => !Scene.IsDefault;
 
@@ -171,6 +185,39 @@ public sealed class Project : ObservableObject
 		Probes.Add(probe);
 		return probe;
 	}
+
+	/// <summary>Appends a new black-to-white scheme named "Scheme n" and returns it.</summary>
+	public ColorScheme AddColorScheme()
+	{
+		var scheme = new ColorScheme(NumberedName("Scheme", ColorSchemes.Select(s => s.Name)), ColorScheme.Grey());
+		ColorSchemes.Add(scheme);
+		return scheme;
+	}
+
+	/// <summary>Appends a scheme that came from elsewhere (a file, a copy); its name gets a " copy" suffix when taken.</summary>
+	public ColorScheme AddColorScheme(ColorScheme scheme)
+	{
+		if (ColorSchemes.Any(s => string.Equals(s.Name, scheme.Name, StringComparison.OrdinalIgnoreCase)))
+		{
+			scheme.Name = CopyName(scheme.Name, ColorSchemes.Select(s => s.Name));
+		}
+		ColorSchemes.Add(scheme);
+		return scheme;
+	}
+
+	/// <summary>Inserts a copy of <paramref name="scheme"/> right after it, named "&lt;name&gt; copy", and returns the copy.</summary>
+	public ColorScheme Duplicate(ColorScheme scheme)
+	{
+		ColorScheme copy = scheme.Clone(CopyName(scheme.Name, ColorSchemes.Select(s => s.Name)));
+		ColorSchemes.Insert(ColorSchemes.IndexOf(scheme) + 1, copy);
+		return copy;
+	}
+
+	/// <summary>Removes a scheme; false when it is not in the project.</summary>
+	public bool Remove(ColorScheme scheme) => ColorSchemes.Remove(scheme);
+
+	/// <summary>Moves a scheme to another index; false when nothing changes.</summary>
+	public bool Move(ColorScheme scheme, int index) => Move(ColorSchemes, scheme, index);
 
 	/// <summary>Inserts a copy of <paramref name="source"/> right after it, named "&lt;name&gt; copy", and returns the copy.</summary>
 	public Source Duplicate(Source source)
@@ -304,6 +351,14 @@ public sealed class Project : ObservableObject
 		foreach (Probe probe in Probes)
 		{
 			probe.Normalize();
+		}
+		foreach (ColorScheme scheme in ColorSchemes)
+		{
+			scheme.Normalize();
+			if (scheme.Name.Length == 0)
+			{
+				scheme.Name = NumberedName("Scheme", ColorSchemes.Select(s => s.Name));
+			}
 		}
 	}
 }
