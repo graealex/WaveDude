@@ -65,7 +65,7 @@ public partial class PreviewPane : UserControl
 
 	/// <summary>Identifies the <see cref="Project"/> property.</summary>
 	public static readonly DependencyProperty ProjectProperty = DependencyProperty.Register(
-		nameof(Project), typeof(Project), typeof(PreviewPane));
+		nameof(Project), typeof(Project), typeof(PreviewPane), new PropertyMetadata(null, (d, _) => ((PreviewPane)d).OnProjectReplaced()));
 
 	/// <summary>Identifies the <see cref="Run"/> property.</summary>
 	public static readonly DependencyProperty RunProperty = DependencyProperty.Register(
@@ -657,6 +657,14 @@ public partial class PreviewPane : UserControl
 	/// <summary>The canvas follows the project's size while nothing is shown.</summary>
 	private void UpdateCanvas() => UpdateSource();
 
+	/// <summary>Another project (new, opened, imported or closed): playback stops and the timeline goes back to frame 0 (the user's rule, 2026-10-15).</summary>
+	private void OnProjectReplaced()
+	{
+		IsPlaying = false;
+		IsLive = false;
+		Position = 0;
+	}
+
 	/// <summary>A black picture of the given size, frozen; what the pane shows before any run.</summary>
 	private static BitmapSource BlackFrame(int width, int height)
 	{
@@ -993,7 +1001,19 @@ public partial class PreviewPane : UserControl
 	}
 
 	/// <summary>A click on the pictures gives the pane keyboard focus so that Space toggles playback.</summary>
-	private void OnPicturesMouseDown(object sender, MouseButtonEventArgs e) => Focus();
+	/// <summary>
+	/// A click on the pictures gives the pane keyboard focus so that Space toggles playback, and a left click on
+	/// empty space (the handles and graph boxes are thumbs, which handle their own press) deselects the current
+	/// item (the user's rule, 2026-10-15).
+	/// </summary>
+	private void OnPicturesMouseDown(object sender, MouseButtonEventArgs e)
+	{
+		if (e.ChangedButton == MouseButton.Left)
+		{
+			SelectedItem = null;
+		}
+		Focus();
+	}
 
 	/// <summary>Puts the splitter back in the middle: both pictures get an equal star share of the split dimension.</summary>
 	private void ResetSplit()

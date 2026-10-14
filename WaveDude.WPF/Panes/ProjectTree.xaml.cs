@@ -59,6 +59,15 @@ public partial class ProjectTree : UserControl
 	public event RoutedPropertyChangedEventHandler<object>? SelectedItemChanged;
 
 	/// <summary>Selects the node of a model object once the tree has generated it; with <paramref name="focus"/> the node also takes keyboard focus.</summary>
+	/// <summary>Deselects the selected node, if any; the tree then raises its change with null (2026-10-15, a click on empty preview space).</summary>
+	public void ClearSelection()
+	{
+		if (tree.SelectedItem is { } item)
+		{
+			tree.SetSelectedItem(item, expand: false, focus: false, select: false);
+		}
+	}
+
 	public void Select(object item, bool focus = true) =>
 		Dispatcher.InvokeAsync(() => tree.SetSelectedItem(item, expand: true, focus), DispatcherPriority.Loaded);
 

@@ -11,10 +11,15 @@ public static class TreeViewExtensions
 	/// keeps the focus, 2026-10-14). Only realised containers are searched, so call it once the
 	/// tree has generated its items. Returns false when the item was not found.
 	/// </summary>
-	public static bool SetSelectedItem(this TreeView tree, object item, bool expand = false, bool focus = true) =>
-		SetSelected(tree, item, expand, focus);
+	/// <param name="tree">The tree.</param>
+	/// <param name="item">The data item whose container is wanted.</param>
+	/// <param name="expand">Expand the container too.</param>
+	/// <param name="focus">Give the container keyboard focus.</param>
+	/// <param name="select">Select the container; false deselects it instead (nothing else is touched then).</param>
+	public static bool SetSelectedItem(this TreeView tree, object item, bool expand = false, bool focus = true, bool select = true) =>
+		SetSelected(tree, item, expand, focus, select);
 
-	private static bool SetSelected(ItemsControl? parent, object item, bool expand, bool focus)
+	private static bool SetSelected(ItemsControl? parent, object item, bool expand, bool focus, bool select)
 	{
 		if (parent == null)
 		{
@@ -22,20 +27,20 @@ public static class TreeViewExtensions
 		}
 		if (parent.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem container)
 		{
-			if (focus)
+			if (focus && select)
 			{
 				container.Focus();
 			}
-			if (expand)
+			if (expand && select)
 			{
 				container.IsExpanded = true;
 			}
-			container.IsSelected = true;
+			container.IsSelected = select;
 			return true;
 		}
 		foreach (object child in parent.Items)
 		{
-			if (SetSelected(parent.ItemContainerGenerator.ContainerFromItem(child) as ItemsControl, item, expand, focus))
+			if (SetSelected(parent.ItemContainerGenerator.ContainerFromItem(child) as ItemsControl, item, expand, focus, select))
 			{
 				return true;
 			}

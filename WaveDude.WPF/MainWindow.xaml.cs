@@ -118,7 +118,12 @@ public partial class MainWindow : Window
 	private void OnSelectedItemChanged(object? item)
 	{
 		CommandManager.InvalidateRequerySuggested();
-		if (item != null && !ReferenceEquals(projectTree.SelectedItem, item))
+		if (item == null)
+		{
+			// deselected on the preview (a click on empty space): the tree lets go too
+			projectTree.ClearSelection();
+		}
+		else if (!ReferenceEquals(projectTree.SelectedItem, item))
 		{
 			projectTree.Select(item, focus: false);
 		}

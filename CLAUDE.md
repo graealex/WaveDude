@@ -60,7 +60,8 @@ WPF shell as it stands:
   while it fills, so nothing coerces it), Live is switched off whatever the button said, and the
   scratch frame stays on screen until the store has that frame. An edit during an automatic run
   stops it at once (its snapshot is obsolete) and the quiet period starts a fresh one; a run the
-  user started keeps going and is just marked stale. Discarding a run keeps the position too.
+  user started keeps going and is just marked stale. Discarding a run keeps the position too; a replaced project (New, Open, Import, Close) stops playback and
+  puts the timeline back to frame 0 (`PreviewPane.OnProjectReplaced`, the user's rule, 2026-10-15).
   **Play means "show me the simulation"**: Play/Space issues `SimulationCommands.EnsureRun`, which
   starts an automatic run when there is none or it is stale (position kept, Live off, playback not
   interrupted); while the run has not reached the playhead, playback holds at the newest frame
@@ -279,7 +280,9 @@ WPF shell as it stands:
   and colour scheme (agreed 2026-10-09 after thin white rings vanished on the intensity picture).
   Dragging writes `Source.X/Y`, `Probe.AX/AY/BX/BY` in canvas pixels; the arrow keys move the
   focused handle by one pixel (ten with Shift); grabbing or focusing a handle selects the item
-  (`PreviewPane.SelectedItem` ↔ `MainWindow.SelectedItem` ↔ the Project tree, both ways). Handles
+  (`PreviewPane.SelectedItem` ↔ `MainWindow.SelectedItem` ↔ the Project tree, both ways); a left click on
+  empty picture space deselects (the user's rule, 2026-10-15: the pictures' `MouseDown`, which the thumbs do
+  not let through, sets the item to null and `ProjectTree.ClearSelection` lets the tree go too). Handles
   carry AutomationIds `Source:<name>`, `Probe:<name>:A|B`. The overlay is styled explicitly where it
   is placed: WPF applies implicit styles inside a control template only to `Control`s, and the
   overlay is a `Panel` (its handles came out as bare default thumbs until then). `Editors.xaml` gained the editable-combo text
@@ -439,7 +442,8 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   `System.Windows.Automation` properties. Do **not** call UIA *patterns* (`Invoke`, `SetValue`,
   `Select`, `SetFocus`): on this app each one focuses its target and activates the window. Modifier
   keys cannot be posted (WPF reads them from the real keyboard state), so only unmodified shortcuts
-  are testable.
+  are testable. Posted mouse messages (`WM_LBUTTONDOWN`/`UP` after a `WM_MOUSEMOVE`) are dropped by WPF as well
+  (verified 2026-10-15: a posted click on Play did nothing), so a click can only be checked by hand.
   `_tools/ui_check/ComboListShot.ps1` opens the speed combo by keyboard and screenshots the list
   (the popup has no HWND in UIA, so its screen rectangle is copied), for judging list colours.
   `PrintWindow(…, PW_RENDERFULLCONTENT)` captures the inactive window. UIA lookups can miss while
