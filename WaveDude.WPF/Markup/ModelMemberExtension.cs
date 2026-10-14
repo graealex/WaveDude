@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Reflection;
+using System.Windows;
 using System.Windows.Markup;
 using System.Xaml;
 
@@ -36,8 +37,18 @@ public abstract class ModelMemberExtension : MarkupExtension
 		string name = Member[(dot + 1)..];
 		PropertyInfo property = type.GetProperty(name)
 			?? throw new System.Windows.Markup.XamlParseException($"'{type.Name}' has no property '{name}'.");
+		// a string table entry wins over the attribute and follows the language (a DynamicResource); the attribute
+		// is the English source and the fallback (2026-10-14; the tables are generated from the attributes)
+		string key = $"{Prefix}.{type.Name}.{name}";
+		if (Application.Current?.TryFindResource(key) != null)
+		{
+			return new DynamicResourceExtension(key).ProvideValue(serviceProvider);
+		}
 		return Provide(property);
 	}
+
+	/// <summary>The resource key prefix of this kind of text ("Label" or "Hint").</summary>
+	protected abstract string Prefix { get; }
 
 	/// <summary>Produces the value for the resolved property.</summary>
 	protected abstract object Provide(PropertyInfo property);
@@ -52,6 +63,8 @@ public sealed class LabelExtension : ModelMemberExtension
 	}
 
 	/// <inheritdoc/>
+	protected override string Prefix => "Label";
+
 	protected override object Provide(PropertyInfo property) =>
 		property.GetCustomAttribute<DisplayNameAttribute>()?.DisplayName ?? property.Name;
 }
@@ -65,6 +78,8 @@ public sealed class HintExtension : ModelMemberExtension
 	}
 
 	/// <inheritdoc/>
+	protected override string Prefix => "Hint";
+
 	protected override object Provide(PropertyInfo property) =>
 		property.GetCustomAttribute<DescriptionAttribute>()?.Description!;
 }

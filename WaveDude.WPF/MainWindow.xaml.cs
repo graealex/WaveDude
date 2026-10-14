@@ -8,7 +8,9 @@ using System.Windows.Shell;
 using Microsoft.Win32;
 using NLog;
 using WaveDude.Model;
+using WaveDude.Rendering;
 using WaveDude.WPF.Docking;
+using WaveDude.WPF.Localization;
 using WaveDude.WPF.Properties;
 using WaveDude.WPF.Theming;
 
@@ -56,6 +58,24 @@ public partial class MainWindow : Window
 		}
 
 		SourceInitialized += (_, _) => ThemeController.Instance.ApplyTitleBar(this);
+		// texts taken once at construction follow a language change here: the dock titles (plain properties) and the
+		// theme entries (converted headers); everything else is a DynamicResource (2026-10-14)
+		LanguageController.Instance.PropertyChanged += (_, args) =>
+		{
+			if (args.PropertyName == nameof(LanguageController.Current))
+			{
+				ApplyLanguageTexts();
+			}
+		};
+		// the engine choice is only ever written through the Simulation menu; say so in the log with a time
+		// stamp, so a run on the CPU can be traced back to the click that caused it (2026-10-10)
+		Settings.Default.PropertyChanged += (_, args) =>
+		{
+			if (args.PropertyName == nameof(Settings.UseGpu))
+			{
+				Logger.Info(Settings.Default.UseGpu ? "Use the GPU switched on (Simulation menu)" : "Use the GPU switched off (Simulation menu): runs use the CPU from now on");
+			}
+		};
 		Closing += (_, _) =>
 		{
 			Settings.Default.Layout = dockHost.SaveLayout();
@@ -101,6 +121,11 @@ public partial class MainWindow : Window
 	/// </summary>
 	internal void OpenFile(string fileName)
 	{
+		if (string.Equals(Path.GetExtension(fileName), ColorSchemeStore.XmlExtension, StringComparison.OrdinalIgnoreCase))
+		{
+			ImportScheme(fileName);
+			return;
+		}
 		try
 		{
 			fileName = Path.GetFullPath(fileName);
@@ -111,6 +136,24 @@ public partial class MainWindow : Window
 			Logger.Info("Opened '{Path}'", fileName);
 			RememberRecent(fileName);
 			projectTree.SelectRoot();
+		}
+		catch (Exception ex)
+		{
+			Logger.Error(ex, "Error while opening '{Path}'", fileName);
+			ShowError(string.Format((string)FindResource("OpenError"), fileName), ex);
+		}
+	}
+
+	/// <summary>A scheme file (double-clicked, or given on the command line) is added to the open project's own schemes and selected.</summary>
+	private void ImportScheme(string fileName)
+	{
+		try
+		{
+			ColorScheme scheme = ColorSchemeStore.LoadFile(fileName);
+			scheme.FilePath = "";
+			Project.AddColorScheme(scheme);
+			projectTree.Select(scheme);
+			Logger.Info("Colour scheme '{Name}' loaded from '{Path}' into the project", scheme.Name, fileName);
 		}
 		catch (Exception ex)
 		{
@@ -241,6 +284,42 @@ public partial class MainWindow : Window
 	}
 
 	private void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e) => SelectedItem = e.NewValue;
+
+	/// <summary>Re-reads the texts that are not DynamicResources: the dock pane titles and the theme menu's entries.</summary>
+	private void ApplyLanguageTexts()
+	{
+		projectDock.Title = (string)FindResource("PaneProject");
+		propertiesDock.Title = (string)FindResource("PaneProperties");
+		messagesDock.Title = (string)FindResource("PaneMessages");
+		themeMenu.Items.Refresh();
+	}
+
+	/// <summary>
+	/// A plain F10 focuses the menu bar (its first header; Left/Right move along it, Down opens a menu,
+	/// Escape leaves). WPF enters menu mode itself for a real F10 or Alt, which arrive as system keys and
+	/// need the real keyboard state; a harness posting messages has neither, so this is its way into the
+	/// menus (2026-10-14), and it does no harm for a person.
+	/// </summary>
+	protected override void OnPreviewKeyDown(KeyEventArgs e)
+	{
+		base.OnPreviewKeyDown(e);
+		if (!e.Handled && e.Key == Key.F10 && !mainMenu.IsKeyboardFocusWithin
+			&& mainMenu.ItemContainerGenerator.ContainerFromIndex(0) is MenuItem first)
+		{
+			first.Focus();
+			e.Handled = true;
+		}
+	}
+
+	/// <summary>Escape on a focused menu header (not inside an open menu) returns the focus to the preview.</summary>
+	private void OnMenuPreviewKeyDown(object sender, KeyEventArgs e)
+	{
+		if (e.Key == Key.Escape && e.OriginalSource is MenuItem { Role: MenuItemRole.TopLevelHeader, IsSubmenuOpen: false })
+		{
+			previewPane.Focus();
+			e.Handled = true;
+		}
+	}
 
 	/// <inheritdoc/>
 	protected override void OnClosed(EventArgs e)

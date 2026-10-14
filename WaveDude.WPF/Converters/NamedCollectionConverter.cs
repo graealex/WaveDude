@@ -1,7 +1,9 @@
 using System.Collections;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using WaveDude.WPF.Localization;
 
 namespace WaveDude.WPF.Converters;
 
@@ -30,8 +32,8 @@ public sealed class NamedCollectionConverter : IMultiValueConverter
 			}
 			if (value is IEnumerable items && value is not string)
 			{
-				string name = i < names.Length ? names[i].Trim() : "";
-				result.Add(new NamedCollection(name, items));
+				string key = i < names.Length ? names[i].Trim() : "";
+				result.Add(new NamedCollection(key, items));
 			}
 			else
 			{
@@ -50,18 +52,29 @@ public sealed class NamedCollectionConverter : IMultiValueConverter
 /// A labelled folder node wrapping a collection, so that a list such as the project's sources
 /// shows as "Sources" with the elements beneath it. Enumerates the wrapped items.
 /// </summary>
-public sealed class NamedCollection : IEnumerable
+public sealed class NamedCollection : IEnumerable, INotifyPropertyChanged
 {
-	/// <param name="label">Header text of the folder node.</param>
+	/// <param name="key">The resource key of the label ("TreeSources").</param>
 	/// <param name="items">The wrapped collection; an observable one keeps the node in sync.</param>
-	public NamedCollection(string label, IEnumerable items)
+	public NamedCollection(string key, IEnumerable items)
 	{
-		Label = label;
+		Key = key;
 		Items = items;
+		// the label follows the language; a weak handler, since folders are recreated with every project
+		PropertyChangedEventManager.AddHandler(LanguageController.Instance, OnLanguageChanged, nameof(LanguageController.Current));
 	}
 
-	/// <summary>Header text of the folder node.</summary>
-	public string Label { get; }
+	/// <summary>The resource key of the label ("TreeSources"); language-independent, for automation ids.</summary>
+	public string Key { get; }
+
+	/// <summary>The label in the current language (the resource under <see cref="Key"/>, else the key itself).</summary>
+	public string Label => Application.Current?.TryFindResource(Key) as string ?? Key;
+
+	/// <inheritdoc/>
+	public event PropertyChangedEventHandler? PropertyChanged;
+
+	private void OnLanguageChanged(object? sender, PropertyChangedEventArgs e) =>
+		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
 
 	/// <summary>The wrapped collection.</summary>
 	public IEnumerable Items { get; }

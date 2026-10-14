@@ -26,6 +26,9 @@
     <Setting Name="Theme" Type="WaveDude.WPF.Theming.AppTheme" Scope="User">
       <Value Profile="(Default)">System</Value>
     </Setting>
+    <Setting Name="Language" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
     <Setting Name="RecentFiles" Type="System.Collections.Specialized.StringCollection" Scope="User">
       <Value Profile="(Default)" />
     </Setting>

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:docking="clr-namespace:WaveDude.WPF.Docking"
         xmlns:theming="clr-namespace:WaveDude.WPF.Theming"
+        xmlns:localization="clr-namespace:WaveDude.WPF.Localization"
         xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
         xmlns:panes="clr-namespace:WaveDude.WPF.Panes"
         xmlns:commands="clr-namespace:WaveDude.WPF.Commands"
@@ -55,9 +56,23 @@
 			<Setter Property="CommandParameter" Value="{Binding}" />
 		</Style>
 
+		<!-- one entry per language ("System" first): check mark follows the current code, click selects -->
+		<Style x:Key="LanguageMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding Name}" />
+			<Setter Property="Command" Value="{Binding SelectCommand, Source={x:Static localization:LanguageController.Instance}}" />
+			<Setter Property="CommandParameter" Value="{Binding Code}" />
+			<Setter Property="IsChecked">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource Equality}" Mode="OneWay">
+						<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+						<Binding Path="Code" />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+		</Style>
 		<!-- one entry per theme: check mark follows the current theme, click selects -->
 		<Style x:Key="ThemeMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
-			<Setter Property="Header" Value="{Binding}" />
+			<Setter Property="Header" Value="{Binding Converter={StaticResource EnumName}}" />
 			<Setter Property="Command" Value="{Binding SelectCommand, Source={x:Static theming:ThemeController.Instance}}" />
 			<Setter Property="CommandParameter" Value="{Binding}" />
 			<Setter Property="IsChecked">
@@ -103,6 +118,8 @@
 		<CommandBinding Command="{x:Static commands:ProjectCommands.Remove}" CanExecute="CanEditItem" Executed="OnRemove" />
 		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveUp}" CanExecute="CanMoveUp" Executed="OnMoveUp" />
 		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveDown}" CanExecute="CanMoveDown" Executed="OnMoveDown" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.ToggleEnabled}" CanExecute="CanToggleEnabled" Executed="OnToggleEnabled" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.BrowseSceneImage}" Executed="OnBrowseSceneImage" />
 	</Window.CommandBindings>
 
 	<!-- SaveAs has no default gesture -->
@@ -112,7 +129,8 @@
 
 	<DockPanel>
 
-		<Menu DockPanel.Dock="Top">
+		<!-- not in the Tab cycle (Windows convention: F10 or Alt reach the menu bar); Tab used to wander through the headers into a submenu -->
+		<Menu x:Name="mainMenu" DockPanel.Dock="Top" KeyboardNavigation.TabNavigation="None" IsTabStop="False" PreviewKeyDown="OnMenuPreviewKeyDown">
 			<MenuItem Header="{DynamicResource MenuFile}">
 				<MenuItem Command="ApplicationCommands.New" Header="{DynamicResource MenuFileNew}" />
 				<MenuItem Command="ApplicationCommands.Open" Header="{DynamicResource MenuFileOpen}" />
@@ -131,9 +149,12 @@
 				<MenuItem Header="{DynamicResource MenuViewPanes}"
 				          ItemsSource="{Binding Items, ElementName=dockHost}"
 				          ItemContainerStyle="{StaticResource PaneMenuItemStyle}" />
-				<MenuItem Header="{DynamicResource MenuViewTheme}"
+				<MenuItem x:Name="themeMenu" Header="{DynamicResource MenuViewTheme}"
 				          ItemsSource="{Binding Options, Source={x:Static theming:ThemeController.Instance}}"
 				          ItemContainerStyle="{StaticResource ThemeMenuItemStyle}" />
+				<MenuItem Header="{DynamicResource MenuViewLanguage}"
+				          ItemsSource="{Binding Options, Source={x:Static localization:LanguageController.Instance}}"
+				          ItemContainerStyle="{StaticResource LanguageMenuItemStyle}" />
 			</MenuItem>
 			<MenuItem Header="{DynamicResource MenuSimulation}">
 				<MenuItem Command="{x:Static commands:SimulationCommands.Run}" Header="{DynamicResource MenuSimulationRun}" InputGestureText="F5" />
@@ -195,7 +216,7 @@
 					<panes:ProjectTree x:Name="projectTree" Project="{Binding Project}" SelectedItemChanged="OnTreeSelectionChanged" />
 				</docking:DockItem>
 				<docking:DockItem x:Name="propertiesDock" Id="properties" Title="{StaticResource PaneProperties}" DefaultSide="Right">
-					<panes:PropertiesPane x:Name="propertiesPane" SelectedObject="{Binding SelectedItem}" />
+					<panes:PropertiesPane x:Name="propertiesPane" SelectedObject="{Binding SelectedItem}" Project="{Binding Project}" />
 				</docking:DockItem>
 				<docking:DockItem x:Name="messagesDock" Id="messages" Title="{StaticResource PaneMessages}" DefaultSide="Bottom">
 					<panes:MessagesPane x:Name="messagesPane" TargetName="messages" />

@@ -9,8 +9,10 @@ using System.Windows.Markup;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
+using WaveDude.WPF.Localization;
 using WaveDude.WPF.Logging;
 using WaveDude.WPF.Properties;
+using WaveDude.Rendering;
 using WaveDude.Runs;
 using WaveDude.WPF.Rendering;
 using WaveDude.WPF.Theming;
@@ -194,7 +196,8 @@ public partial class App : Application
 		// double-clicking a project file in Explorer then starts this exe with the path as e.Args[0]
 		if (Environment.ProcessPath is string executable)
 		{
-			FileAssociation.Register(WPF.MainWindow.ProjectExtension, executable);
+			FileAssociation.Register(WPF.MainWindow.ProjectExtension, FileAssociation.ProjectProgId, FileAssociation.ProjectDescription, executable);
+			FileAssociation.Register(ColorSchemeStore.XmlExtension, FileAssociation.SchemeProgId, FileAssociation.SchemeDescription, executable);
 		}
 
 		PrepareSettings();
@@ -210,6 +213,17 @@ public partial class App : Application
 			}
 		};
 		ThemeController.Instance.Refresh();
+
+		// the string table: the setting's language, or the system's; persisted like the theme
+		LanguageController.Instance.Current = Settings.Default.Language;
+		LanguageController.Instance.PropertyChanged += (_, args) =>
+		{
+			if (args.PropertyName == nameof(LanguageController.Current))
+			{
+				Settings.Default.Language = LanguageController.Instance.Current;
+			}
+		};
+		LanguageController.Instance.Refresh();
 
 		var window = new MainWindow();
 		MainWindow = window;
