@@ -128,6 +128,22 @@ WPF shell as it stands:
   `PreviewPane.OverlayImage` on the picture cells). WPF composites source-over, not additively:
   the layer's alpha is the edge strength × gain and its colour the edge colour at full brightness,
   so the preview and a baked export differ slightly at strong edges.
+- **Import of the author's projects** (2026-10-14, promised to the author): `Model/LegacyProject.Import`
+  reads a `configuration.json` with `System.Text.Json`, key for key as the legacy `FromConfig` readers did
+  and with their fallbacks (a file without `use_4th_order_laplacian` means off, without `wave_speed_c`
+  0.563), into a new `Project` with a fresh seed: the scene image is embedded when the relative path
+  resolves beside the file (else the path is kept and noted), damping enabled + size become
+  `DampingEdge`, the preview/export/scheme/brightness/video keys of the author's "simulation" section go
+  to `Display`, `use_gpu` is ignored, a composite source becomes a `SourceArray` whose random amounts count
+  only with `composite_mode` "randomize" and the flag on (the stored elements are not read: they are
+  regenerated from the seed, so a randomised array differs from the original, noted), a source without a
+  position or switched off comes in disabled, probes are named "Probe n", "start after step" counts only
+  with its flag, and a scene-level `use_probes` of false deactivates them. Notes are logged as warnings.
+  `MainWindow.OpenFile` routes any `.json` there (Open dialog, drag and drop, command line; the filter lists
+  "Wave Dude 2D projects (configuration.json)"); the result is unsaved and Save As proposes
+  `<project_name>.wdproj` beside the original (`_suggestedFileName`). Checked in `library_check` on
+  Examples 12, 5 and 3 and the `Project/Test` file (skipped when `Wave_Dude_Examples` is not found above
+  the harness binary), including an XML round trip and the refusal of a newer `format_version`.
 - **Array rotation** (2026-10-14, the user's request): `SourceArray.Angle` in degrees, counter-clockwise on
   the screen (y points down, so x' = x cos + y sin, y' = y cos − x sin about the source position),
   normalised into (−180, 180]; applied in `Source.GenerateElements` before the random offsets, edited in the
@@ -327,6 +343,11 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   switches back to System. A window Windows never activated has no focused element and loses posted
   keys; `Start-App` posts `WM_SETFOCUS` then (`FocusedId` "(none)"). Settles are 60 ms per key
   (`Key`'s default), 100–300 ms where layout follows, `WaitFor` for anything the app computes.
+  `_tools/ui_check/ImportCheck.ps1` (2026-10-14, 10 checks, about 10 s) starts the app with Example 12's
+  `configuration.json` on the command line and checks the import landed: an unsaved project (bare title),
+  four sources and two probes in the tree with their enabled/active state, 7500 frames on the timeline, the
+  embedded image's 16:9 canvas, Source 1's marker at (150, 140), and the status bar's import message
+  (the message text block carries the id `StatusMessage`).
   `FocusedId` is **one** UI Automation query for the element with keyboard focus (a template part's
   id such as `PART_EditableTextBox` is mapped to its owner); asking 17 ids one by one cost half a
   second per Tab and made `FocusOn` crawl. Timings after the 2026-10-14 clean-up: RunCheck 67 s
@@ -659,9 +680,7 @@ PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next ses
   and a decision whether export needs a finished run (simplest: export the frames that exist).
   Author's point 10.
 
-**Also open, smaller.** Import of the author's JSON projects (`Wave_Dude_Examples/*/configuration.json`;
-the legacy `ProjectConfig`/`ProjectStore` read them; the user promised the author an importer);
-a colour picker dialog for stops (hex only now; WinForms `ColorDialog` needs `UseWindowsForms`);
+**Also open, smaller.** A colour picker dialog for stops (hex only now; WinForms `ColorDialog` needs `UseWindowsForms`);
 offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
 refer to it; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
 dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and

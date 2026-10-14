@@ -157,7 +157,7 @@
 	<s:String x:Key="TipRemoveStop">Supprimer ce point</s:String>
 	<s:String x:Key="TipStopPosition">Position dans le dégradé : 0 à la valeur la plus basse, 1 à la plus haute</s:String>
 	<s:String x:Key="TipStopColor">Couleur en #RRGGBB ; Entrée l'applique</s:String>
-	<s:String x:Key="OpenFileDialogFilter">Projets Wave Dude (*.wdproj)|*.wdproj|Fichiers XML (*.xml)|*.xml|Tous les fichiers (*.*)|*.*</s:String>
+	<s:String x:Key="OpenFileDialogFilter">Projets Wave Dude (*.wdproj)|*.wdproj|Projets Wave Dude 2D (configuration.json)|configuration.json;*.json|Fichiers XML (*.xml)|*.xml|Tous les fichiers (*.*)|*.*</s:String>
 	<s:String x:Key="SaveFileDialogFilter">Projets Wave Dude (*.wdproj)|*.wdproj|Fichiers XML (*.xml)|*.xml</s:String>
 	<s:String x:Key="OpenError">Impossible d'ouvrir '{0}'.</s:String>
 	<s:String x:Key="SaveError">Impossible d'enregistrer '{0}'.</s:String>

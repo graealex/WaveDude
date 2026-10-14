@@ -126,6 +126,11 @@ public partial class MainWindow : Window
 			ImportScheme(fileName);
 			return;
 		}
+		if (LegacyProject.IsLegacyFile(fileName))
+		{
+			ImportLegacy(fileName);
+			return;
+		}
 		try
 		{
 			fileName = Path.GetFullPath(fileName);
@@ -133,6 +138,7 @@ public partial class MainWindow : Window
 			DiscardRun();
 			Project = loaded;
 			Filename = fileName;
+			_suggestedFileName = null;
 			Logger.Info("Opened '{Path}'", fileName);
 			RememberRecent(fileName);
 			projectTree.SelectRoot();
@@ -143,6 +149,38 @@ public partial class MainWindow : Window
 			ShowError(string.Format((string)FindResource("OpenError"), fileName), ex);
 		}
 	}
+
+	/// <summary>
+	/// A project of the author's program (its <c>configuration.json</c>) becomes a new, unsaved project
+	/// (2026-10-14): the scene image is embedded, what could not be carried over exactly is logged as a
+	/// warning, and Save As proposes a <c>.wdproj</c> named after the project beside the original.
+	/// </summary>
+	private void ImportLegacy(string fileName)
+	{
+		try
+		{
+			var notes = new List<string>();
+			Project imported = LegacyProject.Import(fileName, notes, out string projectName);
+			DiscardRun();
+			Project = imported;
+			Filename = null;
+			_suggestedFileName = LegacyProject.SuggestedFileName(fileName, projectName);
+			foreach (string note in notes)
+			{
+				Logger.Warn(note);
+			}
+			Logger.Info("Imported the legacy project '{Name}'; save it as a Wave Dude project (File > Save As)", projectName.Length > 0 ? projectName : Path.GetFileName(fileName));
+			projectTree.SelectRoot();
+		}
+		catch (Exception ex)
+		{
+			Logger.Error(ex, "Error while importing '{Path}'", fileName);
+			ShowError(string.Format((string)FindResource("OpenError"), fileName), ex);
+		}
+	}
+
+	/// <summary>The file name Save As proposes for an unsaved imported project; null otherwise.</summary>
+	private string? _suggestedFileName;
 
 	/// <summary>A scheme file (double-clicked, or given on the command line) is added to the open project's own schemes and selected.</summary>
 	private void ImportScheme(string fileName)
@@ -208,6 +246,7 @@ public partial class MainWindow : Window
 		DiscardRun();
 		Project = new Project();
 		Filename = null;
+		_suggestedFileName = null;
 		projectTree.SelectRoot();
 	}
 
@@ -248,7 +287,7 @@ public partial class MainWindow : Window
 			Filter = (string)FindResource("SaveFileDialogFilter"),
 			DefaultExt = ProjectExtension,
 			AddExtension = true,
-			FileName = Filename ?? "",
+			FileName = Filename ?? _suggestedFileName ?? "",
 		};
 		if (dialog.ShowDialog(this) == true)
 		{
@@ -263,6 +302,7 @@ public partial class MainWindow : Window
 		DiscardRun();
 		Project = new Project();
 		Filename = null;
+		_suggestedFileName = null;
 		projectTree.SelectRoot();
 	}
 

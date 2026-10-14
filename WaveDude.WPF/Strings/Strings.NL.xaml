@@ -157,7 +157,7 @@
 	<s:String x:Key="TipRemoveStop">Dit punt verwijderen</s:String>
 	<s:String x:Key="TipStopPosition">Positie in het verloop: 0 bij de laagste waarde, 1 bij de hoogste</s:String>
 	<s:String x:Key="TipStopColor">Kleur als #RRGGBB; Enter past hem toe</s:String>
-	<s:String x:Key="OpenFileDialogFilter">Wave Dude-projecten (*.wdproj)|*.wdproj|XML-bestanden (*.xml)|*.xml|Alle bestanden (*.*)|*.*</s:String>
+	<s:String x:Key="OpenFileDialogFilter">Wave Dude-projecten (*.wdproj)|*.wdproj|Wave Dude 2D-projecten (configuration.json)|configuration.json;*.json|XML-bestanden (*.xml)|*.xml|Alle bestanden (*.*)|*.*</s:String>
 	<s:String x:Key="SaveFileDialogFilter">Wave Dude-projecten (*.wdproj)|*.wdproj|XML-bestanden (*.xml)|*.xml</s:String>
 	<s:String x:Key="OpenError">Kan '{0}' niet openen.</s:String>
 	<s:String x:Key="SaveError">Kan '{0}' niet opslaan.</s:String>

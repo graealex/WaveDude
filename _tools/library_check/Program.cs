@@ -168,6 +168,7 @@ internal static class Program
 		CheckFrameStore(scene);
 		CheckRenderer();
 		CheckColorSchemes();
+		CheckImport();
 		CheckRun();
 
 		Console.WriteLine(_failures == 0 ? "LIBRARY OK" : _failures + " check(s) failed");
@@ -682,6 +683,86 @@ internal static class Program
 		Array.Fill(frame, unchecked((int)0xFF404040));
 		GlowingEdges.BlendAdditive(frame, 5, 5, edges, 0.5);
 		Check(frame[2 * 5 + 2] == unchecked((int)0xFFBFBFBF) && frame[2 * 5 + 3] == unchecked((int)0xFF404040), "additive blend adds edge x gain per channel and leaves flat pixels alone");
+	}
+
+	/// <summary>The repository root (the folder holding the author's examples), found by walking up from the harness binary; null when not found.</summary>
+	private static string? FindRepoRoot()
+	{
+		for (DirectoryInfo? dir = new(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+		{
+			if (Directory.Exists(Path.Combine(dir.FullName, "Wave_Dude_Examples")))
+			{
+				return dir.FullName;
+			}
+		}
+		return null;
+	}
+
+	private static void CheckImport()
+	{
+		Console.WriteLine("--- legacy project import");
+		string? root = FindRepoRoot();
+		if (root == null)
+		{
+			Console.WriteLine("  skip import: the Wave_Dude_Examples folder was not found above the harness");
+			return;
+		}
+		var notes = new List<string>();
+		Project p = LegacyProject.Import(Path.Combine(root, "Wave_Dude_Examples", "Example12_Dispersion", "configuration.json"), notes, out string name);
+		Check(name == "Example12_Dispersion" && p.Description.StartsWith("This example shows the difference", StringComparison.Ordinal) && notes.Count == 0, "Example 12: name and description, no notes");
+		Check(p.Scene.Mode == SceneMode.Image && p.Scene.Image == "frequency_race_track (2).png" && p.Scene.ImageData is { Length: 58074 } && p.Scene.Width == 1920 && p.Scene.Height == 1080, "scene: image mode, the image embedded (58074 bytes) under its file name, 1920 x 1080");
+		Check(p.Scene.DampingEdge == 64 && !p.Scene.ImageSources && p.Scene.ObjectSources && p.Scene.RefractiveIndex == 1.0 && p.Scene.ImageSourceScale == 1.0, "scene: damping 64, object sources on, image sources off");
+		Check(p.Simulation.Steps == 15000 && p.Simulation.VisualizeEvery == 2 && !p.Simulation.FourthOrderLaplacian && p.Simulation.WaveSpeed == 1.0 && p.Simulation.TimeDecay == 10.0 && p.Simulation.SourceFrequencyScale == 2.0 && p.Simulation.IntensityScale == 1.0, "simulation: 15000 steps every 2, 9-point stencil, c 1, decay 10");
+		Check(p.Display.Field.Brightness == 80 && p.Display.Intensity.Brightness == 30 && p.Display.Field.BlackLevel == -0.05 && p.Display.Intensity.BlackLevel == 0 && p.Display.Field.ColorScheme == "Default_Field" && p.Display.Intensity.ColorScheme == "Default_intensity", "display: brightness 80 / 30, black levels, schemes");
+		Check(p.Display.Field.Preview && p.Display.Intensity.Preview && !p.Display.Field.Export && !p.Display.Intensity.Export && p.Display.Video.Fps == 60 && p.Display.Video.Quality == 70, "display: previews on, exports off, 60 fps at quality 70");
+		Check(p.Sources.Count == 4 && p.Sources.Select(s => s.Name).SequenceEqual(["Source 1", "Source 2", "Source 3", "Source 4"]) && p.Sources.Select(s => s.Frequency).SequenceEqual([40, 100, 150, 240]) && p.Sources.Select(s => s.Amplitude).SequenceEqual([70, 80, 90, 100]), "4 single sources with their names, levels and amplitudes");
+		Check(p.Sources.All(s => s.Enabled && s.Array == null && s.DetachAfter == Source.NeverDetach && s.Mode == SourceMode.Continuous && s.Elements.Count == 1) && p.Sources[0].X == 150 && p.Sources[0].Y == 140 && p.Sources[3].Y == 924, "sources enabled, single, never detaching, placed, with one emitter each");
+		Check(p.Probes.Count == 2 && p.Probes.All(pr => !pr.Active && pr.Layer == ProbeLayer.Field && pr.Measurement == ProbeMeasurement.Amplitude && pr.BoxSize == ProbeBoxSize.Medium && pr.Window == 500 && pr.StartAfter == 0), "2 inactive field probes, medium boxes, window 500, no start step");
+		Check(p.Probes[0].Kind == ProbeKind.Line && p.Probes[0].AX == 1713 && p.Probes[0].AY == 2 && p.Probes[0].BX == 1719 && p.Probes[0].BY == 1073 && p.Probes[0].BoxX == 1 && p.Probes[0].BoxY == 426 && p.Probes[0].Name == "Probe 1", "probe 1: a line from (1713, 2) to (1719, 1073), box at (1, 426)");
+		Check(p.Probes[1].Kind == ProbeKind.Point && p.Probes[1].AX == 100 && p.Probes[1].BoxX == 450 && p.Probes[1].BoxY == 20 && p.Probes[1].Name == "Probe 2", "probe 2: the author's default point probe");
+		using (var stream = new MemoryStream())
+		{
+			p.Save(stream);
+			stream.Position = 0;
+			Project back = Project.Load(stream);
+			Check(back.Sources.Count == 4 && back.Probes.Count == 2 && back.Scene.ImageData!.SequenceEqual(p.Scene.ImageData!) && back.Simulation.Steps == 15000 && !back.Simulation.FourthOrderLaplacian, "the imported project round-trips through the XML format");
+		}
+		Check(LegacyProject.SuggestedFileName(Path.Combine(root, "Wave_Dude_Examples", "Example12_Dispersion", "configuration.json"), name) == Path.Combine(root, "Wave_Dude_Examples", "Example12_Dispersion", "Example12_Dispersion.wdproj"), "Save As proposes <name>.wdproj beside the original");
+
+		// a composite, randomised, detaching, pulsed source; a missing image in canvas mode; a global probe switch
+		notes.Clear();
+		p = LegacyProject.Import(Path.Combine(root, "Wave_Dude_Examples", "Example5_Small_incoherent_source", "configuration.json"), notes, out _);
+		Check(p.Scene.Mode == SceneMode.Canvas && p.Scene.ImageData == null && p.Scene.Image == "scene_images/spherrical_mirror_small_central_aperture.png" && notes.Any(n => n.Contains("not found")), "Example 5: canvas mode, the missing image's path kept and noted");
+		Source composite = p.Sources[0];
+		Check(composite.Array is { SizeX: 5, SizeY: 5, SpacingX: 3, SpacingY: 3, RandomFrequency: 50, RandomPhase: 90, RandomOffWidth: 19, RandomPosition: 1 } && composite.Elements.Count == 25, "a 5 x 5 array with its random amounts, 25 emitters regenerated");
+		Check(composite.Mode == SourceMode.Pulsed && composite.PulseWidth == 5 && composite.OffWidth == 20 && composite.DetachAfter == 2000 && composite.Enabled && notes.Any(n => n.Contains("random offsets")), "pulsed 5 / 20 cycles, detaching after step 2000, the regeneration noted");
+		Check(p.Simulation.WaveSpeed == 0.563 && p.Display.Field.ColorScheme == "Orange_symmetry" && p.Display.Intensity.ColorScheme == "Purple_rain" && p.Display.Field.Brightness == 50, "c 0.563 and the chosen schemes");
+		Check(p.Probes[0] is { Active: true, Kind: ProbeKind.Point, AutoScaleY: false, YMin: -0.02, YMax: 0.02, BoxSize: ProbeBoxSize.ExtraLarge, BoxX: 14, BoxY: 14 } && p.Probes[1] is { Layer: ProbeLayer.Intensity, Measurement: ProbeMeasurement.Intensity, Kind: ProbeKind.Line, StartAfter: 0, YMax: 0.0001 }, "probes: fixed value ranges, the unused start step dropped, use_probes honoured");
+
+		// start-after steps in use, an intensity probe, a detaching single source, the fallback decay
+		notes.Clear();
+		p = LegacyProject.Import(Path.Combine(root, "Wave_Dude_Examples", "Example3_Spherical_mirror", "configuration.json"), notes, out _);
+		Check(p.Probes[0] is { StartAfter: 600, Window: 3000, Layer: ProbeLayer.Intensity, Measurement: ProbeMeasurement.Intensity } && p.Probes[1] is { StartAfter: 600, Measurement: ProbeMeasurement.IntegratedIntensity, Kind: ProbeKind.Line }, "Example 3: start-after steps kept when their flag is on, intensity measurements");
+		Check(p.Sources[0] is { Array: null, DetachAfter: 670, PulseWidth: 70, OffWidth: 100, Frequency: 200 } && p.Simulation.TimeDecay == 8 && p.Display.Intensity.ColorScheme == "Copper", "a single detaching source (its unused array settings ignored), decay 8, Copper");
+		Check(p.Scene.Mode == SceneMode.Image && p.Scene.ImageData == null && notes.Count == 1, "image mode with the image missing: one note");
+
+		// a source the author never placed
+		notes.Clear();
+		p = LegacyProject.Import(Path.Combine(root, "Project", "Test", "configuration.json"), notes, out _);
+		Check(p.Sources.Count == 1 && !p.Sources[0].Enabled && notes.Any(n => n.Contains("no position")) && p.Simulation.TimeDecay == 5, "Test: a source without a position comes in disabled and noted");
+		bool refused = false;
+		string newer = Path.Combine(Path.GetTempPath(), "library_check-newer.json");
+		File.WriteAllText(newer, "{ \"format_version\": 2 }");
+		try
+		{
+			LegacyProject.Import(newer, null, out _);
+		}
+		catch (InvalidDataException)
+		{
+			refused = true;
+		}
+		File.Delete(newer);
+		Check(refused, "a newer format version is refused");
 	}
 
 	private static void CheckRun()

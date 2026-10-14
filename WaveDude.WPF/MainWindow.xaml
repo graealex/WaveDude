@@ -206,7 +206,7 @@
 				</TextBlock>
 			</StatusBarItem>
 			<StatusBarItem>
-				<TextBlock x:Name="txtStatus" Text="{DynamicResource Ready}" />
+				<TextBlock x:Name="txtStatus" Text="{DynamicResource Ready}" AutomationProperties.AutomationId="StatusMessage" />
 			</StatusBarItem>
 		</StatusBar>
 

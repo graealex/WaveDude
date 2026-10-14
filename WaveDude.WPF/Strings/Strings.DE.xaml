@@ -157,7 +157,7 @@
 	<s:String x:Key="TipRemoveStop">Diesen Stützpunkt entfernen</s:String>
 	<s:String x:Key="TipStopPosition">Position im Verlauf: 0 beim kleinsten Wert, 1 beim größten</s:String>
 	<s:String x:Key="TipStopColor">Farbe als #RRGGBB; Eingabe übernimmt sie</s:String>
-	<s:String x:Key="OpenFileDialogFilter">Wave-Dude-Projekte (*.wdproj)|*.wdproj|XML-Dateien (*.xml)|*.xml|Alle Dateien (*.*)|*.*</s:String>
+	<s:String x:Key="OpenFileDialogFilter">Wave-Dude-Projekte (*.wdproj)|*.wdproj|Wave-Dude-2D-Projekte (configuration.json)|configuration.json;*.json|XML-Dateien (*.xml)|*.xml|Alle Dateien (*.*)|*.*</s:String>
 	<s:String x:Key="SaveFileDialogFilter">Wave-Dude-Projekte (*.wdproj)|*.wdproj|XML-Dateien (*.xml)|*.xml</s:String>
 	<s:String x:Key="OpenError">'{0}' konnte nicht geöffnet werden.</s:String>
 	<s:String x:Key="SaveError">'{0}' konnte nicht gespeichert werden.</s:String>
