@@ -28,7 +28,7 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionGeneral}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGeneral}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Name}" />
 				<TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:Source.Name}" />
@@ -37,7 +37,7 @@
 				          IsChecked="{Binding Enabled}" ToolTip="{meta:Hint model:Source.Enabled}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionPosition}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionPosition}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.X}" />
 				<controls:NumberBox Text="{Binding X}" Minimum="0" ToolTip="{meta:Hint model:Source.X}" AutomationProperties.AutomationId="SourceX" />
@@ -46,7 +46,7 @@
 				<controls:NumberBox Text="{Binding Y}" Minimum="0" ToolTip="{meta:Hint model:Source.Y}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionWave}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionWave}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Frequency}" />
 				<controls:NumberBox Text="{Binding Frequency}" Minimum="1" Maximum="255" ToolTip="{meta:Hint model:Source.Frequency}" />
@@ -72,7 +72,7 @@
 				</TextBlock>
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionTiming}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionTiming}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Mode}" />
 				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues model:SourceMode}"
@@ -92,7 +92,7 @@
 				<controls:NumberBox Text="{Binding DetachAfter}" Minimum="-1" ToolTip="{meta:Hint model:Source.DetachAfter}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionArray}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionArray}" />
 			<CheckBox Content="{meta:Label model:Source.IsComposite}" IsChecked="{Binding IsComposite}"
 			          ToolTip="{meta:Hint model:Source.IsComposite}" Margin="0,0,0,4" />
 			<!-- the array's own settings; empty and disabled while there is no array -->
@@ -114,7 +114,7 @@
 				<controls:NumberBox Text="{Binding Angle}" Minimum="-180" Maximum="180" Increment="5" ToolTip="{meta:Hint model:SourceArray.Angle}" />
 
 				<!-- the four random amounts are offsets added per emitter on top of the values above (the author's point 9) -->
-				<TextBlock controls:FormPanel.FullWidth="True" Style="{StaticResource FormSection}" Text="{DynamicResource SectionRandom}" />
+				<Label controls:FormPanel.FullWidth="True" Style="{StaticResource FormSection}" Content="{DynamicResource SectionRandom}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomFrequency}" />
 				<controls:NumberBox Text="{Binding RandomFrequency}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomFrequency}" />

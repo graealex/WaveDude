@@ -43,7 +43,7 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionGeneral}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGeneral}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.Name}" />
 				<TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:Probe.Name}" />
@@ -55,7 +55,7 @@
 				<controls:NumberBox Text="{Binding StartAfter}" Minimum="0" ToolTip="{meta:Hint model:Probe.StartAfter}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionMeasurement}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionMeasurement}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.Layer}" />
 				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues model:ProbeLayer}"
@@ -71,7 +71,7 @@
 				          SelectedItem="{Binding Kind}" ToolTip="{meta:Hint model:Probe.Kind}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionPosition}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionPosition}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.AX}" />
 				<controls:NumberBox Text="{Binding AX}" Minimum="0" ToolTip="{meta:Hint model:Probe.AX}" />
@@ -86,7 +86,7 @@
 				<controls:NumberBox Style="{StaticResource LineOnly}" Text="{Binding BY}" Minimum="0" ToolTip="{meta:Hint model:Probe.BY}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionGraph}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGraph}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BoxSize}" />
 				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues model:ProbeBoxSize}"
@@ -105,7 +105,7 @@
 				<controls:NumberBox Style="{StaticResource CustomSizeOnly}" Text="{Binding BoxHeight}" Minimum="30" Maximum="4096" Increment="10" ToolTip="{meta:Hint model:Probe.BoxHeight}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionAxes}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionAxes}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.ScaleMode}" />
 				<ComboBox Style="{StaticResource PointOnlyCombo}" ItemsSource="{meta:EnumValues model:ProbeScaleMode}"

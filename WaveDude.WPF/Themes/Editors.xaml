@@ -350,7 +350,24 @@
 	</Style>
 
 	<!-- property forms -->
-	<Style x:Key="FormSection" TargetType="{x:Type TextBlock}">
+	<!-- a group header in the Properties pane: the name over a rule across the width, so the groups read apart
+	     (2026-10-15, after the Field and Intensity groups of the Display view were taken for one list) -->
+	<Style x:Key="FormSection" TargetType="{x:Type Label}">
+		<Setter Property="FontWeight" Value="SemiBold" />
+		<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+		<Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+		<Setter Property="BorderThickness" Value="0,0,0,1" />
+		<Setter Property="Padding" Value="0,0,0,2" />
+		<Setter Property="Margin" Value="0,2,0,6" />
+		<Setter Property="HorizontalContentAlignment" Value="Left" />
+	</Style>
+	<!-- the gap between groups comes after a group's rows, not before its header, so the first header sits close to
+	     the pane's edge (2026-10-15, it hung 18 px below it) -->
+	<Style TargetType="{x:Type controls:FormPanel}">
+		<Setter Property="Margin" Value="0,0,0,10" />
+	</Style>
+	<!-- the label of a preview picture (above it, or rotated beside it): the old plain section look -->
+	<Style x:Key="PictureLabel" TargetType="{x:Type TextBlock}">
 		<Setter Property="FontWeight" Value="SemiBold" />
 		<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
 		<Setter Property="Margin" Value="0,10,0,4" />

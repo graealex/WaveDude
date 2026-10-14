@@ -12,7 +12,7 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionGeneral}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGeneral}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Project.Version}" />
 				<TextBlock Style="{StaticResource FormValue}" Text="{Binding Version}" ToolTip="{meta:Hint model:Project.Version}" />

@@ -7,7 +7,7 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionRun}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionRun}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.Steps}" />
 				<controls:NumberBox Text="{Binding Steps}" Minimum="1" Maximum="10000000" Increment="100" ToolTip="{meta:Hint model:Simulation.Steps}" />
@@ -16,7 +16,7 @@
 				<controls:NumberBox Text="{Binding VisualizeEvery}" Minimum="1" Maximum="1000" ToolTip="{meta:Hint model:Simulation.VisualizeEvery}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionSolver}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionSolver}" />
 			<controls:FormPanel>
 				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Simulation.FourthOrderLaplacian}"
 				          IsChecked="{Binding FourthOrderLaplacian}" ToolTip="{meta:Hint model:Simulation.FourthOrderLaplacian}" />

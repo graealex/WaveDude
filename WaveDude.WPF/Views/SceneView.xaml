@@ -28,7 +28,7 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionCanvas}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionCanvas}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.Mode}" />
 				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues model:SceneMode}"
@@ -60,7 +60,7 @@
 				<controls:NumberBox Text="{Binding RefractiveIndex}" Minimum="1" Maximum="2.55" Increment="0.01" ToolTip="{meta:Hint model:Scene.RefractiveIndex}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionImageSources}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionImageSources}" />
 			<controls:FormPanel>
 				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Scene.ImageSources}"
 				          IsChecked="{Binding ImageSources}" ToolTip="{meta:Hint model:Scene.ImageSources}" />

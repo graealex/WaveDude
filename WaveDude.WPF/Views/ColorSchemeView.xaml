@@ -55,7 +55,7 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionGeneral}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGeneral}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label rendering:ColorScheme.Name}" />
 				<TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint rendering:ColorScheme.Name}" />
@@ -72,7 +72,7 @@
 				         ToolTip="{meta:Hint rendering:ColorScheme.Description}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionStops}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionStops}" />
 			<!-- start from any existing scheme: picking one copies its stops, kind, category and description into this one -->
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{DynamicResource LabelBasedOn}" />

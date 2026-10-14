@@ -4,7 +4,7 @@
 
 	<!-- a folder node (Sources, Probes): just the name and the count for now -->
 	<StackPanel Margin="8">
-		<TextBlock Style="{StaticResource FormSection}" Text="{Binding Label}" Margin="0,2,0,4" />
+		<Label Style="{StaticResource FormSection}" Content="{Binding Label}" Margin="0,2,0,4" />
 		<TextBlock Style="{StaticResource FormValue}" Margin="0"
 		           Text="{Binding Items.Count, StringFormat={StaticResource ItemCountFormat}}" />
 	</StackPanel>

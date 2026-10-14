@@ -405,7 +405,7 @@
 							<ControlTemplate TargetType="{x:Type HeaderedContentControl}">
 								<!-- the label goes above the picture, or rotated to its left when the cell is wider than the picture -->
 								<controls:PictureFrame>
-									<TextBlock Style="{StaticResource FormSection}" Text="{TemplateBinding Header}" />
+									<TextBlock Style="{StaticResource PictureLabel}" Text="{TemplateBinding Header}" />
 									<!-- the picture with the source/probe handles over it; both fill the same rectangle -->
 									<Grid>
 										<Image Source="{TemplateBinding Content}" Stretch="Uniform" AutomationProperties.AutomationId="{TemplateBinding Tag}" />

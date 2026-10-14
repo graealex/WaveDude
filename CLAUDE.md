@@ -32,6 +32,11 @@ WPF shell as it stands:
   `MainWindow.DefaultLayout()` (agreed 2026-10-09): a left column of a quarter of the width with the
   Project tree in its upper third and Properties below, the preview in the rest, Messages hidden;
   the preview starts stacked (`PreviewOrientation` default Vertical). No third-party packages but NLog.
+- Properties pane groups: a section header is a `Label` in the `FormSection` style, the name over a rule
+  across the width (2026-10-15, after the Display view's Field and Intensity groups were read as one list);
+  the preview's picture labels keep the plain look as `PictureLabel`. The gap between groups is the
+  `FormPanel`'s bottom margin (an implicit style), not the header's top margin, so the first header sits
+  close to the pane's edge.
 - Theming: own `Themes/Dark.xaml` / `Light.xaml` dictionaries swapped by `Theming/ThemeController`
   (persisted in settings); the native title bar is darkened via DWM. Use `DynamicResource` for every
   theme brush.

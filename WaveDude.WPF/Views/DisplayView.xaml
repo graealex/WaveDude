@@ -8,13 +8,13 @@
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 		<StackPanel Margin="8">
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionField}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionField}" />
 			<local:DisplayLayerView DataContext="{Binding Field}" Kind="Field" />
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionIntensity}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionIntensity}" />
 			<local:DisplayLayerView DataContext="{Binding Intensity}" Kind="Intensity" />
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionExportRange}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionExportRange}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Display.ExportFrom}" />
 				<controls:NumberBox Text="{Binding ExportFrom}" Minimum="0" ToolTip="{meta:Hint model:Display.ExportFrom}" />
@@ -23,7 +23,7 @@
 				<controls:NumberBox Text="{Binding ExportTo}" Minimum="0" ToolTip="{meta:Hint model:Display.ExportTo}" />
 			</controls:FormPanel>
 
-			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionVideo}" />
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionVideo}" />
 			<controls:FormPanel DataContext="{Binding Video}">
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Video.Fps}" />
 				<controls:NumberBox Text="{Binding Fps}" Minimum="1" Maximum="240" ToolTip="{meta:Hint model:Video.Fps}" />
