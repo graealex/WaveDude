@@ -19,6 +19,8 @@ public sealed class Display : ObservableObject
 	private Video _video = new();
 	private int _exportFrom;
 	private int _exportTo;
+	private bool _probeGraphsInExport = true;
+	private bool _probeMarkersInExport = true;
 
 	/// <summary>Rendering of the wave field.</summary>
 	[XmlElement]
@@ -74,6 +76,38 @@ public sealed class Display : ObservableObject
 		set => SetProperty(ref _exportTo, value);
 	}
 
+	/// <summary>
+	/// Whether an export draws the probes' graph boxes over the frames, as the author's program always did
+	/// (2026-10-14, his videos carried them; here a choice, on by default). The boxes are drawn at canvas
+	/// scale with the recording as it stood at each frame, like the preview shows them.
+	/// </summary>
+	[XmlAttribute]
+	[DefaultValue(true)]
+	[Category("Export")]
+	[DisplayName("Probe graphs in the export")]
+	[Description("Draw the probes' graph boxes over exported frames and videos.")]
+	public bool ProbeGraphsInExport
+	{
+		get => _probeGraphsInExport;
+		set => SetProperty(ref _probeGraphsInExport, value);
+	}
+
+	/// <summary>
+	/// Whether an export draws the probe markers over the frames in the author's style (2026-10-15): a cross at a
+	/// probe point, two crosses and the line for a line probe, black under white, and the probe's number
+	/// ("1", "1A"/"1B") beside it. His program always did; here a choice, on by default.
+	/// </summary>
+	[XmlAttribute]
+	[DefaultValue(true)]
+	[Category("Export")]
+	[DisplayName("Probe markers in the export")]
+	[Description("Draw the probes' positions (crosses, the line of a line probe, the number) over exported frames and videos.")]
+	public bool ProbeMarkersInExport
+	{
+		get => _probeMarkersInExport;
+		set => SetProperty(ref _probeMarkersInExport, value);
+	}
+
 	/// <summary>Tells <see cref="XmlSerializer"/> to leave all-default video settings out of the file.</summary>
 	public bool ShouldSerializeVideo() => Video.Fps != Video.DefaultFps || Video.Quality != Video.DefaultQuality;
 
@@ -112,7 +146,6 @@ public sealed class DisplayLayer : ObservableObject
 	private double _brightness = DefaultBrightness;
 	private double _blackLevel;
 	private bool _preview = true;
-	private bool _export;
 	private bool _overlay = true;
 	private double _overlayGain = DefaultOverlayGain;
 	private bool _overlayInExport;
@@ -160,17 +193,6 @@ public sealed class DisplayLayer : ObservableObject
 	{
 		get => _preview;
 		set => SetProperty(ref _preview, value);
-	}
-
-	/// <summary>Whether the output's frames are written to a video file.</summary>
-	[XmlAttribute]
-	[DefaultValue(false)]
-	[Category("Output")]
-	[Description("Write this output's frames to a video file.")]
-	public bool Export
-	{
-		get => _export;
-		set => SetProperty(ref _export, value);
 	}
 
 	/// <summary>
@@ -238,7 +260,7 @@ public sealed class Video : ObservableObject
 	/// <summary>Largest accepted <see cref="Fps"/>.</summary>
 	public const int MaxFps = 240;
 	/// <summary>Default <see cref="Quality"/>.</summary>
-	public const int DefaultQuality = 70;
+	public const int DefaultQuality = 85;
 
 	private int _fps = DefaultFps;
 	private int _quality = DefaultQuality;

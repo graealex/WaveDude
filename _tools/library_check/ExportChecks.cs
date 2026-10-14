@@ -1,0 +1,896 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using WaveDude.Export;
+using WaveDude.Model;
+using WaveDude.Rendering;
+using WaveDude.Runs;
+
+namespace LibraryCheck;
+
+// The export formats and the export job: every writer produces a file that an independent decoder (the
+// ffmpeg found on the PATH, skipped when there is none) reads back with the right frame count and, for
+// the lossless ones, the same pixels; the PNG is also decoded in-house. The job renders a run's frames
+// into two sinks, calls the decoration per frame and ends in the right state.
+internal static class ExportChecks
+{
+	private static readonly string? Ffmpeg = FindFfmpeg();
+
+	public static void Run(Action<bool, string> check)
+	{
+		Console.WriteLine("--- export: encoders" + (Ffmpeg == null ? " (no ffmpeg on the PATH: decoding checks skipped)" : " (decoded with " + Ffmpeg + ")"));
+		string folder = Path.Combine(Path.GetTempPath(), "library_check-export-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(folder);
+		try
+		{
+			const int w = 70; // not a multiple of 16, not even: exercises the padding of every format
+			const int h = 45;
+			int[][] frames = [.. Enumerable.Range(0, 7).Select(i => TestFrame(w, h, i))];
+
+			// PNG: decoded in-house (inflate + unfilter) and by ffmpeg
+			byte[] png = PngEncoder.Encode(frames[0], w, h);
+			check(png.Length > 8 && png[1] == (byte)'P' && png[2] == (byte)'N' && png[3] == (byte)'G', "png: signature");
+			int[]? decoded = DecodePng(png, w, h);
+			check(decoded != null && decoded.SequenceEqual(frames[0]), "png: in-house decode gives the frame back pixel for pixel");
+			string pngPath = Path.Combine(folder, "one.png");
+			File.WriteAllBytes(pngPath, png);
+			if (Ffmpeg != null)
+			{
+				byte[]? rgb = Decode(pngPath, w, h, out int count);
+				check(rgb != null && count == 1 && Psnr(rgb, frames[0], w, h) >= 99, "png: ffmpeg decodes it, identical" + Mismatch(rgb, frames[0], w, h));
+			}
+
+			// JPEG: a baseline file ffmpeg decodes close to the original
+			var jpeg = new JpegEncoder(w, h, 90);
+			byte[] jpg = jpeg.Encode(frames[0]);
+			check(jpg.Length > 4 && jpg[0] == 0xFF && jpg[1] == 0xD8 && jpg[^2] == 0xFF && jpg[^1] == 0xD9, "jpeg: SOI and EOI markers");
+			string jpgPath = Path.Combine(folder, "one.jpg");
+			File.WriteAllBytes(jpgPath, jpg);
+			byte[] jpgLow = new JpegEncoder(w, h, 20).Encode(frames[0]);
+			check(jpgLow.Length < jpg.Length, "jpeg: quality 20 is smaller than quality 90 (" + jpgLow.Length + " < " + jpg.Length + " bytes)");
+			if (Ffmpeg != null)
+			{
+				byte[]? rgb = Decode(jpgPath, w, h, out int count);
+				double psnr = rgb == null ? 0 : Psnr(rgb, frames[0], w, h);
+				check(rgb != null && count == 1 && psnr > 30, "jpeg: ffmpeg decodes it at " + psnr.ToString("0.0", CultureInfo.InvariantCulture) + " dB (> 30)");
+			}
+
+			// MPEG-1: the frame rate table, the quantiser mapping, a 7-picture program stream
+			check(Mpeg1Writer.NearestFrameRateCode(60) == 8 && Mpeg1Writer.NearestFrameRateCode(29.97) == 4 && Mpeg1Writer.NearestFrameRateCode(240) == 8 && Mpeg1Writer.NearestFrameRateCode(1) == 1, "mpeg-1: nearest frame rate codes (60 → 8, 29.97 → 4, 240 → 8, 1 → 1)");
+			check(Mpeg1Writer.QuantiserScaleFor(100) == 1 && Mpeg1Writer.QuantiserScaleFor(1) == 31 && Mpeg1Writer.QuantiserScaleFor(70) == 6 && Mpeg1Writer.QuantiserScaleFor(50) == 12, "mpeg-1: quantiser scale 1 at 100, 31 at 1, 6 at 70, 12 at 50");
+			string mpgPath = Path.Combine(folder, "seven.mpg");
+			using (var mpeg = new Mpeg1Writer(mpgPath, w, h, 30, 85))
+			{
+				check(mpeg.FrameRate == 30 && mpeg.QuantiserScale == 3, "mpeg-1: 30 fps, quantiser 3 at quality 85");
+				foreach (int[] frame in frames)
+				{
+					mpeg.Add(frame);
+				}
+				check(mpeg.FrameCount == 7, "mpeg-1: 7 pictures taken");
+			}
+			byte[] mpg = File.ReadAllBytes(mpgPath);
+			check(mpg.Length > 100 && mpg[0] == 0 && mpg[1] == 0 && mpg[2] == 1 && mpg[3] == 0xBA && mpg[^4] == 0 && mpg[^3] == 0 && mpg[^2] == 1 && mpg[^1] == 0xB9, "mpeg-1: starts with a pack header, ends with the program end code");
+			check(CountStartCodes(mpg, 0xB3) == 1 && CountStartCodes(mpg, 0x00) == 7 && CountStartCodes(mpg, 0xB7) == 1, "mpeg-1: one sequence header, seven picture headers, one sequence end");
+			if (Ffmpeg != null)
+			{
+				byte[]? rgb = Decode(mpgPath, w, h, out int count);
+				double worst = 99;
+				if (rgb != null && count == 7)
+				{
+					for (int i = 0; i < 7; i++)
+					{
+						worst = Math.Min(worst, Psnr(rgb.AsSpan(i * w * h * 3, w * h * 3), frames[i], w, h));
+					}
+				}
+				check(rgb != null && count == 7 && worst > 28, "mpeg-1: ffmpeg decodes 7 pictures, worst " + worst.ToString("0.0", CultureInfo.InvariantCulture) + " dB (> 28)" + (count != 7 ? ", got " + count : ""));
+			}
+
+			// AVI: three segments forced by a small limit, the structure walked, decoded pixel for pixel
+			string aviPath = Path.Combine(folder, "seven.avi");
+			int rowBytes = (w * 3 + 3) & ~3;
+			long chunk = 8 + (long)rowBytes * h;
+			using (var avi = new AviWriter(aviPath, w, h, 25, 7, segmentLimit: 3 * chunk + 1200))
+			{
+				foreach (int[] frame in frames)
+				{
+					avi.Add(frame);
+				}
+				check(avi.SegmentCount >= 2, "avi: the small limit split the frames over " + avi.SegmentCount + " segments");
+				check(avi.SizeOf(7) > 7 * chunk, "avi: predicted size covers the frames");
+			}
+			long aviSize = new FileInfo(aviPath).Length;
+			byte[] avi1 = File.ReadAllBytes(aviPath);
+			check(Fourcc(avi1, 0) == "RIFF" && Fourcc(avi1, 8) == "AVI " && Fourcc(avi1, 12) == "LIST" && Fourcc(avi1, 20) == "hdrl" && Fourcc(avi1, 24) == "avih", "avi: RIFF AVI, LIST hdrl, avih");
+			AviWalk walk = WalkAvi(avi1);
+			check(walk.Segments >= 2 && walk.Frames == 7 && walk.TotalInDmlh == 7 && walk.Idx1Entries == walk.FramesInFirst && walk.StandardIndexes == walk.Segments && walk.SuperEntries == walk.Segments,
+				"avi: " + walk.Segments + " segments hold 7 frames, dmlh says 7, idx1 covers the first segment's " + walk.FramesInFirst + ", one ix00 per segment, the super index lists them");
+			check(walk.EndsAtFileEnd && walk.FirstRiffSize == walk.FirstSegmentBytes - 8, "avi: segment sizes add up to the file (" + aviSize + " bytes)");
+			if (Ffmpeg != null)
+			{
+				byte[]? rgb = Decode(aviPath, w, h, out int count);
+				bool exact = rgb != null && count == 7;
+				for (int i = 0; exact && i < 7; i++)
+				{
+					exact = Psnr(rgb!.AsSpan(i * w * h * 3, w * h * 3), frames[i], w, h) >= 99;
+				}
+				check(exact, "avi: ffmpeg decodes 7 frames from all segments, identical" + (rgb == null ? "" : ", got " + count));
+			}
+			// a writer closed after one frame is a valid one-frame file
+			string shortPath = Path.Combine(folder, "short.avi");
+			using (var avi = new AviWriter(shortPath, w, h, 25, 7))
+			{
+				avi.Add(frames[3]);
+			}
+			AviWalk shortWalk = WalkAvi(File.ReadAllBytes(shortPath));
+			check(shortWalk.Segments == 1 && shortWalk.Frames == 1 && shortWalk.TotalInDmlh == 1 && shortWalk.EndsAtFileEnd, "avi: cancelled after one frame is a valid one-frame file");
+
+			// MP4: Media Foundation, when it is there
+			if (OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4))
+			{
+				string mp4Path = Path.Combine(folder, "seven.mp4");
+				try
+				{
+					using (var mp4 = new Mp4Writer(mp4Path, w, h, 30, 80))
+					{
+						foreach (int[] frame in frames)
+						{
+							mp4.Add(frame);
+						}
+						Console.WriteLine("  mp4: bitrate " + mp4.Bitrate + " bit/s" + (mp4.UsedBitrateOnly ? ", quality parameters refused" : ", quality parameters accepted"));
+					}
+					byte[] mp4Bytes = File.ReadAllBytes(mp4Path);
+					check(mp4Bytes.Length > 100 && Encoding.ASCII.GetString(mp4Bytes, 4, 4) == "ftyp", "mp4: ftyp box, " + mp4Bytes.Length + " bytes");
+					if (Ffmpeg != null)
+					{
+						byte[]? rgb = Decode(mp4Path, w, h, out int count);
+						double psnr = rgb == null || count < 1 ? 0 : Psnr(rgb.AsSpan(0, w * h * 3), frames[0], w, h);
+						check(rgb != null && count == 7 && psnr > 25, "mp4: ffmpeg decodes 7 frames, the first at " + psnr.ToString("0.0", CultureInfo.InvariantCulture) + " dB (> 25)" + (rgb == null ? "" : ", got " + count));
+					}
+				}
+				catch (Exception ex)
+				{
+					check(false, "mp4: " + ex.Message);
+				}
+			}
+			else
+			{
+				Console.WriteLine("  skip mp4: Media Foundation not available");
+			}
+
+			// formats
+			check(ExportFormats.FromPath(@"C:\x\a.JPEG") == ExportFormat.Jpeg && ExportFormats.FromPath("a.mpeg") == ExportFormat.Mpeg1 && ExportFormats.FromPath("a.txt") == null, "formats: extensions map, unknown is null");
+			check(ExportFormats.SequenceFolder(@"C:\Temp\chosenname.png") == @"C:\Temp\chosenname", "formats: a sequence chosen as C:\\Temp\\chosenname.png goes to C:\\Temp\\chosenname");
+			using (IFrameSink sink = ExportFormats.Open(ExportFormat.Png, Path.Combine(folder, "seq.png"), w, h, 30, 70, 3))
+			{
+				sink.Add(frames[1]);
+				sink.Add(frames[2]);
+			}
+			check(File.Exists(Path.Combine(folder, "seq", "seq_0000.png")) && File.Exists(Path.Combine(folder, "seq", "seq_0001.png")) && !File.Exists(Path.Combine(folder, "seq", "seq_0002.png")), "formats: the PNG sequence sink writes seq\\seq_0000.png and seq_0001.png");
+			check(DecodePng(File.ReadAllBytes(Path.Combine(folder, "seq", "seq_0001.png")), w, h)!.SequenceEqual(frames[2]), "formats: the second file holds the second frame");
+			string stillPath = Path.Combine(folder, "still.png");
+			using (IFrameSink still = ExportFormats.OpenStill(ExportFormat.Png, stillPath, w, h, 70))
+			{
+				still.Add(frames[4]);
+				bool refused = false;
+				try
+				{
+					still.Add(frames[5]);
+				}
+				catch (InvalidOperationException)
+				{
+					refused = true;
+				}
+				check(still.FrameCount == 1 && refused, "formats: a still takes one frame and refuses a second");
+			}
+			check(DecodePng(File.ReadAllBytes(stillPath), w, h)!.SequenceEqual(frames[4]), "formats: the still is the frame");
+			bool videoRefused = false;
+			try
+			{
+				ExportFormats.OpenStill(ExportFormat.Avi, Path.Combine(folder, "still.avi"), w, h, 70);
+			}
+			catch (NotSupportedException)
+			{
+				videoRefused = true;
+			}
+			check(videoRefused, "formats: a still is never a video");
+			// the author's marker strokes: a line probe's line and crosses, black radius 2 under white radius 1, clipped
+			var marked = new int[w * h];
+			var lineProbe = new Probe { Kind = ProbeKind.Line, AX = 10, AY = 10, BX = 60, BY = 30 };
+			ProbeMarkers.DrawStrokes(marked, w, h, lineProbe);
+			int white = unchecked((int)0xFFFFFFFF);
+			int black = unchecked((int)0xFF000000);
+			check(marked[10 * w + 10] == white && marked[30 * w + 60] == white && marked[20 * w + 35] == white, "markers: the crosses' centres and the line's middle are white");
+			var pointProbe = new Probe { Kind = ProbeKind.Point, AX = 40, AY = 40 };
+			ProbeMarkers.DrawStrokes(marked, w, h, pointProbe);
+			check(marked[42 * w + 42] == black && marked[42 * w + 38] == black && marked[40 * w + 44] == white && marked[(40 - ProbeMarkers.ArmLength(h) - 3) * w + 40] != black, "markers: the black stroke lies around the white one and ends with the arm");
+			check(ProbeMarkers.ArmLength(1080) == 9 && ProbeMarkers.ArmLength(100) == 6 && Math.Abs(ProbeMarkers.FontSize(1080) - 18f) < 0.01f && ProbeMarkers.LabelOrigin(100, 100, 1080) == (111, 66), "markers: the author's arm length, font size and label position at 1080p");
+			var edgeProbe = new Probe { Kind = ProbeKind.Point, AX = 0, AY = 0 };
+			ProbeMarkers.DrawStrokes(marked, w, h, edgeProbe);
+			check(marked[0] == white && ProbeMarkers.Label(3, true, true) == "3B" && ProbeMarkers.Label(2, false, false) == "2", "markers: a cross at the corner is clipped, labels read 3B and 2");
+			// an alternative JPEG encoder is used (on several workers), and one that throws on a frame hands that frame to the
+			// in-house encoder; the frames after it come from whichever encoder their worker is left with, both valid
+			int alternativeCalls = 0;
+			int secondFrameMark = (frames[1][1] >> 16) & 0xFF;
+			ExportFormats.AlternativeJpeg = (fw, fh, q) => (stream, frame) =>
+			{
+				Interlocked.Increment(ref alternativeCalls);
+				if (((frame.Span[1] >> 16) & 0xFF) == secondFrameMark)
+				{
+					stream.WriteByte(0x42); // half-written: the fallback must rewind
+					throw new InvalidOperationException("the codec gave up");
+				}
+				PngEncoder.Write(stream, frame.Span, fw, fh); // recognisable: not a JPEG at all
+			};
+			using (IFrameSink alt = ExportFormats.Open(ExportFormat.Jpeg, Path.Combine(folder, "alt.jpg"), w, h, 30, 85, 3))
+			{
+				alt.Add(frames[0]);
+				alt.Add(frames[1]);
+				alt.Add(frames[2]);
+			}
+			ExportFormats.AlternativeJpeg = null;
+			byte[] alt0 = File.ReadAllBytes(Path.Combine(folder, "alt", "alt_0000.jpg"));
+			byte[] alt1 = File.ReadAllBytes(Path.Combine(folder, "alt", "alt_0001.jpg"));
+			byte[] alt2 = File.ReadAllBytes(Path.Combine(folder, "alt", "alt_0002.jpg"));
+			check(alternativeCalls >= 2 && alt0[1] == (byte)'P' && alt1[0] == 0xFF && alt1[1] == 0xD8 && (alt2[1] == (byte)'P' || (alt2[0] == 0xFF && alt2[1] == 0xD8)),
+				"formats: the alternative JPEG encoder is used; the frame it throws on is rewound and written by the in-house encoder");
+
+			CheckJob(check, folder);
+		}
+		finally
+		{
+			try
+			{
+				Directory.Delete(folder, recursive: true);
+			}
+			catch (IOException)
+			{
+				// a file still open by a decoder; the temp folder is cleaned up another day
+			}
+		}
+	}
+
+	/// <summary>A run of 10 frames exported to a PNG sequence (field, decorated) and an AVI (intensity); then a cancelled job.</summary>
+	private static void CheckJob(Action<bool, string> check, string folder)
+	{
+		// the frame numbers' width follows the planned count: four digits up to 10000 frames, five beyond (2026-10-15)
+		using (var narrow = new ImageSequenceSink(Path.Combine(folder, "narrow"), "f", ".png", 4, 4, () => (stream, px) => PngEncoder.Write(stream, px.Span, 4, 4), 1, 500))
+		using (var wide = new ImageSequenceSink(Path.Combine(folder, "wide"), "f", ".png", 4, 4, () => (stream, px) => PngEncoder.Write(stream, px.Span, 4, 4), 1, 12000))
+		{
+			check(narrow.Digits == 4 && narrow.PathOf(7).EndsWith("f_0007.png", StringComparison.Ordinal) && wide.Digits == 5 && wide.PathOf(7).EndsWith("f_00007.png", StringComparison.Ordinal) && wide.PathOf(10000).EndsWith("f_10000.png", StringComparison.Ordinal),
+				"sequence names: 4 digits for 500 frames, 5 for 12000, so they sort past frame 9999");
+		}
+		Console.WriteLine("--- export: job");
+		var project = new Project();
+		project.Scene.Width = 64;
+		project.Scene.Height = 48;
+		project.Simulation.Steps = 20;
+		project.Simulation.VisualizeEvery = 2;
+		Source source = project.AddSource();
+		source.X = 20;
+		source.Y = 24;
+		source.Frequency = 120;
+		RunSpec spec = RunSpec.Create(project, null, preferGpu: false);
+		string storePath = Path.Combine(folder, "job" + FrameCache.Extension);
+		using var store = FrameStore.Create(storePath, spec.Width, spec.Height, spec.Layers, spec.FrameCount, spec.VisualizeEvery);
+		using var run = new SimulationRun(spec, store, null);
+		run.Start();
+		check(run.Completion.Wait(30000) && store.Count == 10, "job: a 10-frame run to export");
+
+		int[] lut = ColorLut.Build(ColorSchemeStore.LoadBuiltIn(null).First(scheme => scheme.Name == Display.DefaultFieldColorScheme)).Argb;
+		var decorated = new List<int>();
+		var fieldLayer = new ExportLayer(FrameLayer.Field, lut, 30f, null, 0, (frame, pixels) =>
+		{
+			decorated.Add(frame);
+			pixels.Span[0] = unchecked((int)0xFFFF0000); // a red pixel at the top left, to be found in the file
+		});
+		var intensityLayer = new ExportLayer(FrameLayer.Intensity, null, 30f, null, 0, null);
+		string seqPath = Path.Combine(folder, "field.png");
+		string aviPath = Path.Combine(folder, "intensity.avi");
+		var targets = new List<ExportTarget>
+		{
+			new(fieldLayer, ExportFormats.SequenceFolder(seqPath), () => ExportFormats.Open(ExportFormat.Png, seqPath, 64, 48, 30, 70, 6)),
+			new(intensityLayer, aviPath, () => ExportFormats.Open(ExportFormat.Avi, aviPath, 64, 48, 30, 70, 6)),
+		};
+		var job = new ExportJob(store, 2, 7, targets, null);
+		var states = new List<ExportState>();
+		job.PropertyChanged += (_, e) =>
+		{
+			if (e.PropertyName == nameof(ExportJob.State))
+			{
+				states.Add(job.State);
+			}
+		};
+		int finished = 0;
+		job.Finished += (_, _) => finished++;
+		job.Start();
+		check(job.Completion.Wait(30000) && job.State == ExportState.Completed && finished == 1 && job.Error == null, "job: completes, Finished once");
+		check(targets.All(target => target.Sink != null && target.Sink.Output == target.Output), "job: the sinks were opened by the job, where the targets said");
+		check(states.SequenceEqual([ExportState.Running, ExportState.Completed]) && job.FramesDone == 6 && job.FrameCount == 6, "job: Running then Completed, 6 of 6 frames");
+		check(decorated.SequenceEqual([2, 3, 4, 5, 6, 7]), "job: the decoration saw frames 2 to 7 in order");
+		string[] files = Directory.GetFiles(Path.Combine(folder, "field"));
+		check(files.Length == 6 && File.Exists(Path.Combine(folder, "field", "field_0005.png")), "job: six PNGs, field_0000 to field_0005");
+		// the first file is frame 2 rendered with the same LUT and gain, plus the decoration
+		var values = new Half[64 * 48];
+		var expected = new int[64 * 48];
+		store.CopyLayer(2, FrameLayer.Field, values);
+		FrameRenderer.RenderField(values, 64, 48, lut, 30f, expected);
+		expected[0] = unchecked((int)0xFFFF0000);
+		int[]? first = DecodePng(File.ReadAllBytes(Path.Combine(folder, "field", "field_0000.png")), 64, 48);
+		check(first != null && first.SequenceEqual(expected), "job: field_0000.png is frame 2 as the renderer colours it, with the decoration");
+		AviWalk walk = WalkAvi(File.ReadAllBytes(aviPath));
+		check(walk.Frames == 6 && walk.TotalInDmlh == 6 && walk.EndsAtFileEnd, "job: the intensity AVI holds 6 frames");
+
+		// cancelled: a slow decoration lets the cancel land after the first frame
+		using var started = new ManualResetEventSlim();
+		var slowLayer = new ExportLayer(FrameLayer.Field, lut, 30f, null, 0, (_, _) =>
+		{
+			started.Set();
+			Thread.Sleep(150);
+		});
+		string cancelPath = Path.Combine(folder, "cancel.avi");
+		var cancelled = new ExportJob(store, 0, 9, [new ExportTarget(slowLayer, cancelPath, () => ExportFormats.Open(ExportFormat.Avi, cancelPath, 64, 48, 30, 70, 10))], null);
+		cancelled.Start();
+		started.Wait(10000);
+		cancelled.Cancel();
+		check(cancelled.Completion.Wait(10000) && cancelled.State == ExportState.Cancelled && cancelled.FramesDone >= 1 && cancelled.FramesDone < 10, "job: cancel ends it Cancelled after " + cancelled.FramesDone + " frames");
+		AviWalk cancelWalk = WalkAvi(File.ReadAllBytes(cancelPath));
+		check(cancelWalk.Frames == cancelled.FramesDone && cancelWalk.EndsAtFileEnd, "job: the cancelled AVI is a valid file of the frames written");
+
+		// a frame beyond the store fails the job, the sinks still close
+		string failPath = Path.Combine(folder, "fail.avi");
+		var failing = new ExportJob(store, 8, 12, [new ExportTarget(intensityLayer, failPath, () => ExportFormats.Open(ExportFormat.Avi, failPath, 64, 48, 30, 70, 5))], null);
+		failing.Start();
+		check(failing.Completion.Wait(10000) && failing.State == ExportState.Failed && failing.Error is InvalidOperationException && failing.FramesDone == 2, "job: a frame beyond the store fails it after the 2 that exist");
+		// a sink that cannot open fails the job before any frame, with the error kept
+		var unopenable = new ExportJob(store, 0, 1, [new ExportTarget(intensityLayer, "nowhere", () => throw new IOException("no such drive"))], null);
+		unopenable.Start();
+		check(unopenable.Completion.Wait(10000) && unopenable.State == ExportState.Failed && unopenable.Error is IOException && unopenable.FramesDone == 0, "job: a sink that cannot open fails the job with its error");
+		// an MP4 written by the job: the Media Foundation writer lives on the job's thread (it refused a caller's thread, 2026-10-14)
+		if (OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4))
+		{
+			string mp4Path = Path.Combine(folder, "job.mp4");
+			var mp4Job = new ExportJob(store, 0, 9, [new ExportTarget(fieldLayer, mp4Path, () => ExportFormats.Open(ExportFormat.Mp4, mp4Path, 64, 48, 30, 70, 10))], null);
+			mp4Job.Start();
+			check(mp4Job.Completion.Wait(30000) && mp4Job.State == ExportState.Completed && mp4Job.FramesDone == 10 && new FileInfo(mp4Path).Length > 100, "job: an MP4 of 10 frames written on the job's thread" + (mp4Job.Error != null ? " (" + mp4Job.Error.Message + ")" : ""));
+		}
+	}
+
+	/// <summary>Per-frame cost of every encoder at a given size, for `-- bench-export [w h]`.</summary>
+	public static void Bench(int w, int h)
+	{
+		Console.WriteLine($"--- export bench {w} x {h}, {Environment.ProcessorCount} cores");
+		int[] frame = TestFrame(w, h, 3);
+		string folder = Path.Combine(Path.GetTempPath(), "library_check-bench-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(folder);
+		try
+		{
+			Time("png encode", () => PngEncoder.Encode(frame, w, h), 3);
+			var jpeg = new JpegEncoder(w, h, 85);
+			Time("jpeg encode (q 85)", () => jpeg.Encode(frame), 5);
+			Console.WriteLine($"    phases: convert {jpeg.LastPhases.Convert:0.0} ms, rows {jpeg.LastPhases.Rows:0.0} ms; Vector128 accelerated: {System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated}, Vector256: {System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated}, Vector<float>.Count {System.Numerics.Vector<float>.Count}");
+			var planes = new YuvPlanes(w, h, false);
+			Time("  of which yuv conversion", () => planes.Convert(frame), 5);
+			jpeg.ParallelRows = false;
+			Time("jpeg encode, rows one after the other", () => jpeg.Encode(frame), 3);
+			Console.WriteLine($"    phases: convert {jpeg.LastPhases.Convert:0.0} ms, rows {jpeg.LastPhases.Rows:0.0} ms");
+			jpeg.ParallelRows = true;
+			foreach (int threads in new[] { 1, 2, 4, Environment.ProcessorCount })
+			{
+				jpeg.MaxThreads = threads;
+				Time($"jpeg encode on {threads} thread(s)", () => jpeg.Encode(frame), 3);
+			}
+			jpeg.MaxThreads = -1;
+			// the WIC codec of Windows through WPF's encoder (the same call the app's WicJpeg makes), timed and compared at the same quality
+			if (OperatingSystem.IsWindows())
+			{
+				byte[] inHouse = jpeg.Encode(frame);
+				byte[] wic = [];
+				Time("jpeg encode by WIC (q 85)", () => wic = WicEncode(frame, w, h, 85), 5);
+				File.WriteAllBytes(Path.Combine(folder, "wic.jpg"), wic);
+				File.WriteAllBytes(Path.Combine(folder, "inhouse.jpg"), inHouse);
+				double wicDb = 0;
+				double inHouseDb = 0;
+				if (Ffmpeg != null)
+				{
+					byte[]? rgb = Decode(Path.Combine(folder, "wic.jpg"), w, h, out int n);
+					wicDb = rgb == null || n != 1 ? 0 : Psnr(rgb, frame, w, h);
+					rgb = Decode(Path.Combine(folder, "inhouse.jpg"), w, h, out n);
+					inHouseDb = rgb == null || n != 1 ? 0 : Psnr(rgb, frame, w, h);
+				}
+				Console.WriteLine($"    at quality 85: WIC {wic.Length / 1024} KB at {wicDb:0.0} dB, in-house {inHouse.Length / 1024} KB at {inHouseDb:0.0} dB");
+				foreach (int q in new[] { 50, 70, 95 })
+				{
+					byte[] a = WicEncode(frame, w, h, q);
+					byte[] b = new JpegEncoder(w, h, q).Encode(frame);
+					Console.WriteLine($"    at quality {q}: WIC {a.Length / 1024} KB, in-house {b.Length / 1024} KB");
+				}
+			}
+			// the per-block costs, single-threaded over as many blocks as a frame has
+			int blocks = planes.MacroblockColumns * planes.MacroblockRows * 6;
+			var block = new float[64];
+			var dct = new float[64];
+			Time($"  {blocks} block copies", () => { for (int i = 0; i < blocks; i++) { YuvPlanes.CopyBlock(planes.Y, planes.PaddedWidth, (i % planes.MacroblockColumns) * 16, (i / planes.MacroblockColumns % planes.MacroblockRows) * 16, 128f, block); } }, 3);
+			Time($"  {blocks} DCTs", () => { for (int i = 0; i < blocks; i++) { Dct8x8.Forward(block, dct); } }, 3);
+			var bits = new BitWriter(1 << 20, stuffJpeg: true);
+			Time($"  {blocks * 40} bit fields", () => { bits.Reset(); for (int i = 0; i < blocks * 40; i++) { bits.Write((uint)i, 7); } }, 3);
+			using (var mpeg = new Mpeg1Writer(Path.Combine(folder, "b.mpg"), w, h, 30, 85))
+			{
+				Time("mpeg-1 picture", () => mpeg.Add(frame), 5);
+			}
+			using (var avi = new AviWriter(Path.Combine(folder, "b.avi"), w, h, 30, 100))
+			{
+				Time("avi frame (uncompressed)", () => avi.Add(frame), 5);
+			}
+			if (OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4))
+			{
+				using var mp4 = new Mp4Writer(Path.Combine(folder, "b.mp4"), w, h, 30, 85);
+				Console.WriteLine("  mp4: " + (mp4.Nv12Input ? "NV12" : "RGB32") + " in, " + mp4.Transforms + (mp4.HasDirect3D ? ", Direct3D device shared" : ", system memory") + "; hardware H.264 encoders registered: " + string.Join(", ", Mp4Writer.AvailableEncoders(hardwareOnly: true).DefaultIfEmpty("none")));
+				Time("mp4 frame (Media Foundation)", () => mp4.Add(frame), 10);
+			}
+			// the sequence sink's workers: PNG with one worker and with the default, ten frames each
+			foreach (int workers in new[] { 1, ExportFormats.SequenceWorkers(encoderIsParallel: false) })
+			{
+				string seqFolder = Path.Combine(folder, "scale" + workers);
+				var clock = Stopwatch.StartNew();
+				using (var seq = new ImageSequenceSink(seqFolder, "f", ".png", w, h, () => (stream, px) => PngEncoder.Write(stream, px.Span, w, h), workers))
+				{
+					for (int i = 0; i < 10; i++)
+					{
+						seq.Add(frame);
+					}
+				}
+				Console.WriteLine($"  png sequence sink, {workers} worker(s): {clock.Elapsed.TotalMilliseconds / 10:0.0} ms per frame");
+			}
+			// the whole job over a real store: a short run at this size (GPU when it works), then each format
+			var project = new Project();
+			project.Scene.Width = w;
+			project.Scene.Height = h;
+			project.Simulation.Steps = 120;
+			project.Simulation.VisualizeEvery = 2;
+			Source source = project.AddSource();
+			source.X = w / 2;
+			source.Y = h / 2;
+			source.Frequency = 120;
+			RunSpec spec = RunSpec.Create(project, null, preferGpu: true);
+			using var store = FrameStore.Create(Path.Combine(folder, "bench" + FrameCache.Extension), spec.Width, spec.Height, spec.Layers, spec.FrameCount, spec.VisualizeEvery);
+			using (var run = new SimulationRun(spec, store, null))
+			{
+				run.Start();
+				run.Completion.Wait();
+				Console.WriteLine("  run: " + run.EngineDescription + ", " + store.Count + " frames");
+			}
+			int[] lut = ColorLut.Build(ColorSchemeStore.LoadBuiltIn(null).First(scheme => scheme.Name == Display.DefaultFieldColorScheme)).Argb;
+			// the MP4 writer alone on the run's real frames, rendered up front: input format and rate control compared
+			if (OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4))
+			{
+				var rendered = new List<int[]>();
+				var values = new Half[w * h];
+				for (int i = 0; i < store.Count; i++)
+				{
+					var px = new int[w * h];
+					store.CopyLayer(i, FrameLayer.Field, values);
+					FrameRenderer.RenderField(values, w, h, lut, 30f, px);
+					rendered.Add(px);
+				}
+				// the declared frame rate is varied too: if the time per frame tracks it, the encoder paces itself to real time
+				foreach ((string label, bool nv12, bool quality, int fps, bool d3d, bool fastest) in new[] { ("NV12, quality mode, Direct3D", true, true, 30, true, false), ("NV12, quality mode, Direct3D, fastest", true, true, 30, true, true), ("NV12, bitrate mode, Direct3D, fastest", true, false, 30, true, true), ("NV12, quality mode, system memory, fastest", true, true, 30, false, true) })
+				{
+					Mp4Writer.PreferNv12 = nv12;
+					Mp4Writer.QualityMode = quality;
+					Mp4Writer.UseDirect3D = d3d;
+					Mp4Writer.Fastest = fastest;
+					var clock = Stopwatch.StartNew();
+					using (var writer = new Mp4Writer(Path.Combine(folder, "real.mp4"), w, h, fps, 85))
+					{
+						foreach (int[] px in rendered)
+						{
+							writer.Add(px);
+						}
+					}
+					double psnr = 0;
+					int probe = Math.Min(30, rendered.Count - 1);
+					if (Ffmpeg != null)
+					{
+						byte[]? rgb = Decode(Path.Combine(folder, "real.mp4"), w, h, out int n);
+						psnr = rgb == null || n <= probe ? 0 : Psnr(rgb.AsSpan(probe * w * h * 3, w * h * 3), rendered[probe], w, h);
+					}
+					Console.WriteLine($"  mp4 writer alone on {rendered.Count} real frames, {label}: {clock.Elapsed.TotalMilliseconds / rendered.Count:0.0} ms per frame, {new FileInfo(Path.Combine(folder, "real.mp4")).Length / 1024} KB, frame {probe} at {psnr:0.0} dB");
+				}
+				Mp4Writer.PreferNv12 = true;
+				Mp4Writer.QualityMode = true;
+				Mp4Writer.UseDirect3D = true;
+				Mp4Writer.Fastest = false;
+				// the same frames through ffmpeg's encoders, as a reference for what the hardware and a CPU encoder do outside Media Foundation
+				if (Ffmpeg != null)
+				{
+					string raw = Path.Combine(folder, "real.bgra");
+					using (var rawStream = new FileStream(raw, FileMode.Create))
+					{
+						foreach (int[] px in rendered)
+						{
+							rawStream.Write(System.Runtime.InteropServices.MemoryMarshal.AsBytes(px.AsSpan()));
+						}
+					}
+					foreach ((string label, string[] codec) in new[] { ("h264_nvenc", new[] { "-c:v", "h264_nvenc", "-preset", "fast", "-b:v", "17M" }), ("libx264 ultrafast", new[] { "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "17M" }) })
+					{
+						var info = new ProcessStartInfo(Ffmpeg) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+						foreach (string a in new[] { "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", $"{w}x{h}", "-r", "30", "-i", raw })
+						{
+							info.ArgumentList.Add(a);
+						}
+						foreach (string a in codec)
+						{
+							info.ArgumentList.Add(a);
+						}
+						info.ArgumentList.Add(Path.Combine(folder, "ref.mp4"));
+						var clock = Stopwatch.StartNew();
+						using Process p = Process.Start(info)!;
+						string err = p.StandardError.ReadToEnd();
+						p.WaitForExit();
+						Console.WriteLine(p.ExitCode == 0
+							? $"  ffmpeg {label} on the same frames: {clock.Elapsed.TotalMilliseconds / rendered.Count:0.0} ms per frame including the raw read ({new FileInfo(Path.Combine(folder, "ref.mp4")).Length / 1024} KB)"
+							: $"  ffmpeg {label}: not available ({err.Trim().Split('\n').LastOrDefault()})");
+					}
+					File.Delete(raw);
+				}
+			}
+			foreach ((string name, Func<IFrameSink> open) in new (string, Func<IFrameSink>)[]
+			{
+				("png sequence", () => ExportFormats.Open(ExportFormat.Png, Path.Combine(folder, "j.png"), w, h, 30, 85, 60)),
+				("jpeg sequence (in-house)", () => ExportFormats.Open(ExportFormat.Jpeg, Path.Combine(folder, "j.jpg"), w, h, 30, 85, 60)),
+				("jpeg sequence (WIC)", () => { ExportFormats.AlternativeJpeg = (fw, fh, q) => (stream, frame) => stream.Write(WicEncode(frame.ToArray(), fw, fh, q)); return ExportFormats.Open(ExportFormat.Jpeg, Path.Combine(folder, "k.jpg"), w, h, 30, 85, 60); }),
+				("mpeg-1", () => ExportFormats.Open(ExportFormat.Mpeg1, Path.Combine(folder, "j.mpg"), w, h, 30, 85, 60)),
+				("avi", () => ExportFormats.Open(ExportFormat.Avi, Path.Combine(folder, "j.avi"), w, h, 30, 85, 60)),
+				("mp4", () => ExportFormats.Open(ExportFormat.Mp4, Path.Combine(folder, "j.mp4"), w, h, 30, 85, 60)),
+				("mp4, writer not throttling", () => { Mp4Writer.Throttle = false; return ExportFormats.Open(ExportFormat.Mp4, Path.Combine(folder, "k.mp4"), w, h, 30, 85, 60); }),
+			})
+			{
+				if (name == "mp4" && !(OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4)))
+				{
+					continue;
+				}
+				var layer = new ExportLayer(FrameLayer.Field, lut, 30f, null, 0, null);
+				var job = new ExportJob(store, 0, store.Count - 1, [new ExportTarget(layer, name, open)], null);
+				var clock = Stopwatch.StartNew();
+				job.Start();
+				job.Completion.Wait();
+				Console.WriteLine($"  job to {name}: {clock.Elapsed.TotalMilliseconds / store.Count:0.0} ms per frame ({job.State})");
+				ExportFormats.AlternativeJpeg = null;
+				Mp4Writer.Throttle = true;
+			}
+		}
+		finally
+		{
+			Directory.Delete(folder, recursive: true);
+		}
+	}
+
+	/// <summary>What the app's WicJpeg does: WPF's JpegBitmapEncoder over a Bgr32 bitmap of the frame.</summary>
+	private static byte[] WicEncode(int[] frame, int w, int h, int quality)
+	{
+		var source = System.Windows.Media.Imaging.BitmapSource.Create(w, h, 96, 96, System.Windows.Media.PixelFormats.Bgr32, null, frame, w * 4);
+		var encoder = new System.Windows.Media.Imaging.JpegBitmapEncoder { QualityLevel = quality };
+		encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
+		using var stream = new MemoryStream();
+		encoder.Save(stream);
+		return stream.ToArray();
+	}
+
+	private static void Time(string what, Action action, int repeats)
+	{
+		// warm up past the JIT's tiering (a method is recompiled after 30 calls; timing the first ones gave twice the cost, 2026-10-15)
+		for (int i = 0; i < 40; i++)
+		{
+			action();
+		}
+		Thread.Sleep(150); // the recompilation happens in the background
+		var clock = Stopwatch.StartNew();
+		for (int i = 0; i < repeats; i++)
+		{
+			action();
+		}
+		Console.WriteLine($"  {what}: {clock.Elapsed.TotalMilliseconds / repeats:0.0} ms");
+	}
+
+	// ---------------------------------------------------------------- helpers
+
+	/// <summary>A test picture: a diagonal gradient with a bright moving square and a few saturated pixels, different per frame.</summary>
+	private static int[] TestFrame(int w, int h, int index)
+	{
+		var pixels = new int[w * h];
+		for (int y = 0; y < h; y++)
+		{
+			for (int x = 0; x < w; x++)
+			{
+				// smooth ramps (no wrap-around: a 4:2:0 format blurs a hard colour edge and that would dominate the PSNR)
+				int r = Math.Min(255, x * 255 / Math.Max(1, w - 1) + index * 8);
+				int g = y * 255 / Math.Max(1, h - 1);
+				int b = Math.Min(255, (x + y) * 255 / (w + h) + index * 12);
+				pixels[y * w + x] = unchecked((int)0xFF000000) | (r << 16) | (g << 8) | b;
+			}
+		}
+		int left = 5 + index * 6;
+		for (int y = 8; y < 24; y++)
+		{
+			for (int x = left; x < left + 16 && x < w; x++)
+			{
+				pixels[y * w + x] = unchecked((int)0xFFFFFFFF);
+			}
+		}
+		pixels[0] = unchecked((int)0xFFFF0000);
+		pixels[w - 1] = unchecked((int)0xFF00FF00);
+		pixels[(h - 1) * w] = unchecked((int)0xFF0000FF);
+		return pixels;
+	}
+
+	private static string? FindFfmpeg()
+	{
+		foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+		{
+			string candidate = Path.Combine(dir.Trim(), OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+			if (dir.Length > 0 && File.Exists(candidate))
+			{
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	/// <summary>Decodes a file with ffmpeg to packed RGB24 frames of w × h and counts them; null when ffmpeg failed.</summary>
+	private static byte[]? Decode(string path, int w, int h, out int frames)
+	{
+		frames = 0;
+		var info = new ProcessStartInfo(Ffmpeg!)
+		{
+			RedirectStandardOutput = true,
+			RedirectStandardError = true,
+			UseShellExecute = false,
+			CreateNoWindow = true,
+		};
+		foreach (string arg in new[] { "-v", "error", "-i", path, "-f", "rawvideo", "-pix_fmt", "rgb24", "-" })
+		{
+			info.ArgumentList.Add(arg);
+		}
+		using Process process = Process.Start(info)!;
+		using var output = new MemoryStream();
+		Task<string> errors = process.StandardError.ReadToEndAsync();
+		process.StandardOutput.BaseStream.CopyTo(output);
+		process.WaitForExit();
+		string error = errors.Result;
+		if (process.ExitCode != 0 || output.Length == 0)
+		{
+			Console.WriteLine("  ffmpeg: exit " + process.ExitCode + " " + error.Trim());
+			return null;
+		}
+		if (error.Trim().Length > 0)
+		{
+			Console.WriteLine("  ffmpeg: " + error.Trim());
+		}
+		byte[] bytes = output.ToArray();
+		frames = bytes.Length / (w * h * 3);
+		return bytes;
+	}
+
+	/// <summary>For a failure message: the first pixel where RGB24 bytes differ from the frame, with both values.</summary>
+	private static string Mismatch(byte[]? rgb, int[] frame, int w, int h)
+	{
+		if (rgb == null)
+		{
+			return " (no output)";
+		}
+		if (rgb.Length != w * h * 3)
+		{
+			return " (" + rgb.Length + " bytes, expected " + w * h * 3 + ")";
+		}
+		for (int i = 0; i < w * h; i++)
+		{
+			int argb = frame[i];
+			if (rgb[i * 3] != ((argb >> 16) & 0xFF) || rgb[i * 3 + 1] != ((argb >> 8) & 0xFF) || rgb[i * 3 + 2] != (argb & 0xFF))
+			{
+				return " (pixel " + i + " at " + i % w + "," + i / w + ": got " + rgb[i * 3] + "," + rgb[i * 3 + 1] + "," + rgb[i * 3 + 2] + ", expected " + ((argb >> 16) & 0xFF) + "," + ((argb >> 8) & 0xFF) + "," + (argb & 0xFF) + ")";
+			}
+		}
+		return "";
+	}
+
+	/// <summary>PSNR in dB of RGB24 bytes against a BGRA32 frame; 99 for identical.</summary>
+	private static double Psnr(ReadOnlySpan<byte> rgb, int[] frame, int w, int h)
+	{
+		double sum = 0;
+		int n = w * h;
+		for (int i = 0; i < n; i++)
+		{
+			int argb = frame[i];
+			int dr = rgb[i * 3] - ((argb >> 16) & 0xFF);
+			int dg = rgb[i * 3 + 1] - ((argb >> 8) & 0xFF);
+			int db = rgb[i * 3 + 2] - (argb & 0xFF);
+			sum += dr * dr + dg * dg + db * db;
+		}
+		double mse = sum / (3.0 * n);
+		return mse == 0 ? 99 : 10 * Math.Log10(255.0 * 255.0 / mse);
+	}
+
+	/// <summary>Decodes an 8-bit RGB PNG with any of the five filters; null when it is not one.</summary>
+	private static int[]? DecodePng(byte[] png, int w, int h)
+	{
+		int p = 8;
+		using var idat = new MemoryStream();
+		while (p + 8 <= png.Length)
+		{
+			int length = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(p));
+			string type = Encoding.ASCII.GetString(png, p + 4, 4);
+			if (type == "IHDR" && (BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(p + 8)) != w || BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(p + 12)) != h || png[p + 16] != 8 || png[p + 17] != 2))
+			{
+				return null;
+			}
+			if (type == "IDAT")
+			{
+				idat.Write(png, p + 8, length);
+			}
+			if (Crc32.Of(png.AsSpan(p + 4, 4 + length)) != BinaryPrimitives.ReadUInt32BigEndian(png.AsSpan(p + 8 + length)))
+			{
+				return null;
+			}
+			p += 12 + length;
+		}
+		idat.Position = 0;
+		using var zlib = new ZLibStream(idat, CompressionMode.Decompress);
+		int rowBytes = w * 3;
+		var raw = new byte[(rowBytes + 1) * h];
+		zlib.ReadExactly(raw);
+		var previous = new byte[rowBytes];
+		var current = new byte[rowBytes];
+		var pixels = new int[w * h];
+		for (int y = 0; y < h; y++)
+		{
+			int filter = raw[y * (rowBytes + 1)];
+			for (int i = 0; i < rowBytes; i++)
+			{
+				int x = raw[y * (rowBytes + 1) + 1 + i];
+				int a = i >= 3 ? current[i - 3] : 0;
+				int b = previous[i];
+				int c = i >= 3 ? previous[i - 3] : 0;
+				int predictor = filter switch
+				{
+					1 => a,
+					2 => b,
+					3 => (a + b) / 2,
+					4 => Paeth(a, b, c),
+					_ => 0,
+				};
+				current[i] = (byte)(x + predictor);
+			}
+			for (int x = 0; x < w; x++)
+			{
+				pixels[y * w + x] = unchecked((int)0xFF000000) | (current[x * 3] << 16) | (current[x * 3 + 1] << 8) | current[x * 3 + 2];
+			}
+			(previous, current) = (current, previous);
+		}
+		return pixels;
+	}
+
+	private static int Paeth(int a, int b, int c)
+	{
+		int p = a + b - c;
+		int pa = Math.Abs(p - a);
+		int pb = Math.Abs(p - b);
+		int pc = Math.Abs(p - c);
+		return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+	}
+
+	private static int CountStartCodes(byte[] data, byte code)
+	{
+		int count = 0;
+		for (int i = 0; i + 3 < data.Length; i++)
+		{
+			if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 && data[i + 3] == code)
+			{
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static string Fourcc(byte[] data, long offset) => Encoding.ASCII.GetString(data, (int)offset, 4);
+
+	private sealed class AviWalk
+	{
+		public int Segments;
+		public int Frames;
+		public int FramesInFirst;
+		public int Idx1Entries;
+		public int StandardIndexes;
+		public int SuperEntries;
+		public int TotalInDmlh;
+		public long FirstRiffSize;
+		public long FirstSegmentBytes;
+		public bool EndsAtFileEnd;
+	}
+
+	/// <summary>Walks the RIFF segments of an AVI, counting frames, indexes and the OpenDML entries.</summary>
+	private static AviWalk WalkAvi(byte[] data)
+	{
+		var walk = new AviWalk();
+		long p = 0;
+		while (p + 12 <= data.Length && Fourcc(data, p) == "RIFF")
+		{
+			long riffSize = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan((int)p + 4));
+			long end = p + 8 + riffSize;
+			bool first = walk.Segments == 0;
+			if (first)
+			{
+				walk.FirstRiffSize = riffSize;
+				walk.FirstSegmentBytes = end;
+			}
+			walk.Segments++;
+			long q = p + 12;
+			while (q + 8 <= end)
+			{
+				string id = Fourcc(data, q);
+				int size = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan((int)q + 4));
+				if (id == "LIST")
+				{
+					string type = Fourcc(data, q + 8);
+					if (type == "movi")
+					{
+						long r = q + 12;
+						long moviEnd = q + 8 + size;
+						while (r + 8 <= moviEnd)
+						{
+							string chunk = Fourcc(data, r);
+							int chunkSize = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan((int)r + 4));
+							if (chunk == "00db")
+							{
+								walk.Frames++;
+								if (first)
+								{
+									walk.FramesInFirst++;
+								}
+							}
+							else if (chunk == "ix00")
+							{
+								walk.StandardIndexes++;
+							}
+							r += 8 + chunkSize + (chunkSize & 1);
+						}
+					}
+					else if (type == "hdrl")
+					{
+						// find indx inside strl, and dmlh is in the odml list that follows hdrl
+						int at = IndexOf(data, "indx"u8, (int)q, (int)(q + 8 + size));
+						if (at >= 0)
+						{
+							walk.SuperEntries = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(at + 12));
+						}
+					}
+					else if (type == "odml")
+					{
+						walk.TotalInDmlh = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan((int)q + 20));
+					}
+				}
+				else if (id == "idx1")
+				{
+					walk.Idx1Entries = size / 16;
+				}
+				q += 8 + size + (size & 1);
+			}
+			p = end;
+		}
+		walk.EndsAtFileEnd = p == data.Length;
+		return walk;
+	}
+
+	private static int IndexOf(byte[] data, ReadOnlySpan<byte> needle, int from, int to)
+	{
+		for (int i = from; i + needle.Length <= Math.Min(to, data.Length); i++)
+		{
+			if (data.AsSpan(i, needle.Length).SequenceEqual(needle))
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+}

@@ -87,20 +87,6 @@ public sealed class ProbeGraphOverlay : Panel
 	/// <summary>Screen distance an attached box must be dragged from the probe before it comes off: wider than <see cref="SnapRadius"/>, so a drag near the edge does not attach and detach in turn (hysteresis, 2026-10-14).</summary>
 	public const double SnapRelease = 28.0;
 
-	// the author's colours: the box sits on the picture, not on the window, so they do not follow the theme
-	private static readonly Brush BackgroundBrush = Freeze(new SolidColorBrush(Color.FromArgb(235, 14, 16, 22)));
-	private static readonly Pen BorderPen = Freeze(new Pen(Freeze(new SolidColorBrush(Color.FromArgb(170, 200, 200, 210))), 1.0));
-	private static readonly Pen GridPen = Freeze(new Pen(Freeze(new SolidColorBrush(Color.FromArgb(46, 255, 255, 255))), 1.0));
-	private static readonly Pen ZeroPen = Freeze(new Pen(Freeze(new SolidColorBrush(Color.FromArgb(120, 255, 255, 255))), 1.0));
-	private static readonly Pen FramePen = Freeze(new Pen(Freeze(new SolidColorBrush(Color.FromArgb(130, 200, 200, 210))), 1.0));
-	private static readonly Brush LabelBrush = Freeze(new SolidColorBrush(Color.FromArgb(225, 225, 225, 230)));
-	private static readonly Brush TitleBrush = Freeze(new SolidColorBrush(Color.FromArgb(240, 240, 240, 245)));
-	private static readonly Brush CurveBrush = Freeze(new SolidColorBrush(Color.FromArgb(255, 255, 208, 64)));
-	private static readonly Typeface GraphTypeface = new("Segoe UI");
-
-	/// <summary>Font height of the labels and the title in screen pixels: the handle labels' size, whatever the box size.</summary>
-	private const double GraphFontSize = 11.0;
-
 	/// <summary>The text metrics handed to the layout, built per DPI.</summary>
 	private ProbeGraphStyle? _style;
 	private double _stylePixelsPerDip;
@@ -399,116 +385,20 @@ public sealed class ProbeGraphOverlay : Panel
 				continue;
 			}
 			dc.PushTransform(new TranslateTransform(box.X, box.Y));
-			DrawBox(dc, layout, ReferenceEquals(probe, selected), pixelsPerDip);
+			ProbeGraphDrawing.DrawBox(dc, layout, ReferenceEquals(probe, selected) ? new Pen(AccentBrush, 1.0) : null, pixelsPerDip);
 			dc.Pop();
 		}
 	}
 
-	/// <summary>The text metrics of the fixed graph font at this DPI: the line height and the measured label widths.</summary>
+	/// <summary>The text metrics of the fixed graph font at this DPI (<see cref="ProbeGraphDrawing.MakeStyle"/>), kept per DPI.</summary>
 	private ProbeGraphStyle StyleFor(double pixelsPerDip)
 	{
 		if (_style == null || _stylePixelsPerDip != pixelsPerDip)
 		{
 			_stylePixelsPerDip = pixelsPerDip;
-			float lineHeight = (float)Text("0", GraphFontSize, LabelBrush, pixelsPerDip).Height;
-			_style = new ProbeGraphStyle((float)GraphFontSize, lineHeight, text => (float)Text(text, GraphFontSize, LabelBrush, pixelsPerDip).Width);
+			_style = ProbeGraphDrawing.MakeStyle(pixelsPerDip);
 		}
 		return _style;
-	}
-
-	/// <summary>Draws one box from its layout, with the origin at the box's top-left corner.</summary>
-	private void DrawBox(DrawingContext dc, ProbeGraphLayout layout, bool isSelected, double pixelsPerDip)
-	{
-		double w = layout.Width;
-		double h = layout.Height;
-		dc.DrawRectangle(BackgroundBrush, null, new Rect(0, 0, w, h));
-		dc.DrawRectangle(null, isSelected ? new Pen(AccentBrush, 1.0) : BorderPen, new Rect(0.5, 0.5, w - 1, h - 1));
-		double fontPx = layout.FontSize;
-		if (layout.HasPlot)
-		{
-			double plotLeft = layout.PlotX;
-			double plotTop = layout.PlotY;
-			double plotRight = layout.PlotX + layout.PlotWidth;
-			double plotBottom = layout.PlotY + layout.PlotHeight;
-			// value axis: grid lines (the zero line brighter) with right-aligned labels in the left margin
-			foreach (GraphTick tick in layout.YTicks)
-			{
-				double y = Math.Round(tick.Position) + 0.5;
-				dc.DrawLine(tick.IsZero ? ZeroPen : GridPen, new Point(plotLeft, y), new Point(plotRight, y));
-				if (tick.Label.Length == 0)
-				{
-					continue;
-				}
-				// right-aligned by position: a MaxTextWidth equal to the measured width made WPF wrap the label onto a
-				// second line, which the one-line limit dropped (the labels vanished, 2026-10-14)
-				FormattedText label = Text(tick.Label, fontPx, LabelBrush, pixelsPerDip);
-				double lx = Math.Max(layout.LabelLeft, plotLeft - ProbeGraph.LabelGap - label.Width);
-				dc.DrawText(label, new Point(lx, Math.Clamp(tick.Position - label.Height / 2, plotTop - label.Height / 2, plotBottom - label.Height / 2)));
-			}
-			// step axis (point probe) or position on the line (line probe): labels centred below the plot, kept inside the box
-			foreach (GraphTick tick in layout.XTicks)
-			{
-				double x = Math.Round(tick.Position) + 0.5;
-				dc.DrawLine(GridPen, new Point(x, plotTop), new Point(x, plotBottom));
-				if (tick.Label.Length == 0)
-				{
-					continue;
-				}
-				FormattedText label = Text(tick.Label, fontPx, LabelBrush, pixelsPerDip);
-				double lx = Math.Clamp(tick.Position - label.Width / 2, ProbeGraph.EdgePad, Math.Max(ProbeGraph.EdgePad, w - label.Width - ProbeGraph.EdgePad));
-				dc.DrawText(label, new Point(lx, plotBottom + 2));
-			}
-			dc.DrawRectangle(null, FramePen, new Rect(plotLeft + 0.5, plotTop + 0.5, layout.PlotWidth, layout.PlotHeight));
-			DrawCurve(dc, layout);
-		}
-		// the title strip: the readout right-aligned in its own colour, the title in the remaining width
-		double readoutWidth = 0;
-		if (layout.Readout.Length > 0)
-		{
-			FormattedText readout = Text(layout.Readout, fontPx, CurveBrush, pixelsPerDip);
-			readoutWidth = readout.Width;
-			dc.DrawText(readout, new Point(w - readoutWidth - 8, layout.TitleTop));
-		}
-		FormattedText title = Text(layout.Title, fontPx, TitleBrush, pixelsPerDip);
-		title.MaxTextWidth = Math.Max(10, w - readoutWidth - 16);
-		title.Trimming = TextTrimming.CharacterEllipsis;
-		dc.DrawText(title, new Point(ProbeGraph.EdgePad + 3, layout.TitleTop));
-	}
-
-	/// <summary>Strokes the curve clipped to the plot area; a single point is a small dot.</summary>
-	private static void DrawCurve(DrawingContext dc, ProbeGraphLayout layout)
-	{
-		if (layout.Curve.Length == 0)
-		{
-			return;
-		}
-		if (layout.Curve.Length == 1)
-		{
-			dc.DrawEllipse(CurveBrush, null, new Point(layout.Curve[0].X, layout.Curve[0].Y), 2, 2);
-			return;
-		}
-		var geometry = new StreamGeometry();
-		using (StreamGeometryContext context = geometry.Open())
-		{
-			context.BeginFigure(new Point(layout.Curve[0].X, layout.Curve[0].Y), false, false);
-			for (int i = 1; i < layout.Curve.Length; i++)
-			{
-				context.LineTo(new Point(layout.Curve[i].X, layout.Curve[i].Y), true, false);
-			}
-		}
-		geometry.Freeze();
-		dc.PushClip(new RectangleGeometry(new Rect(layout.PlotX, layout.PlotY, layout.PlotWidth, layout.PlotHeight)));
-		dc.DrawGeometry(null, new Pen(CurveBrush, layout.LineWidth) { LineJoin = PenLineJoin.Round }, geometry);
-		dc.Pop();
-	}
-
-	private static FormattedText Text(string text, double size, Brush brush, double pixelsPerDip) =>
-		new(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, GraphTypeface, size, brush, pixelsPerDip) { MaxLineCount = 1 };
-
-	private static T Freeze<T>(T freezable) where T : Freezable
-	{
-		freezable.Freeze();
-		return freezable;
 	}
 
 	// ---------------------------------------------------------------- dragging and keys

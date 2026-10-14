@@ -85,14 +85,12 @@ public partial class App : Application
 		config.AddTarget(statusBar);
 		config.AddRule(LogLevel.Info, LogLevel.Fatal, statusBar);
 
-		// in-memory buffer behind the Messages pane; everything in Debug, Info and up in Release
+		// in-memory buffer behind the Messages pane: everything, in every build; the pane's level toggles hide
+		// Trace and Debug by default in Release, so they can be switched on when something needs a look
+		// (2026-10-14, the user: a Release build had nothing to show there, the messages never got in)
 		var messages = new MessagesTarget { Name = "messages" };
 		config.AddTarget(messages);
-#if DEBUG
 		config.AddRule(LogLevel.Trace, LogLevel.Fatal, messages);
-#else
-		config.AddRule(LogLevel.Info, LogLevel.Fatal, messages);
-#endif
 #if DEBUG
 		config.AddRule(LogLevel.Trace, LogLevel.Fatal, fileTarget);
 		config.AddRule(LogLevel.Trace, LogLevel.Fatal, new DebuggerTarget("debugger") { Layout = DebugLayout });
@@ -203,6 +201,8 @@ public partial class App : Application
 		PrepareSettings();
 		FrameCache.Sweep();
 		ColorSchemeCatalog.Instance.Load();
+		// JPEG through the WIC codec of Windows, the in-house encoder as the fallback (2026-10-15)
+		Export.ExportFormats.AlternativeJpeg = Rendering.WicJpeg.Encoder;
 
 		ThemeController.Instance.Current = Settings.Default.Theme;
 		ThemeController.Instance.PropertyChanged += (_, args) =>

@@ -21,6 +21,11 @@
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Display.ExportTo}" />
 				<controls:NumberBox Text="{Binding ExportTo}" Minimum="0" ToolTip="{meta:Hint model:Display.ExportTo}" />
+
+				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Display.ProbeGraphsInExport}"
+				          IsChecked="{Binding ProbeGraphsInExport}" ToolTip="{meta:Hint model:Display.ProbeGraphsInExport}" />
+				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Display.ProbeMarkersInExport}"
+				          IsChecked="{Binding ProbeMarkersInExport}" ToolTip="{meta:Hint model:Display.ProbeMarkersInExport}" />
 			</controls:FormPanel>
 
 			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionVideo}" />

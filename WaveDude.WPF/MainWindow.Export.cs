@@ -1,0 +1,368 @@
+using System.IO;
+using System.Windows;
+using System.Windows.Input;
+using Microsoft.Win32;
+using WaveDude.Export;
+using WaveDude.Model;
+using WaveDude.Rendering;
+using WaveDude.Runs;
+using WaveDude.WPF.Properties;
+using WaveDude.WPF.Rendering;
+
+namespace WaveDude.WPF;
+
+/// <summary>
+/// Handlers of <see cref="Commands.ExportCommands"/> (2026-10-14): the Save dialog picks the format by its
+/// extension (PNG or JPEG sequence, MPEG-1, AVI, MP4) and the name, pre-set to the project's name with
+/// <c>_field</c> / <c>_intensity</c> in the project file's folder; "both" writes two outputs from one name;
+/// a frame command writes the frame the preview shows as one PNG or JPEG (<c>_field_&lt;step&gt;</c>).
+/// Every export renders from the run's store with the display settings as they are, the outline when opted
+/// in and the probe graph boxes when <see cref="Display.ProbeGraphsInExport"/> is on; a still shows exactly
+/// what a video export would show at that frame (the user's rule), never the scratch frame. There is always a
+/// run to export: when there is none, it is stale, or it lacks the intensity plane, a run is started first
+/// (like Play does) and the export waits for it (<see cref="IsExportWaiting"/>). The <see cref="ExportJob"/>
+/// works on its own thread and reports to the status bar's busy indicator; Esc cancels it. Runs are not
+/// started or replaced while an export reads the store.
+/// </summary>
+public partial class MainWindow
+{
+	/// <summary>Identifies the <see cref="Export"/> property.</summary>
+	public static readonly DependencyProperty ExportProperty = DependencyProperty.Register(
+		nameof(Export), typeof(ExportJob), typeof(MainWindow),
+		new PropertyMetadata(null, (d, _) => ((MainWindow)d).OnExportChanged()));
+
+	/// <summary>Identifies the <see cref="IsExportWaiting"/> property.</summary>
+	public static readonly DependencyProperty IsExportWaitingProperty = DependencyProperty.Register(
+		nameof(IsExportWaiting), typeof(bool), typeof(MainWindow),
+		new PropertyMetadata(false, (d, _) => ((MainWindow)d).OnExportChanged()));
+
+	/// <summary>The current export (running or finished), or null.</summary>
+	public ExportJob? Export
+	{
+		get => (ExportJob?)GetValue(ExportProperty);
+		set => SetValue(ExportProperty, value);
+	}
+
+	/// <summary>Whether an export is waiting for its run to complete before it starts writing.</summary>
+	public bool IsExportWaiting
+	{
+		get => (bool)GetValue(IsExportWaitingProperty);
+		set => SetValue(IsExportWaitingProperty, value);
+	}
+
+	/// <summary>Whether an export is running or waiting for its run.</summary>
+	private bool IsExporting => Export?.IsActive == true || IsExportWaiting;
+
+	private void OnExportChanged()
+	{
+		CommandManager.InvalidateRequerySuggested();
+		UpdateBusy();
+	}
+
+	private void CanExport(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = !IsExporting && Project.Simulation.Steps > 0;
+
+	private void OnExportField(object sender, ExecutedRoutedEventArgs e) => BeginExport(field: true, intensity: false);
+
+	private void OnExportIntensity(object sender, ExecutedRoutedEventArgs e) => BeginExport(field: false, intensity: true);
+
+	private void OnExportBoth(object sender, ExecutedRoutedEventArgs e) => BeginExport(field: true, intensity: true);
+
+	private void OnExportFieldFrame(object sender, ExecutedRoutedEventArgs e) => BeginExport(field: true, intensity: false, still: true);
+
+	private void OnExportIntensityFrame(object sender, ExecutedRoutedEventArgs e) => BeginExport(field: false, intensity: true, still: true);
+
+	/// <summary>The Save dialog, the run, the targets, the job.</summary>
+	/// <param name="field">Export the field.</param>
+	/// <param name="intensity">Export the intensity.</param>
+	/// <param name="still">One frame, the one the preview shows, as a single image file.</param>
+	private async void BeginExport(bool field, bool intensity, bool still = false)
+	{
+		if (IsExporting)
+		{
+			return;
+		}
+		int stillFrame = Math.Max(0, PreviewPosition);
+		string suffix = field && intensity ? "" : field ? "_field" : "_intensity";
+		if (still)
+		{
+			suffix += "_" + (stillFrame * Math.Max(1, Project.Simulation.VisualizeEvery)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+		}
+		string chosen;
+		int filterIndex = still ? Math.Clamp(Settings.Default.ExportFilterIndex + 1, 1, 2) : Math.Clamp(Settings.Default.ExportFilterIndex + 1, 1, ExportFormats.All.Length);
+		string? scripted = Environment.GetEnvironmentVariable("WAVEDUDE_EXPORT_PATH");
+		if (!string.IsNullOrEmpty(scripted))
+		{
+			// a UI harness cannot drive the common dialog by posted keys: it hands the path in instead, "{name}" standing for the suggested name
+			chosen = scripted.Replace("{name}", ProjectName() + suffix, StringComparison.Ordinal);
+			Logger.Debug("Export path taken from WAVEDUDE_EXPORT_PATH: {Path}", chosen);
+		}
+		else
+		{
+			var dialog = new SaveFileDialog
+			{
+				Title = (string)FindResource(still ? "ExportDialogTitleFrame" : field && intensity ? "ExportDialogTitleBoth" : field ? "ExportDialogTitleField" : "ExportDialogTitleIntensity"),
+				Filter = (string)FindResource(still ? "ExportDialogFilterStill" : "ExportDialogFilter"),
+				FilterIndex = filterIndex,
+				AddExtension = true,
+				DefaultExt = ExportFormats.Extension(ExportFormat.Png),
+				FileName = ProjectName() + suffix,
+				InitialDirectory = ProjectFolder ?? (Directory.Exists(Settings.Default.LastExportFolder) ? Settings.Default.LastExportFolder : ""),
+			};
+			if (dialog.ShowDialog(this) != true)
+			{
+				Logger.Debug("Export cancelled in the Save dialog");
+				return;
+			}
+			chosen = dialog.FileName;
+			filterIndex = dialog.FilterIndex;
+			if (!still)
+			{
+				Settings.Default.ExportFilterIndex = filterIndex - 1;
+			}
+			Settings.Default.LastExportFolder = Path.GetDirectoryName(chosen) ?? "";
+		}
+		ExportFormat format = ExportFormats.FromPath(chosen) ?? ExportFormats.All[Math.Clamp(filterIndex - 1, 0, ExportFormats.All.Length - 1)];
+		if (still && !ExportFormats.IsSequence(format))
+		{
+			format = ExportFormat.Png;
+		}
+		if (ExportFormats.FromPath(chosen) != format)
+		{
+			chosen = Path.ChangeExtension(chosen, ExportFormats.Extension(format));
+		}
+		Logger.Debug("Export: {What} as {Format} to {Path}", still ? "the shown frame " + stillFrame : field && intensity ? "field and intensity" : field ? "field" : "intensity", format, chosen);
+		if (!ExportFormats.IsAvailable(format))
+		{
+			Logger.Error("MP4 export is not available: Media Foundation is missing on this computer (Windows N needs the Media Feature Pack)");
+			MessageBox.Show(this, (string)FindResource("ExportError"), (string)FindResource("Title"), MessageBoxButton.OK, MessageBoxImage.Error);
+			return;
+		}
+		// the output paths: one per layer; "both" takes the chosen name without a layer suffix and appends its own
+		var outputs = new List<(FrameLayer Layer, string Path)>();
+		if (field && intensity)
+		{
+			string folder = Path.GetDirectoryName(chosen) ?? "";
+			string name = Path.GetFileNameWithoutExtension(chosen);
+			foreach (string known in new[] { "_field", "_intensity" })
+			{
+				if (name.EndsWith(known, StringComparison.OrdinalIgnoreCase))
+				{
+					name = name[..^known.Length];
+				}
+			}
+			string extension = ExportFormats.Extension(format);
+			outputs.Add((FrameLayer.Field, Path.Combine(folder, name + "_field" + extension)));
+			outputs.Add((FrameLayer.Intensity, Path.Combine(folder, name + "_intensity" + extension)));
+		}
+		else
+		{
+			outputs.Add((field ? FrameLayer.Field : FrameLayer.Intensity, chosen));
+		}
+		// a sequence goes to a folder of its own; one that exists with files in it is replaced only on request
+		if (!still && ExportFormats.IsSequence(format))
+		{
+			foreach ((_, string path) in outputs)
+			{
+				string folder = ExportFormats.SequenceFolder(path);
+				if (Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any()
+					&& MessageBox.Show(this, string.Format((string)FindResource("ExportFolderExistsFormat"), folder), (string)FindResource("Title"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+				{
+					Logger.Debug("Export cancelled: {Folder} kept", folder);
+					return;
+				}
+			}
+		}
+		SimulationRun? run = await EnsureRunForExport(intensity);
+		if (run == null)
+		{
+			return;
+		}
+		// the range in frames, from the model's steps like the preview's in/out points; a still is the shown frame
+		Display display = Project.Display;
+		int every = run.Spec.VisualizeEvery;
+		int lastFrame = run.Spec.FrameCount - 1;
+		int first;
+		int last;
+		if (still)
+		{
+			first = last = Math.Clamp(stillFrame, 0, lastFrame);
+		}
+		else
+		{
+			first = Math.Clamp(display.ExportFrom / every, 0, lastFrame);
+			last = display.ExportTo <= 0 ? lastFrame : Math.Clamp(display.ExportTo / every, first, lastFrame);
+		}
+		int frameCount = last - first + 1;
+		Logger.Debug("Export range: frames {First} to {Last} ({Count}) of the run's {Total}, {Width}×{Height}, store {Store}", first, last, frameCount, run.Spec.FrameCount, run.Spec.Width, run.Spec.Height, run.Store.Path);
+		// the targets: the layer's colours and outline, the probe boxes, the sink
+		var targets = new List<ExportTarget>();
+		try
+		{
+			byte[]? edges = null;
+			if (display.Field.OverlayInExport || display.Intensity.OverlayInExport)
+			{
+				ScenePixels? scene = LoadSceneImage();
+				if (scene != null && scene.Width == run.Spec.Width && scene.Height == run.Spec.Height)
+				{
+					edges = GlowingEdges.Compute(scene.Bgra, scene.Width, scene.Height, scene.StrideBytes);
+				}
+				Logger.Debug("Export outline: {State}", edges != null ? "computed from the scene image" : "none (no image scene)");
+			}
+			ProbeGraphPainter? painter = display.ProbeGraphsInExport || display.ProbeMarkersInExport ? new ProbeGraphPainter(Project, run, display.ProbeGraphsInExport, display.ProbeMarkersInExport) : null;
+			foreach ((FrameLayer layer, string path) in outputs)
+			{
+				DisplayLayer settings = layer == FrameLayer.Field ? display.Field : display.Intensity;
+				int[]? lut = ColorSchemeCatalog.Instance.LutFor(Project, settings.ColorScheme, settings.BlackLevel);
+				Action<int, Memory<int>>? decorate = painter?.For(layer == FrameLayer.Field ? ProbeLayer.Field : ProbeLayer.Intensity);
+				var exportLayer = new ExportLayer(layer, lut, (float)settings.Brightness, settings.OverlayInExport ? edges : null, settings.OverlayGain, decorate);
+				// the sink is opened by the job on its thread (a Media Foundation writer must stay on one thread)
+				int width = run.Spec.Width;
+				int height = run.Spec.Height;
+				int fps = display.Video.Fps;
+				int quality = display.Video.Quality;
+				string output = !still && ExportFormats.IsSequence(format) ? ExportFormats.SequenceFolder(path) : path;
+				Func<IFrameSink> open = still
+					? () => ExportFormats.OpenStill(format, path, width, height, quality)
+					: () => ExportFormats.Open(format, path, width, height, fps, quality, frameCount);
+				targets.Add(new ExportTarget(exportLayer, output, open));
+				Logger.Debug("Export target {Layer}: scheme '{Scheme}' (black level {Black}), brightness {Brightness}, outline {Outline}, probe boxes {Boxes}, markers {Markers}, to {Output}",
+					layer, settings.ColorScheme, settings.BlackLevel, settings.Brightness, settings.OverlayInExport && edges != null ? "gain " + settings.OverlayGain : "off", display.ProbeGraphsInExport ? "on" : "off", display.ProbeMarkersInExport ? "on" : "off", output);
+			}
+			if (!still && format == ExportFormat.Mpeg1)
+			{
+				double used = Mpeg1Writer.FrameRates[Mpeg1Writer.NearestFrameRateCode(display.Video.Fps) - 1];
+				if (Math.Abs(used - display.Video.Fps) > 0.01)
+				{
+					Logger.Warn("MPEG-1 has no {Wanted} fps: the video is written at {Used:0.###} fps", display.Video.Fps, used);
+				}
+			}
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or RunSpecException)
+		{
+			Logger.Error(ex, "The export could not start: {Message}", ex.Message);
+			ShowError((string)FindResource("ExportError"), ex);
+			return;
+		}
+		var job = new ExportJob(run.Store, first, last, targets, SynchronizationContext.Current);
+		job.Finished += (_, _) => OnExportFinished(job);
+		WatchExport(job);
+		Export = job;
+		Logger.Info("Export started: frames {First} to {Last} ({Count}) of {Width}×{Height} to {Outputs}",
+			first, last, frameCount, run.Spec.Width, run.Spec.Height, string.Join(", ", targets.Select(target => target.Output)));
+		job.Start();
+	}
+
+	/// <summary>The project's name for a file: the project file's name, else "project".</summary>
+	private string ProjectName() => Path.GetFileNameWithoutExtension(Filename ?? _suggestedFileName ?? "project");
+
+	/// <summary>
+	/// A completed run the export can read: the current one when it is fresh, finished or in progress, and
+	/// holds the intensity plane if asked for; otherwise a run is started and awaited. Null when no run could
+	/// be had (logged, and an error shown when the run could not start).
+	/// </summary>
+	private async Task<SimulationRun?> EnsureRunForExport(bool intensity)
+	{
+		IsExportWaiting = true;
+		try
+		{
+			for (int attempt = 0; attempt < 3; attempt++)
+			{
+				SimulationRun? run = Run;
+				string? reason = run == null ? "no run" : IsRunStale ? "the run is stale" : IsProbesStale ? "the probes were edited since the run"
+					: intensity && !run.Store.Has(FrameLayer.Intensity) ? "the run has no intensity plane" : !run.IsActive && run.State != RunState.Completed ? "the run did not complete" : null;
+				if (reason != null)
+				{
+					Logger.Debug("Export: a run is started first ({Reason})", reason);
+					StartRun(automatic: true, trackIntensity: intensity);
+					run = Run;
+				}
+				else if (run!.IsActive)
+				{
+					Logger.Debug("Export: waiting for the run in progress");
+				}
+				if (run == null)
+				{
+					return null;
+				}
+				await run.Completion;
+				await WaitForState(run);
+				if (run.State == RunState.Completed && ReferenceEquals(run, Run))
+				{
+					return run;
+				}
+				if (!ReferenceEquals(run, Run))
+				{
+					// replaced meanwhile (an edit started a fresh one): look at the new one
+					Logger.Debug("Export: the run was replaced while waited for, looking again");
+					continue;
+				}
+				Logger.Warn("Export abandoned: the run ended {State}", run.State);
+				return null;
+			}
+			Logger.Warn("Export abandoned: the project kept changing while its run was computed");
+			return null;
+		}
+		catch (Exception ex) when (ex is RunSpecException or IOException or UnauthorizedAccessException or NotSupportedException)
+		{
+			Logger.Error(ex, "The export's run could not start: {Message}", ex.Message);
+			ShowError((string)FindResource("RunError"), ex);
+			return null;
+		}
+		finally
+		{
+			IsExportWaiting = false;
+		}
+	}
+
+	/// <summary>The run's final state is posted to the UI thread after its completion task completes; wait for that post.</summary>
+	private static async Task WaitForState(SimulationRun run)
+	{
+		for (int i = 0; i < 50 && !run.IsFinished; i++)
+		{
+			await Task.Delay(20);
+		}
+	}
+
+	private void OnExportFinished(ExportJob job)
+	{
+		if (!ReferenceEquals(job, Export))
+		{
+			return;
+		}
+		UpdateBusy();
+		string outputs = string.Join(", ", job.Targets.Select(target => target.Output));
+		switch (job.State)
+		{
+			case ExportState.Completed:
+				Logger.Info("Exported {Frames} frames to {Outputs} in {Seconds:0.0} s", job.FramesDone, outputs, job.Elapsed.TotalSeconds);
+				break;
+			case ExportState.Cancelled:
+				Logger.Warn("Export cancelled after {Frames} of {Total} frames; {Outputs} hold what was written", job.FramesDone, job.FrameCount, outputs);
+				break;
+			default:
+				Logger.Error("Export failed after {Frames} frames: {Message}", job.FramesDone, job.Error?.Message);
+				if (job.Error != null)
+				{
+					ShowError((string)FindResource("ExportError"), job.Error);
+				}
+				break;
+		}
+		// the auto re-run held back during the export may be due now
+		OnRunFinished();
+	}
+
+	/// <summary>Cancels a running export and waits briefly for its files to close; for closing the window.</summary>
+	private void ShutdownExport()
+	{
+		ExportJob? job = Export;
+		if (job?.IsActive != true)
+		{
+			return;
+		}
+		job.Cancel();
+		if (!job.Completion.Wait(TimeSpan.FromSeconds(10)))
+		{
+			Logger.Warn("The export did not stop in time; its last file may be incomplete");
+		}
+	}
+}

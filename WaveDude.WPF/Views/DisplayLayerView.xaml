@@ -29,7 +29,5 @@
 		<controls:NumberBox Text="{Binding OverlayGain}" Minimum="0" Maximum="5" Increment="0.05" ToolTip="{meta:Hint model:DisplayLayer.OverlayGain}" />
 		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.OverlayInExport}"
 		          IsChecked="{Binding OverlayInExport}" ToolTip="{meta:Hint model:DisplayLayer.OverlayInExport}" />
-		<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:DisplayLayer.Export}"
-		          IsChecked="{Binding Export}" ToolTip="{meta:Hint model:DisplayLayer.Export}" />
 	</controls:FormPanel>
 </UserControl>

@@ -87,11 +87,17 @@
 		</Style>
 	</Window.Resources>
 
-	<!-- "Wave Dude - <file>", just the name while no file is open -->
+	<!-- the taskbar button shows the status bar's busy state too (export progress, or the marquee while waiting or computing a frame); MainWindow.Taskbar.cs feeds it -->
+	<Window.TaskbarItemInfo>
+		<TaskbarItemInfo />
+	</Window.TaskbarItemInfo>
+
+	<!-- "Wave Dude - <file>", just the name while no file is open; an asterisk after the file (or "Untitled") marks unsaved edits -->
 	<Window.Title>
 		<MultiBinding Converter="{StaticResource TitleConverter}">
 			<Binding Source="{StaticResource Title}" />
 			<Binding Path="Filename" />
+			<Binding Path="IsDirty" />
 		</MultiBinding>
 	</Window.Title>
 
@@ -108,7 +114,14 @@
 		<!-- the run; handlers in MainWindow.Simulation.cs -->
 		<CommandBinding Command="{x:Static commands:SimulationCommands.Run}" CanExecute="CanRun" Executed="OnRun" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.TogglePause}" CanExecute="CanControlRun" Executed="OnTogglePause" />
-		<CommandBinding Command="{x:Static commands:SimulationCommands.Stop}" CanExecute="CanControlRun" Executed="OnStop" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.Stop}" CanExecute="CanStop" Executed="OnStop" />
+
+		<!-- export; handlers in MainWindow.Export.cs -->
+		<CommandBinding Command="{x:Static commands:ExportCommands.Field}" CanExecute="CanExport" Executed="OnExportField" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.Intensity}" CanExecute="CanExport" Executed="OnExportIntensity" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.Both}" CanExecute="CanExport" Executed="OnExportBoth" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.FieldFrame}" CanExecute="CanExport" Executed="OnExportFieldFrame" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.IntensityFrame}" CanExecute="CanExport" Executed="OnExportIntensityFrame" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.EnsureRun}" Executed="OnEnsureRun" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.SetFrameMemory}" Executed="OnSetFrameMemory" />
 
@@ -142,6 +155,17 @@
 				<Separator />
 				<MenuItem Command="ApplicationCommands.Save" Header="{DynamicResource MenuFileSave}" />
 				<MenuItem Command="ApplicationCommands.SaveAs" Header="{DynamicResource MenuFileSaveAs}" InputGestureText="Ctrl+Shift+S" />
+				<Separator />
+				<!-- export of the current run's frames (the export range, the display settings as they are); the same entries sit on the pictures' context menus -->
+				<MenuItem Header="{DynamicResource MenuFileExport}" AutomationProperties.AutomationId="MenuExport">
+					<MenuItem Command="{x:Static commands:ExportCommands.Field}" Header="{DynamicResource MenuFileExportField}" AutomationProperties.AutomationId="MenuExportField" />
+					<MenuItem Command="{x:Static commands:ExportCommands.Intensity}" Header="{DynamicResource MenuFileExportIntensity}" AutomationProperties.AutomationId="MenuExportIntensity" />
+					<MenuItem Command="{x:Static commands:ExportCommands.Both}" Header="{DynamicResource MenuFileExportBoth}" AutomationProperties.AutomationId="MenuExportBoth" />
+					<Separator />
+					<!-- the frame the preview shows, from the same run, as one image -->
+					<MenuItem Command="{x:Static commands:ExportCommands.FieldFrame}" Header="{DynamicResource MenuFileExportFieldFrame}" AutomationProperties.AutomationId="MenuExportFieldFrame" />
+					<MenuItem Command="{x:Static commands:ExportCommands.IntensityFrame}" Header="{DynamicResource MenuFileExportIntensityFrame}" AutomationProperties.AutomationId="MenuExportIntensityFrame" />
+				</MenuItem>
 				<Separator />
 				<MenuItem Command="ApplicationCommands.Close" Header="{DynamicResource MenuFileClose}" />
 				<Separator />
@@ -205,6 +229,17 @@
 			<StatusBar.InputBindings>
 				<MouseBinding Gesture="LeftDoubleClick" Command="{StaticResource ShowMessages}" />
 			</StatusBar.InputBindings>
+			<!-- the busy indicator: an export (frames done), an export waiting for its run or a scratch frame being
+			     computed for the preview (indeterminate); Esc cancels an export -->
+			<StatusBarItem DockPanel.Dock="Right" HorizontalAlignment="Right">
+				<StackPanel Orientation="Horizontal">
+					<TextBlock Text="{Binding BusyText}" AutomationProperties.AutomationId="StatusExport" VerticalAlignment="Center" />
+					<ProgressBar Width="120" Height="12" Margin="6,0,8,0" VerticalAlignment="Center" ToolTip="{DynamicResource TipExportCancel}"
+					             Minimum="0" Maximum="{Binding Export.FrameCount, FallbackValue=1}" Value="{Binding Export.FramesDone, Mode=OneWay, FallbackValue=0}"
+					             IsIndeterminate="{Binding IsBusyIndeterminate}" AutomationProperties.AutomationId="StatusBusyBar"
+					             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+				</StackPanel>
+			</StatusBarItem>
 			<!-- the run's progress on the right: state, steps, engine; empty while there is no run -->
 			<StatusBarItem DockPanel.Dock="Right" HorizontalAlignment="Right">
 				<TextBlock AutomationProperties.AutomationId="StatusRun">
@@ -240,6 +275,7 @@
 				<Border BorderThickness="1" BorderBrush="{DynamicResource ToolWindowBorder}">
 					<panes:PreviewPane x:Name="previewPane" Project="{Binding Project}" Run="{Binding Run}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
 					                   IsStale="{Binding IsRunStale}" IsProbesStale="{Binding IsProbesStale}" ScratchFrame="{Binding ScratchFrame}"
+					                   IsComputing="{Binding IsComputingFrame}"
 					                   Position="{Binding PreviewPosition, Mode=TwoWay}"
 					                   Orientation="{Binding Source={x:Static p:Settings.Default}, Path=PreviewOrientation, Mode=TwoWay}" />
 				</Border>

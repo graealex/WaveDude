@@ -32,6 +32,10 @@ public partial class MainWindow
 	public static readonly DependencyProperty IsRunStaleProperty = DependencyProperty.Register(
 		nameof(IsRunStale), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
 
+	/// <summary>Identifies the <see cref="IsComputingFrame"/> property.</summary>
+	public static readonly DependencyProperty IsComputingFrameProperty = DependencyProperty.Register(
+		nameof(IsComputingFrame), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+
 	/// <summary>Identifies the <see cref="IsProbesStale"/> property.</summary>
 	public static readonly DependencyProperty IsProbesStaleProperty = DependencyProperty.Register(
 		nameof(IsProbesStale), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
@@ -50,6 +54,7 @@ public partial class MainWindow
 	private int _lastSkippedFrame = -1;
 	private DispatcherTimer? _scratchTimer;
 	private DispatcherTimer? _rerunTimer;
+	private (RunSpec Spec, int Frame)? _scratchRequested;
 	private (string Path, DateTime Written, ScenePixels Pixels)? _imageCache;
 	private (byte[] Data, ScenePixels Pixels)? _embeddedCache;
 
@@ -70,6 +75,18 @@ public partial class MainWindow
 	{
 		get => (bool)GetValue(IsProbesStaleProperty);
 		set => SetValue(IsProbesStaleProperty, value);
+	}
+
+	/// <summary>
+	/// Whether a scratch frame for the preview's position is being computed: from the request until its result
+	/// (or a newer request's). The preview dims its pictures and shows a spinner meanwhile, so the wait reads as
+	/// work in progress rather than as a preview that does not update (the author's impression; the user's
+	/// rule, 2026-10-14).
+	/// </summary>
+	public bool IsComputingFrame
+	{
+		get => (bool)GetValue(IsComputingFrameProperty);
+		private set => SetValue(IsComputingFrameProperty, value);
 	}
 
 	/// <summary>The newest scratch frame (or skip notice) for the preview's position; null when none applies.</summary>
@@ -101,6 +118,7 @@ public partial class MainWindow
 		}, DispatcherPriority.Background);
 		IsRunStale = false;
 		IsProbesStale = false;
+		IsDirty = false;
 		ScratchFrame = null;
 		if (project != null)
 		{
@@ -113,6 +131,7 @@ public partial class MainWindow
 
 	private void OnProjectChanged(object? sender, ProjectChange change)
 	{
+		IsDirty = true;
 		if (change.Item is ColorScheme or ObservableCollection<ColorScheme>)
 		{
 			// a project scheme edited, added or removed: recolour the frame shown
@@ -122,8 +141,9 @@ public partial class MainWindow
 		if (change.AffectsProbes)
 		{
 			// the frames stay, the recordings are stale: the scratch frame brings the new recording for the position
-			if (Run != null)
+			if (Run != null && !IsProbesStale)
 			{
+				Logger.Debug("Probes edited ({Item}.{Property}): the run's recordings are stale", change.Item, change.Property);
 				IsProbesStale = true;
 			}
 			ScheduleScratch();
@@ -132,6 +152,10 @@ public partial class MainWindow
 		if (!change.AffectsSimulation)
 		{
 			return;
+		}
+		if (Run != null && !IsRunStale)
+		{
+			Logger.Debug("Edited ({Item}.{Property}): the run is stale", change.Item, change.Property ?? "list");
 		}
 		if (change.Item is Scene)
 		{
@@ -144,6 +168,7 @@ public partial class MainWindow
 		if (Run is { IsAutomatic: true, IsActive: true })
 		{
 			// its snapshot is already obsolete: stop it now, the quiet period starts a fresh one
+			Logger.Debug("The automatic run is stopped: its snapshot is obsolete");
 			Run.Stop();
 		}
 		ScheduleScratch();
@@ -194,11 +219,24 @@ public partial class MainWindow
 			run.Pause();
 			_pausedForScratch = run;
 		}
-		_scratch.Request(spec, Math.Clamp(PreviewPosition, 0, Math.Max(0, spec.FrameCount - 1)));
+		int frame = Math.Clamp(PreviewPosition, 0, Math.Max(0, spec.FrameCount - 1));
+		Logger.Debug("Preview frame {Frame} requested from scratch ({Reason})", frame,
+			Run == null ? "no run" : IsRunStale ? "the run is stale" : IsProbesStale ? "the probes changed" : "the run has not got there yet");
+		_scratchRequested = (spec, frame);
+		_scratch.Request(spec, frame);
+		SetScratchBusy(frame);
+		IsComputingFrame = true;
 	}
 
 	private void OnScratchCompleted(object? sender, ScratchResult result)
 	{
+		// the request this result answers is the newest one: the indicator goes off (a newer request keeps it on)
+		if (_scratchRequested is { } requested && ReferenceEquals(requested.Spec, result.Spec) && requested.Frame == result.Frame)
+		{
+			_scratchRequested = null;
+			SetScratchBusy(-1);
+			IsComputingFrame = false;
+		}
 		if (_pausedForScratch is { } paused)
 		{
 			_pausedForScratch = null;
@@ -233,11 +271,14 @@ public partial class MainWindow
 		_rerunTimer!.Stop();
 		if (!Settings.Default.AutoRerun || !IsRunStale || Run?.IsActive == true)
 		{
+			Logger.Debug("No automatic re-run: {Reason}", !Settings.Default.AutoRerun ? "switched off" : !IsRunStale ? "the run is not stale" : "a run is active");
 			return;
 		}
-		if (_scratch?.IsBusy == true || _scratchTimer?.IsEnabled == true)
+		if (_scratch?.IsBusy == true || _scratchTimer?.IsEnabled == true || IsExporting)
 		{
-			// the frame the user is looking at comes first, requested or computing; the run would take the cores away from it
+			// the frame the user is looking at comes first, requested or computing; the run would take the cores away
+			// from it. An export reads the current run's store, so it keeps its run until it is done.
+			Logger.Debug("Automatic re-run postponed: {Reason}", IsExporting ? "an export is in progress" : "a preview frame is being computed");
 			ScheduleRerun();
 			return;
 		}
@@ -336,6 +377,7 @@ public partial class MainWindow
 
 	private void ShutdownScratch()
 	{
+		_scratchRequested = null;
 		_scratchTimer?.Stop();
 		_rerunTimer?.Stop();
 		_scratch?.Dispose();

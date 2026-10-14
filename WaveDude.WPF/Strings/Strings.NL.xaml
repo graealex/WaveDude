@@ -13,6 +13,13 @@
 	<s:String x:Key="MenuFileSave">Op_slaan</s:String>
 	<s:String x:Key="MenuFileSaveAs">Opslaan _als...</s:String>
 	<s:String x:Key="MenuFileClose">Project s_luiten</s:String>
+	<s:String x:Key="MenuFileExport">_Exporteren</s:String>
+	<s:String x:Key="MenuFileExportField">_Veld exporteren...</s:String>
+	<s:String x:Key="MenuFileExportIntensity">_Intensiteit exporteren...</s:String>
+	<s:String x:Key="MenuFileExportBoth">_Beide exporteren...</s:String>
+	<s:String x:Key="MenuFileExportFieldFrame">Veld_beeld exporteren...</s:String>
+	<s:String x:Key="MenuFileExportIntensityFrame">Intensiteitsbeel_d exporteren...</s:String>
+	<s:String x:Key="MenuExportThisFrame">_Dit beeld exporteren...</s:String>
 	<s:String x:Key="MenuFileExit">A_fsluiten</s:String>
 	<s:String x:Key="MenuView">Beel_d</s:String>
 	<s:String x:Key="MenuViewPanes">_Panelen</s:String>
@@ -111,6 +118,23 @@
 	<s:String x:Key="RunErrorNoImage">De scène gebruikt een afbeelding, maar er is geen afbeeldingsbestand ingesteld.</s:String>
 	<s:String x:Key="RunErrorUnsavedImagePath">Sla het project eerst op, zodat de scèneafbeelding relatief daaraan gevonden wordt.</s:String>
 	<s:String x:Key="Ready">Gereed</s:String>
+
+	<!-- export: the Save dialog, the status bar line ({0} frames done, {1} frames) and the questions -->
+	<s:String x:Key="ExportDialogFilter">PNG-beeldreeks (*.png)|*.png|JPEG-beeldreeks (*.jpg)|*.jpg|MPEG-1-video (*.mpg)|*.mpg|AVI-video, ongecomprimeerd (*.avi)|*.avi|MP4-video, H.264 (*.mp4)|*.mp4</s:String>
+	<s:String x:Key="ExportDialogTitleField">Veld exporteren</s:String>
+	<s:String x:Key="ExportDialogTitleIntensity">Intensiteit exporteren</s:String>
+	<s:String x:Key="ExportDialogTitleBoth">Veld en intensiteit exporteren</s:String>
+	<s:String x:Key="ExportDialogFilterStill">PNG-beeld (*.png)|*.png|JPEG-beeld (*.jpg)|*.jpg</s:String>
+	<s:String x:Key="ExportDialogTitleFrame">Beeld exporteren</s:String>
+	<s:String x:Key="ExportFolderExistsFormat">De map {0} bestaat en bevat bestanden. Vervangen?</s:String>
+	<s:String x:Key="ExportError">De export is mislukt.</s:String>
+	<s:String x:Key="ExportStatusFormat">Exporteren: {0} / {1} beelden</s:String>
+	<s:String x:Key="ExportStatusWaiting">Export: wacht op de run</s:String>
+	<s:String x:Key="StatusComputingFormat">Beeld {0} wordt berekend</s:String>
+	<s:String x:Key="PreviewNotComputed">Niet berekend: dit beeld alleen zou te lang duren. Start de simulatie (F5) om het te krijgen.</s:String>
+	<s:String x:Key="TipExportCancel">Export annuleren (Esc)</s:String>
+	<s:String x:Key="Untitled">Naamloos</s:String>
+	<s:String x:Key="SaveChangesFormat">Wijzigingen in {0} opslaan?</s:String>
 	<s:String x:Key="NoSelection">Geen selectie</s:String>
 
 	<s:String x:Key="TreeProject">Project</s:String>
@@ -129,7 +153,7 @@
 	<s:String x:Key="SectionField">Veld</s:String>
 	<s:String x:Key="SectionIntensity">Intensiteit</s:String>
 	<s:String x:Key="SectionVideo">Video-export</s:String>
-	<s:String x:Key="SectionExportRange">Exportbereik</s:String>
+	<s:String x:Key="SectionExportRange">Export</s:String>
 	<s:String x:Key="SectionPosition">Positie</s:String>
 	<s:String x:Key="SectionWave">Golf</s:String>
 	<s:String x:Key="SectionTiming">Timing</s:String>
@@ -179,6 +203,10 @@
 	<s:String x:Key="Hint.Display.ExportFrom">Eerste simulatiestap van het geëxporteerde bereik; 0 is het begin van de run.</s:String>
 	<s:String x:Key="Label.Display.ExportTo">Tot stap</s:String>
 	<s:String x:Key="Hint.Display.ExportTo">Laatste simulatiestap van het geëxporteerde bereik; 0 betekent het einde van de run.</s:String>
+	<s:String x:Key="Label.Display.ProbeGraphsInExport">Sondegrafieken in de export</s:String>
+	<s:String x:Key="Hint.Display.ProbeGraphsInExport">De grafiekvakken van de sondes over geëxporteerde beelden en video's tekenen.</s:String>
+	<s:String x:Key="Label.Display.ProbeMarkersInExport">Sondemarkeringen in de export</s:String>
+	<s:String x:Key="Hint.Display.ProbeMarkersInExport">De posities van de sondes (kruisen, de lijn van een lijnsonde, het nummer) over geëxporteerde beelden en video's tekenen.</s:String>
 	<s:String x:Key="Label.DisplayLayer.ColorScheme">Kleurenschema</s:String>
 	<s:String x:Key="Hint.DisplayLayer.ColorScheme">Naam van het kleurenschema dat op de waarden wordt toegepast.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Brightness">Helderheid</s:String>
@@ -187,8 +215,6 @@
 	<s:String x:Key="Hint.DisplayLayer.BlackLevel">Verschuiving vóór de kleurtoewijzing; waarden op of onder dit niveau krijgen de eerste kleur.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Preview">Voorbeeld</s:String>
 	<s:String x:Key="Hint.DisplayLayer.Preview">Deze uitvoer in het live-voorbeeld tonen.</s:String>
-	<s:String x:Key="Label.DisplayLayer.Export">Exporteren</s:String>
-	<s:String x:Key="Hint.DisplayLayer.Export">De beelden van deze uitvoer naar een videobestand schrijven.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Overlay">Omtrek in het voorbeeld</s:String>
 	<s:String x:Key="Hint.DisplayLayer.Overlay">De gloeiende-randen-omtrek van de scèneafbeelding in het voorbeeld over deze uitvoer leggen.</s:String>
 	<s:String x:Key="Label.DisplayLayer.OverlayGain">Omtrekhelderheid</s:String>

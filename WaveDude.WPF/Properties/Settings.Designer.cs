@@ -176,6 +176,7 @@ namespace WaveDude.WPF.Properties {
                 this["UseGpu"] = value;
             }
         }
+
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("50")]
@@ -188,5 +189,28 @@ namespace WaveDude.WPF.Properties {
             }
         }
 
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastExportFolder {
+            get {
+                return ((string)(this["LastExportFolder"]));
+            }
+            set {
+                this["LastExportFolder"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int ExportFilterIndex {
+            get {
+                return ((int)(this["ExportFilterIndex"]));
+            }
+            set {
+                this["ExportFilterIndex"] = value;
+            }
+        }
     }
 }

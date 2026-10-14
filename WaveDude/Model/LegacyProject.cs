@@ -135,8 +135,7 @@ public static class LegacyProject
 		Display display = project.Display;
 		display.Field.Preview = Bool(section, "preview_field", true);
 		display.Intensity.Preview = Bool(section, "preview_intensity", true);
-		display.Field.Export = Bool(section, "export_field", false);
-		display.Intensity.Export = Bool(section, "export_intensity", false);
+		// the author's "export on the next run" flags have no counterpart: export is a command here
 		display.Field.ColorScheme = Text(section, "field_color_scheme", Display.DefaultFieldColorScheme);
 		display.Intensity.ColorScheme = Text(section, "intensity_color_scheme", Display.DefaultIntensityColorScheme);
 		display.Field.Brightness = Double(section, "field_brightness", DisplayLayer.DefaultBrightness);

@@ -28,7 +28,7 @@ public partial class MainWindow
 		set => SetValue(RunProperty, value);
 	}
 
-	private void CanRun(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Run?.IsActive != true;
+	private void CanRun(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Run?.IsActive != true && !IsExporting;
 
 	private void OnRun(object sender, ExecutedRoutedEventArgs e)
 	{
@@ -45,13 +45,14 @@ public partial class MainWindow
 
 	/// <summary>Decodes the scene image, snapshots the project, checks the disk, creates the store and starts the worker.</summary>
 	/// <param name="automatic">Started after an edit rather than by the user: the preview keeps its position.</param>
-	private void StartRun(bool automatic = false)
+	/// <param name="trackIntensity">Store the intensity plane whatever the project needs (an export of the intensity asks for it).</param>
+	private void StartRun(bool automatic = false, bool trackIntensity = false)
 	{
 		if (!Settings.Default.UseGpu)
 		{
 			Logger.Info("Running on the CPU: 'Use the GPU' is off in the Simulation menu");
 		}
-		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu);
+		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu, trackIntensity);
 		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
 		// the rest needs room on the cache drive (2026-10-14)
 		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent);
@@ -102,10 +103,13 @@ public partial class MainWindow
 
 	private void CanControlRun(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Run?.IsActive == true;
 
-	/// <summary>Play pressed: a missing or stale run is started like an automatic one (position kept, not followed); errors go to the log and status bar.</summary>
+	/// <summary>Stop applies to a run in progress, or to an export in progress (Esc cancels it).</summary>
+	private void CanStop(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Run?.IsActive == true || Export?.IsActive == true;
+
+	/// <summary>Play pressed: a missing or stale run is started like an automatic one (position kept, not followed); errors go to the log and status bar. Not while an export reads the store.</summary>
 	private void OnEnsureRun(object sender, ExecutedRoutedEventArgs e)
 	{
-		if (Run?.IsActive == true || (Run != null && !IsRunStale && !IsProbesStale))
+		if (IsExporting || Run?.IsActive == true || (Run != null && !IsRunStale && !IsProbesStale))
 		{
 			return;
 		}
@@ -121,7 +125,18 @@ public partial class MainWindow
 
 	private void OnTogglePause(object sender, ExecutedRoutedEventArgs e) => Run?.TogglePause();
 
-	private void OnStop(object sender, ExecutedRoutedEventArgs e) => Run?.Stop();
+	/// <summary>Cancels the export when one is running (it has the user's attention then), else stops the run.</summary>
+	private void OnStop(object sender, ExecutedRoutedEventArgs e)
+	{
+		if (Export?.IsActive == true)
+		{
+			Export.Cancel();
+		}
+		else
+		{
+			Run?.Stop();
+		}
+	}
 
 	/// <summary>
 	/// Drops the current run: stops it and disposes its store (deleting the cache file) once the worker has
@@ -129,7 +144,17 @@ public partial class MainWindow
 	/// </summary>
 	private void DiscardRun()
 	{
+		if (Export?.IsActive == true)
+		{
+			// the export reads this run's store; a project replaced under it ends it with what it has
+			Logger.Warn("Export cancelled: its run is being discarded");
+			Export.Cancel();
+		}
 		SimulationRun? old = Run;
+		if (old != null)
+		{
+			Logger.Debug("Run discarded: {State}, {Frames} frames, cache {Path}", old.State, old.FrameCount, old.Store.Path);
+		}
 		// the run goes first: with it gone the preview shows the scratch frame; clearing the stale flag before
 		// would make it pick the old store for a moment (and wait on its file being deleted)
 		Run = null;

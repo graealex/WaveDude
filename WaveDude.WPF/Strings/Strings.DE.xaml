@@ -13,6 +13,13 @@
 	<s:String x:Key="MenuFileSave">_Speichern</s:String>
 	<s:String x:Key="MenuFileSaveAs">Speichern _unter...</s:String>
 	<s:String x:Key="MenuFileClose">Projekt s_chließen</s:String>
+	<s:String x:Key="MenuFileExport">_Exportieren</s:String>
+	<s:String x:Key="MenuFileExportField">_Feld exportieren...</s:String>
+	<s:String x:Key="MenuFileExportIntensity">_Intensität exportieren...</s:String>
+	<s:String x:Key="MenuFileExportBoth">_Beides exportieren...</s:String>
+	<s:String x:Key="MenuFileExportFieldFrame">Feld-Ein_zelbild exportieren...</s:String>
+	<s:String x:Key="MenuFileExportIntensityFrame">Intensitäts-Einzelbild e_xportieren...</s:String>
+	<s:String x:Key="MenuExportThisFrame">_Dieses Bild exportieren...</s:String>
 	<s:String x:Key="MenuFileExit">_Beenden</s:String>
 	<s:String x:Key="MenuView">_Ansicht</s:String>
 	<s:String x:Key="MenuViewPanes">_Fenster</s:String>
@@ -111,6 +118,23 @@
 	<s:String x:Key="RunErrorNoImage">Die Szene verwendet ein Bild, aber es ist keine Bilddatei angegeben.</s:String>
 	<s:String x:Key="RunErrorUnsavedImagePath">Zuerst das Projekt speichern, damit das Szenenbild relativ dazu gefunden wird.</s:String>
 	<s:String x:Key="Ready">Bereit</s:String>
+
+	<!-- export: the Save dialog, the status bar line ({0} frames done, {1} frames) and the questions -->
+	<s:String x:Key="ExportDialogFilter">PNG-Bildfolge (*.png)|*.png|JPEG-Bildfolge (*.jpg)|*.jpg|MPEG-1-Video (*.mpg)|*.mpg|AVI-Video, unkomprimiert (*.avi)|*.avi|MP4-Video, H.264 (*.mp4)|*.mp4</s:String>
+	<s:String x:Key="ExportDialogTitleField">Feld exportieren</s:String>
+	<s:String x:Key="ExportDialogTitleIntensity">Intensität exportieren</s:String>
+	<s:String x:Key="ExportDialogTitleBoth">Feld und Intensität exportieren</s:String>
+	<s:String x:Key="ExportDialogFilterStill">PNG-Bild (*.png)|*.png|JPEG-Bild (*.jpg)|*.jpg</s:String>
+	<s:String x:Key="ExportDialogTitleFrame">Bild exportieren</s:String>
+	<s:String x:Key="ExportFolderExistsFormat">Der Ordner {0} existiert und enthält Dateien. Ersetzen?</s:String>
+	<s:String x:Key="ExportError">Der Export ist fehlgeschlagen.</s:String>
+	<s:String x:Key="ExportStatusFormat">Exportiere {0} / {1} Bilder</s:String>
+	<s:String x:Key="ExportStatusWaiting">Export: wartet auf den Lauf</s:String>
+	<s:String x:Key="StatusComputingFormat">Berechne Bild {0}</s:String>
+	<s:String x:Key="PreviewNotComputed">Nicht berechnet: dieses Bild allein würde zu lange dauern. Starten Sie die Simulation (F5), um es zu erhalten.</s:String>
+	<s:String x:Key="TipExportCancel">Export abbrechen (Esc)</s:String>
+	<s:String x:Key="Untitled">Unbenannt</s:String>
+	<s:String x:Key="SaveChangesFormat">Änderungen an {0} speichern?</s:String>
 	<s:String x:Key="NoSelection">Keine Auswahl</s:String>
 
 	<s:String x:Key="TreeProject">Projekt</s:String>
@@ -129,7 +153,7 @@
 	<s:String x:Key="SectionField">Feld</s:String>
 	<s:String x:Key="SectionIntensity">Intensität</s:String>
 	<s:String x:Key="SectionVideo">Videoexport</s:String>
-	<s:String x:Key="SectionExportRange">Exportbereich</s:String>
+	<s:String x:Key="SectionExportRange">Export</s:String>
 	<s:String x:Key="SectionPosition">Position</s:String>
 	<s:String x:Key="SectionWave">Welle</s:String>
 	<s:String x:Key="SectionTiming">Zeitverhalten</s:String>
@@ -179,6 +203,10 @@
 	<s:String x:Key="Hint.Display.ExportFrom">Erster Simulationsschritt des exportierten Bereichs; 0 ist der Anfang des Laufs.</s:String>
 	<s:String x:Key="Label.Display.ExportTo">Bis Schritt</s:String>
 	<s:String x:Key="Hint.Display.ExportTo">Letzter Simulationsschritt des exportierten Bereichs; 0 bedeutet das Ende des Laufs.</s:String>
+	<s:String x:Key="Label.Display.ProbeGraphsInExport">Sondengraphen im Export</s:String>
+	<s:String x:Key="Hint.Display.ProbeGraphsInExport">Die Graphkästen der Sonden in exportierte Bilder und Videos zeichnen.</s:String>
+	<s:String x:Key="Label.Display.ProbeMarkersInExport">Sondenmarkierungen im Export</s:String>
+	<s:String x:Key="Hint.Display.ProbeMarkersInExport">Die Positionen der Sonden (Kreuze, die Linie einer Liniensonde, die Nummer) in exportierte Bilder und Videos zeichnen.</s:String>
 	<s:String x:Key="Label.DisplayLayer.ColorScheme">Farbschema</s:String>
 	<s:String x:Key="Hint.DisplayLayer.ColorScheme">Name des Farbschemas, das auf die Werte abgebildet wird.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Brightness">Helligkeit</s:String>
@@ -187,8 +215,6 @@
 	<s:String x:Key="Hint.DisplayLayer.BlackLevel">Versatz vor der Farbzuordnung; Werte darunter oder gleich erhalten die erste Farbe.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Preview">Vorschau</s:String>
 	<s:String x:Key="Hint.DisplayLayer.Preview">Diese Ausgabe in der Live-Vorschau zeigen.</s:String>
-	<s:String x:Key="Label.DisplayLayer.Export">Exportieren</s:String>
-	<s:String x:Key="Hint.DisplayLayer.Export">Die Bilder dieser Ausgabe in eine Videodatei schreiben.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Overlay">Umriss in der Vorschau</s:String>
 	<s:String x:Key="Hint.DisplayLayer.Overlay">Den Leuchtkanten-Umriss des Szenenbilds in der Vorschau über diese Ausgabe legen.</s:String>
 	<s:String x:Key="Label.DisplayLayer.OverlayGain">Umrisshelligkeit</s:String>

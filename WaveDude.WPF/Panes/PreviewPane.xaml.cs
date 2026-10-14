@@ -178,6 +178,25 @@ public partial class PreviewPane : UserControl
 	public static readonly DependencyProperty IsStaleProperty = DependencyProperty.Register(
 		nameof(IsStale), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, (d, _) => ((PreviewPane)d).UpdateSource()));
 
+	/// <summary>Identifies the <see cref="IsComputing"/> property.</summary>
+	public static readonly DependencyProperty IsComputingProperty = DependencyProperty.Register(
+		nameof(IsComputing), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, (d, _) => ((PreviewPane)d).OnComputingChanged()));
+
+	private static readonly DependencyPropertyKey IsBusyOverlayVisibleKey = DependencyProperty.RegisterReadOnly(
+		nameof(IsBusyOverlayVisible), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false));
+
+	/// <summary>Identifies the <see cref="IsBusyOverlayVisible"/> property.</summary>
+	public static readonly DependencyProperty IsBusyOverlayVisibleProperty = IsBusyOverlayVisibleKey.DependencyProperty;
+
+	private static readonly DependencyPropertyKey IsFrameSkippedKey = DependencyProperty.RegisterReadOnly(
+		nameof(IsFrameSkipped), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false));
+
+	/// <summary>Identifies the <see cref="IsFrameSkipped"/> property.</summary>
+	public static readonly DependencyProperty IsFrameSkippedProperty = IsFrameSkippedKey.DependencyProperty;
+
+	/// <summary>How long a frame may take before the pictures dim and the spinner shows; shorter waits pass unmarked, so a fast machine does not strobe.</summary>
+	private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(150);
+
 	/// <summary>Identifies the <see cref="IsProbesStale"/> property.</summary>
 	public static readonly DependencyProperty IsProbesStaleProperty = DependencyProperty.Register(
 		nameof(IsProbesStale), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, (d, _) => ((PreviewPane)d).UpdateSource()));
@@ -221,6 +240,7 @@ public partial class PreviewPane : UserControl
 		nameof(IntensitySettings), typeof(DisplayLayer), typeof(PreviewPane), new PropertyMetadata(null, (d, e) => ((PreviewPane)d).OnLayerSettingsChanged(FrameLayer.Intensity, e)));
 
 	private readonly DispatcherTimer _timer;
+	private readonly DispatcherTimer _busyDelay;
 	private readonly Stopwatch _clock = new();
 	private readonly FramePresenter _presenter;
 
@@ -263,6 +283,12 @@ public partial class PreviewPane : UserControl
 
 		_timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(1.0 / 60.0) };
 		_timer.Tick += OnTick;
+		_busyDelay = new DispatcherTimer(DispatcherPriority.Normal) { Interval = BusyOverlayDelay };
+		_busyDelay.Tick += (_, _) =>
+		{
+			_busyDelay.Stop();
+			IsBusyOverlayVisible = IsComputing;
+		};
 		Unloaded += (_, _) => IsPlaying = false;
 	}
 
@@ -458,6 +484,27 @@ public partial class PreviewPane : UserControl
 		private set => SetValue(GraphScratchKey, value);
 	}
 
+	/// <summary>Whether a frame for <see cref="Position"/> is being computed (bound to the main window); after <see cref="BusyOverlayDelay"/> the pictures dim and a spinner turns until it arrives.</summary>
+	public bool IsComputing
+	{
+		get => (bool)GetValue(IsComputingProperty);
+		set => SetValue(IsComputingProperty, value);
+	}
+
+	/// <summary>Whether the dim and the spinner are shown over the pictures: <see cref="IsComputing"/> has lasted longer than <see cref="BusyOverlayDelay"/>.</summary>
+	public bool IsBusyOverlayVisible
+	{
+		get => (bool)GetValue(IsBusyOverlayVisibleProperty);
+		private set => SetValue(IsBusyOverlayVisibleKey, value);
+	}
+
+	/// <summary>Whether the frame at <see cref="Position"/> was not computed (its predicted cost exceeded the scratch budget) and nothing else can show it; a note says so on the pictures.</summary>
+	public bool IsFrameSkipped
+	{
+		get => (bool)GetValue(IsFrameSkippedProperty);
+		private set => SetValue(IsFrameSkippedKey, value);
+	}
+
 	/// <summary>Whether a probe was edited since the run started: its frames hold, its recordings do not. Bound to the main window.</summary>
 	public bool IsProbesStale
 	{
@@ -572,6 +619,9 @@ public partial class PreviewPane : UserControl
 	{
 		SimulationRun? run = Run;
 		ScratchResult? scratch = ScratchFrame;
+		bool storeHasFrame = run != null && !IsStale && run.FrameCount > Position;
+		// the position's frame was skipped (over the budget) and no stored frame stands in: the pictures say so
+		IsFrameSkipped = scratch is { Snapshot: null } && scratch.Frame == Position && !storeHasFrame;
 		bool useScratch = scratch is { Snapshot: not null } && scratch.Frame == Position
 			&& (run == null || IsStale || run.FrameCount <= Position);
 		if (useScratch)
@@ -663,6 +713,21 @@ public partial class PreviewPane : UserControl
 		IsPlaying = false;
 		IsLive = false;
 		Position = 0;
+	}
+
+	/// <summary>A frame started computing: the overlay follows after the delay; the frame arrived: it goes at once.</summary>
+	private void OnComputingChanged()
+	{
+		if (IsComputing)
+		{
+			_busyDelay.Stop();
+			_busyDelay.Start();
+		}
+		else
+		{
+			_busyDelay.Stop();
+			IsBusyOverlayVisible = false;
+		}
 	}
 
 	/// <summary>A black picture of the given size, frozen; what the pane shows before any run.</summary>

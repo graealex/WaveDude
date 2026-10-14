@@ -13,6 +13,13 @@
 	<s:String x:Key="MenuFileSave">_Enregistrer</s:String>
 	<s:String x:Key="MenuFileSaveAs">Enregistrer _sous...</s:String>
 	<s:String x:Key="MenuFileClose">_Fermer le projet</s:String>
+	<s:String x:Key="MenuFileExport">E_xporter</s:String>
+	<s:String x:Key="MenuFileExportField">Exporter le _champ...</s:String>
+	<s:String x:Key="MenuFileExportIntensity">Exporter l'_intensité...</s:String>
+	<s:String x:Key="MenuFileExportBoth">Exporter les _deux...</s:String>
+	<s:String x:Key="MenuFileExportFieldFrame">Exporter l'i_mage du champ...</s:String>
+	<s:String x:Key="MenuFileExportIntensityFrame">Exporter l'image de l'intensi_té...</s:String>
+	<s:String x:Key="MenuExportThisFrame">Exporter _cette image...</s:String>
 	<s:String x:Key="MenuFileExit">_Quitter</s:String>
 	<s:String x:Key="MenuView">_Affichage</s:String>
 	<s:String x:Key="MenuViewPanes">_Panneaux</s:String>
@@ -111,6 +118,23 @@
 	<s:String x:Key="RunErrorNoImage">La scène utilise une image, mais aucun fichier image n'est défini.</s:String>
 	<s:String x:Key="RunErrorUnsavedImagePath">Enregistrez d'abord le projet, pour que l'image de la scène soit trouvée relativement à lui.</s:String>
 	<s:String x:Key="Ready">Prêt</s:String>
+
+	<!-- export: the Save dialog, the status bar line ({0} frames done, {1} frames) and the questions -->
+	<s:String x:Key="ExportDialogFilter">Séquence d'images PNG (*.png)|*.png|Séquence d'images JPEG (*.jpg)|*.jpg|Vidéo MPEG-1 (*.mpg)|*.mpg|Vidéo AVI non compressée (*.avi)|*.avi|Vidéo MP4, H.264 (*.mp4)|*.mp4</s:String>
+	<s:String x:Key="ExportDialogTitleField">Exporter le champ</s:String>
+	<s:String x:Key="ExportDialogTitleIntensity">Exporter l'intensité</s:String>
+	<s:String x:Key="ExportDialogTitleBoth">Exporter le champ et l'intensité</s:String>
+	<s:String x:Key="ExportDialogFilterStill">Image PNG (*.png)|*.png|Image JPEG (*.jpg)|*.jpg</s:String>
+	<s:String x:Key="ExportDialogTitleFrame">Exporter l'image</s:String>
+	<s:String x:Key="ExportFolderExistsFormat">Le dossier {0} existe et contient des fichiers. Les remplacer ?</s:String>
+	<s:String x:Key="ExportError">L'export a échoué.</s:String>
+	<s:String x:Key="ExportStatusFormat">Export : {0} / {1} images</s:String>
+	<s:String x:Key="ExportStatusWaiting">Export : en attente de l'exécution</s:String>
+	<s:String x:Key="StatusComputingFormat">Calcul de l'image {0}</s:String>
+	<s:String x:Key="PreviewNotComputed">Non calculée : cette image seule prendrait trop de temps. Lancez la simulation (F5) pour l'obtenir.</s:String>
+	<s:String x:Key="TipExportCancel">Annuler l'export (Échap)</s:String>
+	<s:String x:Key="Untitled">Sans titre</s:String>
+	<s:String x:Key="SaveChangesFormat">Enregistrer les modifications de {0} ?</s:String>
 	<s:String x:Key="NoSelection">Aucune sélection</s:String>
 
 	<s:String x:Key="TreeProject">Projet</s:String>
@@ -129,7 +153,7 @@
 	<s:String x:Key="SectionField">Champ</s:String>
 	<s:String x:Key="SectionIntensity">Intensité</s:String>
 	<s:String x:Key="SectionVideo">Export vidéo</s:String>
-	<s:String x:Key="SectionExportRange">Plage d'export</s:String>
+	<s:String x:Key="SectionExportRange">Export</s:String>
 	<s:String x:Key="SectionPosition">Position</s:String>
 	<s:String x:Key="SectionWave">Onde</s:String>
 	<s:String x:Key="SectionTiming">Chronologie</s:String>
@@ -179,6 +203,10 @@
 	<s:String x:Key="Hint.Display.ExportFrom">Premier pas de simulation de la plage exportée ; 0 est le début de l'exécution.</s:String>
 	<s:String x:Key="Label.Display.ExportTo">Au pas</s:String>
 	<s:String x:Key="Hint.Display.ExportTo">Dernier pas de simulation de la plage exportée ; 0 signifie la fin de l'exécution.</s:String>
+	<s:String x:Key="Label.Display.ProbeGraphsInExport">Graphes des sondes dans l'export</s:String>
+	<s:String x:Key="Hint.Display.ProbeGraphsInExport">Dessiner les cadres de graphe des sondes sur les images et vidéos exportées.</s:String>
+	<s:String x:Key="Label.Display.ProbeMarkersInExport">Marqueurs des sondes dans l'export</s:String>
+	<s:String x:Key="Hint.Display.ProbeMarkersInExport">Dessiner les positions des sondes (croix, la ligne d'une sonde linéaire, le numéro) sur les images et vidéos exportées.</s:String>
 	<s:String x:Key="Label.DisplayLayer.ColorScheme">Palette de couleurs</s:String>
 	<s:String x:Key="Hint.DisplayLayer.ColorScheme">Nom de la palette appliquée aux valeurs.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Brightness">Luminosité</s:String>
@@ -187,8 +215,6 @@
 	<s:String x:Key="Hint.DisplayLayer.BlackLevel">Décalage appliqué avant la correspondance des couleurs ; les valeurs inférieures ou égales prennent la première couleur.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Preview">Aperçu</s:String>
 	<s:String x:Key="Hint.DisplayLayer.Preview">Afficher cette sortie dans l'aperçu en direct.</s:String>
-	<s:String x:Key="Label.DisplayLayer.Export">Exporter</s:String>
-	<s:String x:Key="Hint.DisplayLayer.Export">Écrire les images de cette sortie dans un fichier vidéo.</s:String>
 	<s:String x:Key="Label.DisplayLayer.Overlay">Contour dans l'aperçu</s:String>
 	<s:String x:Key="Hint.DisplayLayer.Overlay">Superposer le contour « bords lumineux » de l'image de scène à cette sortie dans l'aperçu.</s:String>
 	<s:String x:Key="Label.DisplayLayer.OverlayGain">Luminosité du contour</s:String>

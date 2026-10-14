@@ -155,6 +155,18 @@ internal static class Program
 			}
 			return 0;
 		}
+		if (args.Length > 0 && args[0] == "bench-export")
+		{
+			ExportChecks.Bench(args.Length > 1 ? int.Parse(args[1]) : 1920, args.Length > 2 ? int.Parse(args[2]) : 1080);
+			return 0;
+		}
+		if (args.Length > 0 && args[0] == "export")
+		{
+			// just the export checks (they take a few seconds and need no engine)
+			ExportChecks.Run(Check);
+			Console.WriteLine(_failures == 0 ? "EXPORT OK" : _failures + " check(s) failed");
+			return _failures == 0 ? 0 : 1;
+		}
 		const int W = 64, H = 48, Steps = 200;
 		(byte[] bgra, int stride) = ScenePixels(W, H);
 		SceneData scene = SceneData.FromBgra(bgra, W, H, stride, true, 6);
@@ -172,6 +184,7 @@ internal static class Program
 		CheckProbeGraph();
 		CheckImport();
 		CheckRun();
+		ExportChecks.Run(Check);
 
 		Console.WriteLine(_failures == 0 ? "LIBRARY OK" : _failures + " check(s) failed");
 		return _failures == 0 ? 0 : 1;
@@ -895,7 +908,7 @@ internal static class Program
 		Check(p.Scene.DampingEdge == 64 && !p.Scene.ImageSources && p.Scene.ObjectSources && p.Scene.RefractiveIndex == 1.0 && p.Scene.ImageSourceScale == 1.0, "scene: damping 64, object sources on, image sources off");
 		Check(p.Simulation.Steps == 15000 && p.Simulation.VisualizeEvery == 2 && !p.Simulation.FourthOrderLaplacian && p.Simulation.WaveSpeed == 1.0 && p.Simulation.TimeDecay == 10.0 && p.Simulation.SourceFrequencyScale == 2.0 && p.Simulation.IntensityScale == 1.0, "simulation: 15000 steps every 2, 9-point stencil, c 1, decay 10");
 		Check(p.Display.Field.Brightness == 80 && p.Display.Intensity.Brightness == 30 && p.Display.Field.BlackLevel == -0.05 && p.Display.Intensity.BlackLevel == 0 && p.Display.Field.ColorScheme == "Default_Field" && p.Display.Intensity.ColorScheme == "Default_intensity", "display: brightness 80 / 30, black levels, schemes");
-		Check(p.Display.Field.Preview && p.Display.Intensity.Preview && !p.Display.Field.Export && !p.Display.Intensity.Export && p.Display.Video.Fps == 60 && p.Display.Video.Quality == 70, "display: previews on, exports off, 60 fps at quality 70");
+		Check(p.Display.Field.Preview && p.Display.Intensity.Preview && p.Display.ProbeGraphsInExport && p.Display.Video.Fps == 60 && p.Display.Video.Quality == 70, "display: previews on, probe graphs in the export, 60 fps at the file's quality 70");
 		Check(p.Sources.Count == 4 && p.Sources.Select(s => s.Name).SequenceEqual(["Source 1", "Source 2", "Source 3", "Source 4"]) && p.Sources.Select(s => s.Frequency).SequenceEqual([40, 100, 150, 240]) && p.Sources.Select(s => s.Amplitude).SequenceEqual([70, 80, 90, 100]), "4 single sources with their names, levels and amplitudes");
 		Check(p.Sources.All(s => s.Enabled && s.Array == null && s.DetachAfter == Source.NeverDetach && s.Mode == SourceMode.Continuous && s.Elements.Count == 1) && p.Sources[0].X == 150 && p.Sources[0].Y == 140 && p.Sources[3].Y == 924, "sources enabled, single, never detaching, placed, with one emitter each");
 		Check(p.Probes.Count == 2 && p.Probes.All(pr => !pr.Active && pr.Layer == ProbeLayer.Field && pr.Measurement == ProbeMeasurement.Amplitude && pr.BoxSize == ProbeBoxSize.Medium && pr.Window == 500 && pr.StartAfter == 0), "2 inactive field probes, medium boxes, window 500, no start step");

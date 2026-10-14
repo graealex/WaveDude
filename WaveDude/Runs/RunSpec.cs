@@ -95,8 +95,9 @@ public sealed class RunSpec
 	/// <param name="project">The project to run; not modified beyond the emitter regeneration.</param>
 	/// <param name="image">The decoded scene image when <see cref="Scene.Mode"/> is <see cref="SceneMode.Image"/>; ignored otherwise.</param>
 	/// <param name="preferGpu">Try the OpenCL engine first (the application's choice; the CPU is the fallback either way).</param>
+	/// <param name="trackIntensity">Store the intensity plane even when nothing in the project needs it (an export of the intensity asks for it).</param>
 	/// <exception cref="RunSpecException">The project cannot run: no image for an image scene, or no steps.</exception>
-	public static RunSpec Create(Project project, ScenePixels? image, bool preferGpu = true)
+	public static RunSpec Create(Project project, ScenePixels? image, bool preferGpu = true, bool trackIntensity = false)
 	{
 		project.Normalize();
 		if (project.Simulation.Steps < 1)
@@ -124,7 +125,7 @@ public sealed class RunSpec
 			width = project.Scene.Width;
 			height = project.Scene.Height;
 		}
-		bool trackIntensity = project.Display.Intensity.Preview || project.Display.Intensity.Export
+		trackIntensity |= project.Display.Intensity.Preview
 			|| project.Probes.Any(probe => probe.Active && probe.Measurement != ProbeMeasurement.Amplitude);
 		return new RunSpec(project, image, width, height, trackIntensity, preferGpu);
 	}

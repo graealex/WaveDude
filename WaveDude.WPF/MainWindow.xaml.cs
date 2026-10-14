@@ -3,6 +3,7 @@ using System.Configuration;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Shell;
 using Microsoft.Win32;
@@ -40,6 +41,10 @@ public partial class MainWindow : Window
 	public static readonly DependencyProperty FilenameProperty = DependencyProperty.Register(
 		nameof(Filename), typeof(string), typeof(MainWindow),
 		new PropertyMetadata(null, (_, _) => CommandManager.InvalidateRequerySuggested()));
+
+	/// <summary>Identifies the <see cref="IsDirty"/> property.</summary>
+	public static readonly DependencyProperty IsDirtyProperty = DependencyProperty.Register(
+		nameof(IsDirty), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
 
 	/// <summary>Identifies the <see cref="SelectedItem"/> property.</summary>
 	public static readonly DependencyProperty SelectedItemProperty = DependencyProperty.Register(
@@ -81,9 +86,15 @@ public partial class MainWindow : Window
 				Logger.Info("Frames kept in memory: {Percent} % of the RAM, {Budget} right now (Simulation menu)", Settings.Default.FrameMemoryPercent, FrameMemory.Gigabytes(FrameMemory.Budget(Settings.Default.FrameMemoryPercent)));
 			}
 		};
-		Closing += (_, _) =>
+		Closing += (_, e) =>
 		{
+			if (!ConfirmDiscard())
+			{
+				e.Cancel = true;
+				return;
+			}
 			Settings.Default.Layout = dockHost.SaveLayout();
+			ShutdownExport();
 			ShutdownRun();
 			ShutdownScratch();
 		};
@@ -101,6 +112,17 @@ public partial class MainWindow : Window
 	{
 		get => (string?)GetValue(FilenameProperty);
 		set => SetValue(FilenameProperty, value);
+	}
+
+	/// <summary>
+	/// Whether the project was edited since it was opened, created or last saved (2026-10-14): the title
+	/// carries an asterisk and New, Open, Close and Exit ask before discarding. Set by the watcher on any
+	/// change, model-wide; cleared when the project is replaced or saved.
+	/// </summary>
+	public bool IsDirty
+	{
+		get => (bool)GetValue(IsDirtyProperty);
+		set => SetValue(IsDirtyProperty, value);
 	}
 
 	/// <summary>The model object selected in the project tree (or on the preview's pictures), or null.</summary>
@@ -222,6 +244,7 @@ public partial class MainWindow : Window
 			fileName = Path.GetFullPath(fileName);
 			Project.Save(fileName);
 			Filename = fileName;
+			IsDirty = false;
 			Logger.Info("Saved '{Path}'", fileName);
 			RememberRecent(fileName);
 			return true;
@@ -255,6 +278,50 @@ public partial class MainWindow : Window
 	private void ShowError(string message, Exception ex) =>
 		MessageBox.Show(this, $"{message}\n{ex.Message}", (string)FindResource("Title"), MessageBoxButton.OK, MessageBoxImage.Error);
 
+	/// <summary>
+	/// Asks whether to save an edited project before it is discarded: Yes saves (through Save As when it has
+	/// no file yet), No discards, Cancel keeps it. True when the caller may go on.
+	/// </summary>
+	private bool ConfirmDiscard()
+	{
+		if (!IsDirty)
+		{
+			return true;
+		}
+		if (Environment.GetEnvironmentVariable("WAVEDUDE_DISCARD_EDITS") == "1")
+		{
+			// a UI harness cannot answer the question by posted keys: it discards
+			Logger.Debug("Edits discarded without asking (WAVEDUDE_DISCARD_EDITS)");
+			return true;
+		}
+		string name = Filename != null ? Path.GetFileName(Filename) : (string)FindResource("Untitled");
+		MessageBoxResult answer = MessageBox.Show(this, string.Format((string)FindResource("SaveChangesFormat"), name), (string)FindResource("Title"),
+			MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+		return answer switch
+		{
+			MessageBoxResult.Yes => SaveInteractively(),
+			MessageBoxResult.No => true,
+			_ => false,
+		};
+	}
+
+	/// <summary>Save, or Save As for a project without a file; false when the user cancelled or the save failed.</summary>
+	private bool SaveInteractively()
+	{
+		if (Filename != null)
+		{
+			return SaveFile(Filename);
+		}
+		var dialog = new SaveFileDialog
+		{
+			Filter = (string)FindResource("SaveFileDialogFilter"),
+			DefaultExt = ProjectExtension,
+			AddExtension = true,
+			FileName = _suggestedFileName ?? "",
+		};
+		return dialog.ShowDialog(this) == true && SaveFile(dialog.FileName);
+	}
+
 	/// <summary>Simulation > Frames kept in memory: the chosen share of the RAM, applied to the next run.</summary>
 	private void OnSetFrameMemory(object sender, ExecutedRoutedEventArgs e)
 	{
@@ -267,6 +334,10 @@ public partial class MainWindow : Window
 
 	private void OnFileNew(object sender, ExecutedRoutedEventArgs e)
 	{
+		if (!ConfirmDiscard())
+		{
+			return;
+		}
 		DiscardRun();
 		Project = new Project();
 		Filename = null;
@@ -276,6 +347,10 @@ public partial class MainWindow : Window
 
 	private void OnFileOpen(object sender, ExecutedRoutedEventArgs e)
 	{
+		if (!ConfirmDiscard())
+		{
+			return;
+		}
 		if (e.Parameter is string recent)
 		{
 			OpenFile(recent);
@@ -319,10 +394,17 @@ public partial class MainWindow : Window
 		}
 	}
 
+	/// <summary>The folder of the project file, or null for an unsaved project.</summary>
+	private string? ProjectFolder => Filename != null ? Path.GetDirectoryName(Filename) : null;
+
 	private void CanFileClose(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Filename != null;
 
 	private void OnFileClose(object sender, ExecutedRoutedEventArgs e)
 	{
+		if (!ConfirmDiscard())
+		{
+			return;
+		}
 		DiscardRun();
 		Project = new Project();
 		Filename = null;
@@ -341,7 +423,7 @@ public partial class MainWindow : Window
 
 	private void OnDrop(object sender, DragEventArgs e)
 	{
-		if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
+		if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files && ConfirmDiscard())
 		{
 			OpenFile(files[0]);
 		}
@@ -356,6 +438,9 @@ public partial class MainWindow : Window
 		propertiesDock.Title = (string)FindResource("PaneProperties");
 		messagesDock.Title = (string)FindResource("PaneMessages");
 		themeMenu.Items.Refresh();
+		// the title's "Untitled" is looked up by the converter; the busy text is built in code
+		BindingOperations.GetMultiBindingExpression(this, TitleProperty)?.UpdateTarget();
+		UpdateBusy();
 	}
 
 	/// <summary>

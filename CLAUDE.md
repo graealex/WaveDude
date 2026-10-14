@@ -41,7 +41,22 @@ WPF shell as it stands:
   (persisted in settings); the native title bar is darkened via DWM. Use `DynamicResource` for every
   theme brush.
 - Logging: NLog; `Info` and up reach the status bar (`Logging/StatusBarTarget`, Warn/Error coloured),
-  everything reaches the Messages pane and the log file next to the exe (Debug builds).
+  everything reaches the Messages pane in every build (2026-10-14; the pane hides Trace and Debug by default
+  in Release, its level toggles show them) and the log file next to the exe (Debug builds; Info and up in
+  Release). Debug lines say what the application decides: scratch requests and their reason, stale marks,
+  automatic re-runs postponed or skipped and why, discarded runs, every export step (path, format, range,
+  the run decision, each target's colours, outline and boxes). Keep adding them where a decision is made.
+- **Computing overlay** (2026-10-14, the user's rule, after the author read a frame in the making as "the
+  preview does not update"): while a scratch frame for the position is being computed (`MainWindow.
+  IsComputingFrame`, from the request to its result or a newer request's) and that has lasted longer than
+  150 ms, each picture dims (black at 45 %) under a turning three-quarter ring (`PreviewPane.
+  IsBusyOverlayVisible`, the `Spinner` style with a storyboard on `IsVisible`); the overlay goes the moment
+  the frame arrives, and shorter waits pass unmarked so a fast machine does not strobe. A frame that was
+  skipped (over the scratch budget) with no stored frame to stand in shows a note on the pictures instead
+  (`IsFrameSkipped`, `PreviewNotComputed`, id `PreviewNotComputed`), since no spinner would ever resolve it.
+- **Taskbar progress** (2026-10-14, the user's rule): the status bar's busy bar (an export's frames, or the
+  marquee while an export waits for its run or a scratch frame computes) is mirrored on the taskbar button
+  through WPF's `TaskbarItemInfo` (`MainWindow.Taskbar.cs`, fed from `UpdateBusy`).
 - **Simulation** (2026-10-09): menu Simulation > Run (F5), Pause/Resume (F6), Stop (Shift+F5, also
   Esc). `OnRun` decodes the scene image (`Rendering/SceneImageLoader`, WPF decoders → BGRA bytes),
   snapshots the project into a `RunSpec`, checks the cache drive, creates the `FrameStore` and
@@ -235,7 +250,123 @@ WPF shell as it stands:
   in canvas pixels. **An auto-scaled value axis is symmetric about zero** for an amplitude (±largest
   magnitude + 8 %), from zero up for an intensity, and stays at the fixed range while the data is all zeros
   (`ProbeGraph.AutoRange`, 2026-10-14, the user's rule: the author's independent fit of both ends made the
-  zero line wander and the labels flicker while the first oscillations arrived). Still open: the signal lane under the timeline (roadmap) and the box in exports.
+  zero line wander and the labels flicker while the first oscillations arrived). Still open: the signal lane under the timeline (roadmap); the box in exports is drawn (see "Export").
+- **Export** (2026-10-14, the user's design): File > Export > Field… / Intensity… / Both…, the same three on each
+  picture's context menu (its own layer first; `Controls`-less: a `ContextMenu` on the picture cell with
+  `CommandTarget` = the cell, ids `ContextExportField|Intensity|Both`). The standard Save dialog picks the
+  format by extension and the name, pre-set to `<project>_field` / `_intensity` in the project file's folder
+  (last used folder for an unsaved project; `LastExportFolder`, `ExportFilterIndex` settings); "Both" writes
+  `<name>_field` and `<name>_intensity` from one name (a typed `_field`/`_intensity` is stripped). A sequence
+  chosen as `C:\Temp\name.png` goes to `C:\Temp\name\name_0000.png` and on; a non-empty folder is replaced only
+  after a Yes. **No automatic export, no project saving**: export is a command at any time. **There is always a
+  run to export**: the current one when it is fresh, finished (or in progress: the export waits) and has the
+  intensity plane when asked for; else a run is started first (`StartRun(automatic, trackIntensity)`,
+  `RunSpec.Create(…, trackIntensity)`) and awaited (`EnsureRunForExport`, status "Export: waiting for the run";
+  an edit meanwhile restarts it, three attempts). The range is `Display.ExportFrom/To` in frames like the in/out
+  points, rendered with the display settings as they are, the outline per `OverlayInExport`
+  (`GlowingEdges.BlendAdditive`), and the probe graph boxes when `Display.ProbeGraphsInExport` (new, default
+  on) through `Rendering/ProbeGraphPainter` (the probes cloned, each box drawn with `Controls/ProbeGraphDrawing`,
+  the drawing code shared with the overlay, into a `RenderTargetBitmap` on the export's STA thread and
+  blended in), and **the probe markers in the author's style** when `Display.ProbeMarkersInExport` (2026-10-15,
+  default on, as his program always drew them): `Export/ProbeMarkers` strokes the crosses and a line probe's
+  line on the pixels, black radius 2 under white radius 1, arms max(6, height/120), and the painter sets the
+  number ("1", or "1A"/"1B", in project order over the active probes) in bold Segoe UI at max(12, height/60) px
+  with a drop shadow above and to the right of each cross; source handles are not drawn (he never did).
+  `DisplayLayer.Export` is gone (it meant "export on the next run"). The `ExportJob` reports to
+  the status bar (`StatusExport` text + progress bar, `ExportStatusConverter`); Esc cancels it (Stop prefers
+  the export over the run); runs are not started, Play does nothing and the auto re-run waits while an export
+  reads the store (`IsExporting`); New/Open/Close cancel it; closing waits up to 10 s for the files. Formats
+  (`WaveDude.Export`, in-house but MP4): PNG sequence (lossless, Paeth, `PngEncoder`), JPEG sequence (baseline
+  4:2:0, Annex K tables scaled IJG-style, `JpegEncoder`), MPEG-1 I-pictures in a program stream (`Mpeg1Writer`:
+  one slice per macroblock row, default matrix, quantiser 31..1 from the quality, one of the eight MPEG-1 frame
+  rates, logged when it differs; table B.14 up to 13 bits, escapes beyond), uncompressed AVI with OpenDML
+  (`AviWriter`: 1 GB RIFF segments `AVI `/`AVIX`, `ix00` per segment, `indx` super index, `idx1` for the first,
+  `dmlh` total, the header written at Close so a cancelled export is a valid file), and H.264 MP4 through the
+  Media Foundation of Windows (`Mp4Writer` + `MediaFoundation` interop: hardware transforms enabled, quality
+  rate control + GOP = fps + no B-frames as encoding parameters with the author's bits-per-pixel bitrate as the
+  declared average and the fallback, odd sizes padded by repeating the edge; absent on Windows N without the
+  Media Feature Pack, the command then says so). `Video.Fps`/`Quality` (default 85 since 2026-10-14, the user's JPEG default; was the author's 70) drive every video; quality means JPEG
+  table scaling, the MPEG-1 quantiser and the H.264 quality. **A still**: "Export this frame…" first on each
+  picture's context menu (id `ContextExportFrame`) and File > Export > Field frame… / Intensity frame…
+  write the frame the preview shows as one PNG or JPEG (`ImageFileSink`, `ExportFormats.OpenStill`), named
+  `<project>_field_<step>`; it goes through the same job over a one-frame range, so it shows exactly what a
+  video export shows there, never the scratch frame (the user's rule), run-first included. **The busy
+  indicator** (`MainWindow.Busy.cs`, `IsBusy`/`IsBusyIndeterminate`/`BusyText`, ids `StatusExport` and
+  `StatusBusyBar`): the export's frames done as a determinate bar; indeterminate while an export waits for its
+  run (the timeline shows that run) and while a scratch frame computes for the preview after a scrub or an
+  edit ("Computing frame n"; on from the request until the result of the newest request arrives). Still open:
+  probe data as CSV, an integer upscale for small canvases (recommended 2026-10-14, undecided). **The sinks are
+  opened by the job on its own thread** (`ExportTarget` carries a factory and the output name): the Media
+  Foundation writer refused calls from another apartment (E_NOINTERFACE on the sink writer, found by the
+  bench 2026-10-14; the app had opened it on the UI thread). **Speed** (2026-10-14, the user: SIMD is on every
+  machine now, so it is used either way): the colour conversion, the DCT (F = C·f·Cᵀ as two passes of
+  multiply-adds) and the quantisation run on `Vector128` (this Xeon E5-2690 v2 has AVX but no AVX2, so .NET
+  does not accelerate `Vector256`, and a first 256-bit version ran in software emulation, slower than scalar:
+  128-bit is the width every x64 and ARM64 machine accelerates); every JPEG macroblock row is a restart
+  interval (DRI + RSTn) and every MPEG-1 slice is independent, so the rows are transformed, quantised and
+  entropy-coded in parallel into their own `BitWriter`s and concatenated; the `ExportJob` renders on one
+  thread and encodes/writes on a second (the sink thread, which also opens and closes the sinks), with two
+  frames in flight per target. Per 1080p frame on this machine (`library_check -- bench-export [w h]`;
+  the numbers move by half when another process is busy, measure on a quiet machine): JPEG encode 32 → 20 ms
+  (conversion 6.5 → 2), MPEG-1 52 → 23, the job to a JPEG sequence 32 → 10 ms per frame, MPEG-1 38 → 30,
+  AVI 13 → 11, MP4 about 40 (Media Foundation's encoder on the sink thread). **JPEG through WIC** (2026-10-15,
+  the user's choice): the app installs `Rendering/WicJpeg` (WPF's `JpegBitmapEncoder`, the Windows Imaging
+  Component codec: SIMD on the CPU, single-threaded per picture, no GPU) as `ExportFormats.AlternativeJpeg`;
+  the sink falls back to the in-house `JpegEncoder` when the alternative throws (the frame is rewound and
+  rewritten, logged once per writer; harness-checked). The quality number goes through unchanged: at 50, 70,
+  85 and 95 WIC and the in-house encoder give the same file sizes and the same 47.2 dB, so WPF's
+  `QualityLevel` is the IJG scale and needs no mapping. **The in-house encoder, second version** (2026-10-15,
+  after the user asked why the fallback lost to one WIC thread): the AAN factorisation (`Dct8x8.ForwardAan`,
+  the IJG float DCT) on SSE registers with in-register 4 × 4 transposes, its output scaling folded into
+  quantiser divisors kept in zig-zag order so the coefficients land there directly; the entropy coder writes a
+  Huffman code and its value bits as one field into a 64-bit accumulator flushed by whole bytes (`BitSink`);
+  `Parallel.For` pinned to the core count (left to the scheduler it oversubscribed and doubled the time).
+  Steady state per 1080p picture: 20.7 ms on one thread (WIC 15.3), 5.4 ms on ten (2 → 11.7, 4 → 7.0); the job to a
+  JPEG sequence 7.7 ms per frame in-house, 4.8 through WIC on five workers. **Bench numbers need the JIT warm**:
+  the first timed calls ran tier-0 code at twice the cost, so `Time` now warms 40 calls and waits for the
+  background recompilation; the earlier numbers in this file (MPEG-1 23 ms, MP4 40) were partly that effect,
+  steady state is MPEG-1 9 ms a picture and the MP4 job 16 ms a frame. **GPU front end, built and measured**
+  (`Export/GpuJpeg`, 2026-10-15, the user asked for numbers, not estimates): one OpenCL work-item per block
+  does the colour conversion, the AAN transform and the quantisation into zig-zag 16-bit values, the CPU rows
+  Huffman-code them (`JpegEncoder.WriteCoded`); the picture decodes to the same dB and size as the CPU's.
+  Per picture, in-house on ten threads / GPU blocks (upload + kernel and download + Huffman) / WIC on one
+  thread: 1080p 5.4 / 5.4 (2.0 + 2.0 + 1.2) / 14.4 ms; 2160p 17 / 19 (9.1 + 7.8 + 3.3) / 54 ms. The job to a
+  JPEG sequence per frame, in-house (one worker) / WIC (five workers) / GPU (one worker): 1080p 8.8 / 4.8 / 9.6;
+  2160p 25 / 18 / 28. So the device does the arithmetic in no time and the PCIe transfers cost what the CPU
+  rows cost, as predicted: **deleted again** the same day (the user: nothing would ever choose it; the numbers
+  stay here so nobody builds it twice). An RTX 2080 has no JPEG block (NVJPG is A100/Orin; Intel iGPUs have
+  one; neither is here) and no card encodes MPEG-1, so the only hardware encoder available is the card's
+  H.264/HEVC, through Media Foundation. WIC on the worker pool stays the app's encoder, the in-house
+  encoder the fallback. Other 2160p figures: MPEG-1 30 ms a
+  picture, MP4 10, AVI 40 (a 25 MB write), the PNG job 43 ms a frame. **H.264 and the card's encoder**
+  (2026-10-15): the sink writer does use the hardware, `Mp4Writer.Transforms` names them (through
+  `IMFSinkWriterEx.GetTransformForStream` and `MFT_FRIENDLY_NAME_Attribute`, whose GUID is
+  `314ffbae-…`, read from the SDK header after a wrong guess) and `Mp4Writer.AvailableEncoders` lists the
+  registered ones: here "NVIDIA H.264 Encoder MFT". The frames now go in as NV12, converted by `YuvPlanes`
+  on every core, so the writer's single-threaded colour converter is out of the chain; the writer also gets
+  a Direct3D 11 device manager (`MediaFoundation.CreateDeviceManager`, `MF_SINK_WRITER_D3D_MANAGER`), kept
+  because other vendors' transforms expect one. Neither moved the throughput: the job writes about 16 to 19
+  ms a 1080p frame (55 to 60 fps) with or without them, with the writer's throttling off, in quality or
+  bitrate mode, at any declared frame rate, and with the encoder's fastest settings (quality-versus-speed 0,
+  low latency, real time); the quality mode is the better one (47 dB at a tenth of the bitrate mode's size on
+  wave content). The writer alone on real frames measured 30 to 45 ms a frame on a machine 44 % busy with
+  the user's video playback, so the absolute figures are depressed; the relative picture is stable. Where the
+  cap sits: the sink writer drives the asynchronous hardware transform one sample at a time. The ways past
+  it are driving the transform directly (`IMFTransform` with the async event protocol, the sink writer then
+  muxing H.264 samples) or NVENC's own API (vendor-specific, `nvEncodeAPI64.dll` from the driver); both are
+  projects, neither started. The static knobs `Mp4Writer.Throttle`, `PreferNv12`, `QualityMode`, `UseDirect3D`,
+  `Fastest` exist for the bench, which also runs the same frames through the ffmpeg on the PATH as a
+  reference (its 2018 NVENC code no longer opens on the current driver; libx264 ultrafast did 16 ms a frame
+  including the raw read). **Sequences encode on a worker pool** (`ImageSequenceSink` workers: half the
+  cores for WIC and PNG, one for the in-house JPEG, which is parallel inside; the frame copies are pooled, and
+  the PNG's zlib output goes out as 64 KB IDAT chunks instead of a whole-file buffer): the job to a JPEG
+  sequence 27 → 10 ms per frame, the PNG sink 46 → 11 ms per frame on the bench picture, but a real wave frame
+  compresses slower, about 33 ms per frame in the job (`CompressionLevel.Fastest` would be the lever, at some
+  size). `JpegEncoder.ParallelRows` and `LastPhases` exist for the bench. The harness project is
+  `net10.0-windows` with `UseWPF` for that bench (the library stays `net10.0`).
+- **Unsaved edits** (2026-10-14): `MainWindow.IsDirty`, set by the watcher on any model change, cleared on
+  open/new/save; the title gets `*` after the file (or "Untitled*", `TitleConverter`, re-read on a language
+  switch) and New, Open, Close, Exit and a drop ask Yes/No/Cancel (`ConfirmDiscard`, `SaveChangesFormat`).
 - Preview document: `Panes/PreviewPane`. Two pictures (field,
   intensity) side by side or stacked (`Orientation`, persisted as the `PreviewOrientation` user
   setting), each centred in its cell with its label laid out by `Controls/PictureFrame` (label above
@@ -375,7 +506,17 @@ passing harnesses for comfort, never all of them after an edit.
   probe yielding one profile per frame, the box attached to the probe following it and a detached one staying put, and a
   scratch frame's traces matching the run's bit for bit (series up to the step, the frame's profile, a second
   request on the kept engine with an integrated line probe starting its sums afresh, and the same on the GPU
-  after the cancelled GPU run), and a rotated 3 × 1 array. Prints
+  after the cancelled GPU run), and a rotated 3 × 1 array; the
+  **export** (`ExportChecks.cs`, 2026-10-14, `-- export` runs just these in a few seconds): PNG decoded in-house
+  (inflate + unfilter, CRCs) and by the ffmpeg found on the PATH (skipped without one; this machine has one in
+  `C:\Windows` and under ImageMagick), JPEG at quality 90 above 30 dB, MPEG-1 (frame rate codes, quantiser
+  mapping, start codes, 7 pictures decoded above 28 dB), AVI with a tiny segment limit (3 segments walked:
+  frames, `idx1`, `ix00` per segment, super index, `dmlh`, sizes, decoded pixel for pixel; a one-frame file),
+  MP4 when Media Foundation is there (7 frames decoded), the sequence folder rule, and the `ExportJob` over a
+  run's store (two sinks, the decoration seen per frame, a PNG equal to the renderer's frame, a cancelled job
+  leaving a valid AVI, a frame beyond the store failing it, a sink that cannot open, an MP4 written on the
+  job's thread; the one-frame still sink; the alternative JPEG encoder with its fallback). `-- bench-export [w h]`
+  times every encoder and the whole job per format, WIC against the in-house JPEG with sizes and PSNR. Prints
   `skip GPU: …` when no OpenCL device works. `dotnet run --project _tools/library_check -c Release
   -- bench [w h]` prints the per-step cost table above for this machine.
 
@@ -431,10 +572,22 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   four sources and two probes in the tree with their enabled/active state, 7500 frames on the timeline, the
   embedded image's 16:9 canvas, Source 1's marker at (150, 140), and the status bar's import message
   (the message text block carries the id `StatusMessage`).
+  `_tools/ui_check/ExportCheck.ps1` (2026-10-14, 30 checks, about 50 s): on `tiny.wdproj` File > Export > Field…
+  by keyboard with no run yet (a run is made, 100 PNGs land in `%TEMP%\wd_export\tiny_field`, the status
+  message names it, the run stays in the preview), an edit putting the asterisk in the title and staling the
+  run, Export both… from the picture's context menu (the Apps key on a focused handle; `PopupItemVisible` /
+  `PopupFocusedId` look through the process's top-level windows, since a popup is not a descendant of the main
+  window, and the menu opens with no entry highlighted) redoing the run and writing both sequences; then
+  the still from the context menu's first entry (`tiny_field_0.png`); then
+  `tiny_probes.wdproj`'s field with the graph boxes drawn (a frame kept as `%TEMP%\export_probes.png`), the
+  same as an MP4 (the app's Media Foundation path) and as a JPEG sequence (WIC on the worker pool). Two
+  **harness hooks** in the app, read from the environment: `WAVEDUDE_EXPORT_PATH` replaces the Save dialog
+  (`{name}` = the suggested name) and `WAVEDUDE_DISCARD_EDITS=1` skips the save question on closing
+  (`Start-App` sets it), because posted keys cannot drive a common dialog or a message box.
   `FocusedId` is **one** UI Automation query for the element with keyboard focus (a template part's
   id such as `PART_EditableTextBox` is mapped to its owner); asking 17 ids one by one cost half a
   second per Tab and made `FocusOn` crawl. Timings after the 2026-10-14 clean-up: RunCheck 67 s
-  (was 455), PreviewCheck 12 s (was 36), LanguageCheck 17 s (was 76).
+  (was 455), PreviewCheck 12 s (was 36), LanguageCheck 17 s (was 76), ExportCheck 25 s.
   Run `powershell -ExecutionPolicy Bypass -File _tools/ui_check/<script>.ps1` (`-Trace` adds
   foreground/focus per line); exit code = failures. **How UI harnesses must work here**: the user may
   be using the machine, so no mouse, no `SendKeys`, no `SetForegroundWindow`. Post `WM_KEYDOWN`/
@@ -473,6 +626,8 @@ ScratchRunner (one long-running task, one kept engine: Reset/SetEmitters/SetProb
    scene or the options change; computes "frame k of the project as it is now" from step 0, sampling the probes on the
    way, newest request wins, skips when the predicted cost exceeds Budget) -> ScratchResult (a FrameSnapshot + a
    ProbeTrace per probe) -> FramePresenter via SnapshotFrameSource, ProbeGraphOverlay via PreviewPane.ShownScratch
+ExportJob (Export/, its own STA thread: per frame of the range, per target CopyLayer -> FrameRenderer -> GlowingEdges.BlendAdditive
+   -> Decorate (the WPF ProbeGraphPainter) -> IFrameSink: ImageSequenceSink (PngEncoder | JpegEncoder), Mpeg1Writer, AviWriter, Mp4Writer)
 FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-sized; Half planes, padding stripped;
    |           positional RandomAccess reads/writes through the OS cache, no memory mapping)
    '- read by FramePresenter (WPF): CopyLayer -> FrameRenderer (LUT, Parallel.For) -> WriteableBitmap
@@ -485,10 +640,12 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   observable and XML-serialisable, `ColorLut`, `ColorSchemeStore` reading the author's JSON and
   reading/writing XML, built-in schemes embedded, `FrameRenderer`),
   `WaveDude.Runs` (`RunSpec`, `SimulationRun`, `RunState`, `FrameStore`, `FrameLayer(s)`,
-  `FrameCache`, `ScenePixels`). All copied from `Wave_Dude_2D` and adapted; the legacy app keeps
-  its own copies and does not reference the library. Not ported: video sinks (`MfVideoWriter`,
-  `AviMjpegWriter`, `AviFrameSink`), GDI+ painters (`ProbeGraphPainter`, `ProbeOverlay`), the glow
-  overlay (now ported as `GlowingEdges`); export will render from the store instead.
+  `FrameCache`, `ScenePixels`), `WaveDude.Export` (2026-10-14: `IFrameSink`, `ExportJob`, `ExportFormat(s)`,
+  the encoders and writers, `BitWriter`, `YuvPlanes` + `Dct8x8` shared by JPEG and MPEG-1, `Crc32`). All copied
+  from `Wave_Dude_2D` and adapted; the legacy app keeps its own copies and does not reference the library. Not
+  ported: the legacy video sinks (`MfVideoWriter` was rewritten as `Mp4Writer`, `AviMjpegWriter` replaced by
+  the OpenDML `AviWriter`), GDI+ painters (`ProbeGraphPainter` exists anew in WPF, `ProbeOverlay`), the glow
+  overlay (now ported as `GlowingEdges`).
 - **The engine choice is not in the project** (2026-10-09, the user's call: the old app's flag was an
   artefact): `Simulation > Use the GPU (OpenCL)` is the persisted user setting `UseGpu` (default on),
   passed to `RunSpec.Create(project, image, preferGpu)`; the CPU is the fallback with a note when no
@@ -677,8 +834,8 @@ functional spec for the WPF UI.
   replace with `Program.Main` (`EnableVisualStyles`, `SetCompatibleTextRenderingDefault`) when convenient.
 - Private `ref` parameters that are really `out` remain outside the engines (`TryPictureToCanvas`,
   `TryParseInt`, `DampingProblem`, `PromptForCValue`, `ComputeRanges`, `RgbToHsv`, …).
-- WPF: no progress bar for a run (status text only); the Simulation menu has no About/Help; the probe
-  signal lane is not drawn yet (the graph boxes are); export not rendered from the store yet; the preview skips frames at
+- WPF: no progress bar for a run (status text only; the export has one); the Simulation menu has no About/Help; the probe
+  signal lane is not drawn yet (the graph boxes are); the preview skips frames at
   1080p (see the numbers in the library architecture section).
 - WPF preview, frames vs. steps: the transport bar, scrubber and playback count **frames**
   (0..`LastFrame`, one per `VisualizeEvery` steps), while sources, probes, the export range and the
@@ -732,7 +889,8 @@ Thirteen points on a sneak peek of the WPF app; status as of 2026-10-12:
   (see "Probe graphs" above); probe measurement edits now re-run automatically.
 - Still open: "re-run automatically does not always work" (by design: display edits and a probe's graph
   settings do not re-run, and the run waits 1.5 s of quiet).
-- Roadmap already: (7) probe graphs, (10) export, (12) project format (the user answered: images
+- Done 2026-10-14: (10) export, from the store at any time (see "Export" in the WPF shell list).
+- Roadmap already: (7) probe graphs (the lane), (12) project format (the user answered: images
   embedded or relative, output next to the file, the JSON format imported).
 - The author also suggests dropping the 9-point Laplacian (confusing; only useful to show dispersion).
 
