@@ -9,6 +9,8 @@
     <!-- optimised in every configuration: the engines' stencil loops run five times slower unoptimised, which
          makes the CPU engine unusable from a Debug build of the app; set to false locally to step through them -->
     <Optimize>true</Optimize>
+    <!-- the MP4 writer copies a frame into a Media Foundation buffer through its raw pointer -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- the shipped colour schemes are part of the binary; the repo's ColorSchemeList folder is their source -->

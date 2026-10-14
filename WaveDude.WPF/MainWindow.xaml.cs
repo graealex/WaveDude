@@ -8,6 +8,7 @@ using System.Windows.Shell;
 using Microsoft.Win32;
 using NLog;
 using WaveDude.Model;
+using WaveDude.Runs;
 using WaveDude.Rendering;
 using WaveDude.WPF.Docking;
 using WaveDude.WPF.Localization;
@@ -74,6 +75,10 @@ public partial class MainWindow : Window
 			if (args.PropertyName == nameof(Settings.UseGpu))
 			{
 				Logger.Info(Settings.Default.UseGpu ? "Use the GPU switched on (Simulation menu)" : "Use the GPU switched off (Simulation menu): runs use the CPU from now on");
+			}
+			else if (args.PropertyName == nameof(Settings.FrameMemoryPercent))
+			{
+				Logger.Info("Frames kept in memory: {Percent} % of the RAM, {Budget} right now (Simulation menu)", Settings.Default.FrameMemoryPercent, FrameMemory.Gigabytes(FrameMemory.Budget(Settings.Default.FrameMemoryPercent)));
 			}
 		};
 		Closing += (_, _) =>
@@ -244,6 +249,16 @@ public partial class MainWindow : Window
 
 	private void ShowError(string message, Exception ex) =>
 		MessageBox.Show(this, $"{message}\n{ex.Message}", (string)FindResource("Title"), MessageBoxButton.OK, MessageBoxImage.Error);
+
+	/// <summary>Simulation > Frames kept in memory: the chosen share of the RAM, applied to the next run.</summary>
+	private void OnSetFrameMemory(object sender, ExecutedRoutedEventArgs e)
+	{
+		if (e.Parameter is string text && int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int percent))
+		{
+			Settings.Default.FrameMemoryPercent = percent;
+			SaveSettings();
+		}
+	}
 
 	private void OnFileNew(object sender, ExecutedRoutedEventArgs e)
 	{

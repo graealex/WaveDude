@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Diagnostics;
+using System.Numerics.Tensors;
 using NLog;
 using WaveDude.Engine;
 using WaveDude.Model;
@@ -475,9 +476,9 @@ internal static class Program
 		Console.WriteLine("--- frame store");
 		string path = Path.Combine(Path.GetTempPath(), "library_check-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
 		var cpu = new WaveSimulator(scene, new EngineOptions(1.0, 1.0, true, false, 10.0, 1.0), Sources());
-		using (var store = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field | FrameLayers.Intensity, 3, 2))
+		using (var store = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field | FrameLayers.Intensity, 3, 2, ramBudget: 0))
 		{
-			Check(File.Exists(path) && new FileInfo(path).Length == store.TotalBytes, "file created and pre-sized (" + store.TotalBytes + " bytes)");
+			Check(store.RamFrames == 0 && store.HasFile && File.Exists(path) && new FileInfo(path).Length == store.FileBytes && store.FileBytes == FrameStore.HeaderSize + 3 * store.FrameBytes, "no budget: the file is created at once and pre-sized (" + store.FileBytes + " bytes)");
 			Check(store.Count == 0 && store.LayerCount == 2 && store.Has(FrameLayer.Intensity) && store.StepOf(2) == 4, "empty store reports its layout");
 			int written = 0;
 			store.FrameWritten += n => written = n;
@@ -533,6 +534,50 @@ internal static class Program
 		}
 		Check(!File.Exists(path), "file deleted on dispose");
 		Check(FrameStore.SizeOf(1920, 1080, FrameLayers.Field | FrameLayers.Intensity, 1250) == 64 + 1250L * 2 * 1920 * 1080 * 2, "SizeOf matches the layout");
+		Check(FrameStore.FramesInBudget(1920, 1080, FrameLayers.Field | FrameLayers.Intensity, 1L << 30) == 129 && FrameStore.FramesInBudget(64, 48, FrameLayers.Field, 0) == 0, "FramesInBudget: 129 full-HD frames of both planes per GB");
+
+		// the two tiers: a budget for two of five frames; the first two stay in memory, the other three go to the file
+		path = Path.Combine(Path.GetTempPath(), "library_check-tiers-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		using (var store = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field | FrameLayers.Intensity, 5, 2, ramBudget: 2L * 2 * scene.Width * scene.Height * 2))
+		{
+			Check(store.RamFrames == 2 && store.FirstSpilledFrame == 2 && store.HasFile && new FileInfo(path).Length == FrameStore.HeaderSize + 3 * store.FrameBytes, "budget for two frames: the file is sized for the other three");
+			float[][] fields = new float[5][];
+			for (int frame = 0; frame < 5; frame++)
+			{
+				Run(cpu, 2);
+				fields[frame] = (float[])cpu.FieldData.Clone();
+				store.Write(frame, cpu.FieldData, cpu.IntensityData, cpu.Stride);
+			}
+			Check(store.Count == 5 && store.FramesInMemory == 2 && store.FramesOnDisk == 3 && store.RamBytes == 2 * store.FrameBytes, "five frames: two in memory, three on disk");
+			bool same = true;
+			var copy = new Half[scene.Width * scene.Height];
+			for (int frame = 0; frame < 5 && same; frame++)
+			{
+				same = store.CopyLayer(frame, FrameLayer.Field, copy);
+				for (int y = 0; y < scene.Height && same; y++)
+				{
+					for (int x = 0; x < scene.Width; x++)
+					{
+						if (copy[y * scene.Width + x] != (Half)fields[frame][(y + 1) * cpu.Stride + x + 1])
+						{
+							same = false;
+							break;
+						}
+					}
+				}
+			}
+			Check(same, "every frame reads back from its tier");
+		}
+		Check(!File.Exists(path), "tiered store: file deleted on dispose");
+		// a run that fits never touches the disk
+		path = Path.Combine(Path.GetTempPath(), "library_check-ram-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		using (var store = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field, 3, 1, ramBudget: 1L << 30))
+		{
+			store.Write(0, cpu.FieldData, null, cpu.Stride);
+			Check(store.RamFrames == 3 && !store.HasFile && !File.Exists(path) && store.FileBytes == 0 && store.FirstSpilledFrame == 3, "a run within the budget creates no file");
+		}
+		Check(FrameMemory.PhysicalBytes() > 1L << 30 && FrameMemory.AvailableBytes() <= FrameMemory.PhysicalBytes() && FrameMemory.Budget(50) <= FrameMemory.PhysicalBytes() / 2 && FrameMemory.Budget(0) == 0,
+			"memory: " + FrameMemory.Gigabytes(FrameMemory.PhysicalBytes()) + " physical, " + FrameMemory.Gigabytes(FrameMemory.AvailableBytes()) + " available, budget at 50 % " + FrameMemory.Gigabytes(FrameMemory.Budget(50)));
 
 		// a full-HD store of 1 GB: the writes must run at memory speed and the dispose must not flush the
 		// dirty pages to disk (the file is deleted anyway; this used to take a minute for a 10 GB run)
@@ -545,11 +590,19 @@ internal static class Program
 			bigField[i] = (i % 97) / 97f - 0.5f;
 			bigIntensity[i] = (i % 89) / 89f;
 		}
+		// written the way the run does it: Half planes already converted (the engine's captures), no conversion in the store
+		var bigFieldHalf = new Half[bigW * bigH];
+		var bigIntensityHalf = new Half[bigW * bigH];
+		for (int y = 0; y < bigH; y++)
+		{
+			TensorPrimitives.ConvertToHalf(bigField.AsSpan((y + 1) * (bigW + 2) + 1, bigW), bigFieldHalf.AsSpan(y * bigW, bigW));
+			TensorPrimitives.ConvertToHalf(bigIntensity.AsSpan((y + 1) * (bigW + 2) + 1, bigW), bigIntensityHalf.AsSpan(y * bigW, bigW));
+		}
 		var clock = Stopwatch.StartNew();
 		var big = FrameStore.Create(path, bigW, bigH, FrameLayers.Field | FrameLayers.Intensity, bigFrames, 1);
 		for (int frame = 0; frame < bigFrames; frame++)
 		{
-			big.Write(frame, bigField, bigIntensity, bigW + 2);
+			big.Write(frame, bigFieldHalf, bigIntensityHalf);
 		}
 		double writeMs = clock.Elapsed.TotalMilliseconds;
 		clock.Restart();
@@ -564,7 +617,7 @@ internal static class Program
 		clock.Restart();
 		big.Dispose();
 		double disposeMs = clock.Elapsed.TotalMilliseconds;
-		Console.WriteLine($"  1 GB store: {writeMs:0} ms writing ({big.TotalBytes / writeMs / 1000:0} MB/s, {writeMs / bigFrames:0.0} ms/frame), {readMs:0} ms reading ({readMs / bigFrames:0.0} ms/frame), {disposeMs:0} ms dispose");
+		Console.WriteLine($"  1 GB store in memory ({big.FramesInMemory} of {bigFrames} frames): {writeMs:0} ms writing ({big.TotalBytes / writeMs / 1000:0} MB/s, {writeMs / bigFrames:0.0} ms/frame), {readMs:0} ms reading ({readMs / bigFrames:0.0} ms/frame), {disposeMs:0} ms dispose");
 		Check(!File.Exists(path), "big store deleted on dispose");
 		Check(disposeMs < 1500, "disposing a 1 GB store does not flush it to disk (" + disposeMs.ToString("0") + " ms)");
 	}

@@ -19,6 +19,9 @@ public static class SimulationCommands
 	/// <summary>Makes sure the frames are coming: starts a run (keeping the preview's position) when there is none or it is stale; no gesture, the preview's Play issues it.</summary>
 	public static readonly RoutedUICommand EnsureRun = new("Run if needed", nameof(EnsureRun), typeof(SimulationCommands));
 
+	/// <summary>Sets the share of the memory a run's frames may take (the parameter: a percentage as text); the Simulation menu's choices.</summary>
+	public static readonly RoutedUICommand SetFrameMemory = new("Frames kept in memory", nameof(SetFrameMemory), typeof(SimulationCommands));
+
 	/// <summary>Stops the run; the frames computed so far stay in the preview. Shift+F5, or Escape (the usual "stop what you are doing" key, and reachable without a modifier).</summary>
 	public static readonly RoutedUICommand Stop = new("Stop", nameof(Stop), typeof(SimulationCommands),
 		[new KeyGesture(Key.F5, ModifierKeys.Shift), new KeyGesture(Key.Escape)]);

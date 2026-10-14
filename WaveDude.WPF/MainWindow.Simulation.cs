@@ -52,9 +52,16 @@ public partial class MainWindow
 			Logger.Info("Running on the CPU: 'Use the GPU' is off in the Simulation menu");
 		}
 		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu);
-		FrameCache.CheckSpace(FrameStore.SizeOf(spec.Width, spec.Height, spec.Layers, spec.FrameCount));
+		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
+		// the rest needs room on the cache drive (2026-10-14)
+		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent);
+		int ramFrames = Math.Min(spec.FrameCount, FrameStore.FramesInBudget(spec.Width, spec.Height, spec.Layers, budget));
+		if (ramFrames < spec.FrameCount)
+		{
+			FrameCache.CheckSpace(FrameStore.SizeOf(spec.Width, spec.Height, spec.Layers, spec.FrameCount - ramFrames));
+		}
 		DiscardRun();
-		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Width, spec.Height, spec.Layers, spec.FrameCount, spec.VisualizeEvery);
+		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Width, spec.Height, spec.Layers, spec.FrameCount, spec.VisualizeEvery, budget);
 		var run = new SimulationRun(spec, store, SynchronizationContext.Current, automatic);
 		run.PropertyChanged += (_, args) =>
 		{
@@ -64,8 +71,8 @@ public partial class MainWindow
 			}
 		};
 		run.Finished += (_, _) => OnRunFinished();
-		Logger.Info("{Kind} started: {Steps} steps, {Frames} frames of {Width}×{Height}; edits made from now on do not affect it",
-			automatic ? "Re-run" : "Run", spec.Steps, spec.FrameCount, spec.Width, spec.Height);
+		Logger.Info("{Kind} started: {Steps} steps, {Frames} frames of {Width}×{Height}, {RamFrames} in memory ({RamBytes}) and {DiskFrames} on disk; edits made from now on do not affect it",
+			automatic ? "Re-run" : "Run", spec.Steps, spec.FrameCount, spec.Width, spec.Height, store.RamFrames, FrameMemory.Gigabytes(store.RamBytes), spec.FrameCount - store.RamFrames);
 		IsRunStale = false;
 		IsProbesStale = false;
 		Run = run;

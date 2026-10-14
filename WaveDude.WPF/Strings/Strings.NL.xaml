@@ -26,6 +26,10 @@
 	<s:String x:Key="MenuSimulationStop">S_toppen</s:String>
 	<s:String x:Key="MenuSimulationUseGpu">_GPU gebruiken (OpenCL)</s:String>
 	<s:String x:Key="MenuSimulationAutoRerun">Na bewerkingen _automatisch opnieuw starten</s:String>
+	<s:String x:Key="MenuSimulationFrameMemory">Beelden in het ge_heugen</s:String>
+	<s:String x:Key="MenuSimulationFrameMemory25">Een _kwart van het RAM</s:String>
+	<s:String x:Key="MenuSimulationFrameMemory50">De _helft van het RAM</s:String>
+	<s:String x:Key="MenuSimulationFrameMemory75">_Driekwart van het RAM</s:String>
 	<s:String x:Key="MenuHelp">_Help</s:String>
 	<s:String x:Key="MenuHelpAbout">_Over Wave Dude</s:String>
 

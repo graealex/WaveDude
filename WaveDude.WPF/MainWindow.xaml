@@ -23,6 +23,7 @@
 
 	<Window.Resources>
 		<converters:EqualityConverter x:Key="Equality" />
+		<converters:IntEqualsConverter x:Key="IntEquals" />
 		<converters:TitleConverter x:Key="TitleConverter" />
 		<converters:RunStatusConverter x:Key="RunStatus" />
 
@@ -109,6 +110,7 @@
 		<CommandBinding Command="{x:Static commands:SimulationCommands.TogglePause}" CanExecute="CanControlRun" Executed="OnTogglePause" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.Stop}" CanExecute="CanControlRun" Executed="OnStop" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.EnsureRun}" Executed="OnEnsureRun" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.SetFrameMemory}" Executed="OnSetFrameMemory" />
 
 		<!-- project structure; handlers in MainWindow.Project.cs -->
 		<CommandBinding Command="{x:Static commands:ProjectCommands.AddSource}" Executed="OnAddSource" />
@@ -180,6 +182,18 @@
 				<MenuItem Header="{DynamicResource MenuSimulationAutoRerun}" IsCheckable="True"
 				          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=AutoRerun, Mode=TwoWay}"
 				          AutomationProperties.AutomationId="MenuAutoRerun" />
+				<!-- the share of the RAM a run's frames may take before the rest goes to disk (2026-10-14); a run never takes more than what is free -->
+				<MenuItem Header="{DynamicResource MenuSimulationFrameMemory}" AutomationProperties.AutomationId="MenuFrameMemory">
+					<MenuItem Header="{DynamicResource MenuSimulationFrameMemory25}" Command="{x:Static commands:SimulationCommands.SetFrameMemory}" CommandParameter="25"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=FrameMemoryPercent, Converter={StaticResource IntEquals}, ConverterParameter=25, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuFrameMemory25" />
+					<MenuItem Header="{DynamicResource MenuSimulationFrameMemory50}" Command="{x:Static commands:SimulationCommands.SetFrameMemory}" CommandParameter="50"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=FrameMemoryPercent, Converter={StaticResource IntEquals}, ConverterParameter=50, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuFrameMemory50" />
+					<MenuItem Header="{DynamicResource MenuSimulationFrameMemory75}" Command="{x:Static commands:SimulationCommands.SetFrameMemory}" CommandParameter="75"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=FrameMemoryPercent, Converter={StaticResource IntEquals}, ConverterParameter=75, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuFrameMemory75" />
+				</MenuItem>
 			</MenuItem>
 			<MenuItem Header="{DynamicResource MenuHelp}">
 				<MenuItem Header="{DynamicResource MenuHelpAbout}" />

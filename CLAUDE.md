@@ -509,21 +509,28 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
 - **Frames vs. steps**: a frame is recorded after step `i` when `i % VisualizeEvery == 0`, so frame
   k shows the state after 0-based step `k × VisualizeEvery` (what the readout's `step` prints);
   `RunSpec.FrameCount = ceil(Steps / VisualizeEvery)`, the same as `FrameCountConverter`.
-- **FrameStore**: 64-byte header (`WDFS`, version, width, height, layers, every, capacity) then
-  fixed-size frames, planes in `FrameLayer` order, only those present (`RunSpec.Layers`: field
-  always; intensity when the intensity preview or export is on or a probe needs it). The worker
-  writes in order (`RandomAccess.Write` of a vectorised Half staging buffer) and publishes `Count`;
-  readers use `CopyLayer` (`RandomAccess.Read`; safe against a concurrent `Dispose`, which waits for
-  readers). **Not memory-mapped, on purpose** (2026-10-09): the first version mapped the file and
-  touching 16 MB of fresh pages per frame cost 14-20 ms per frame on the writer and about as much
-  on the reader, and unmapping flushed every dirty page to disk (a minute-long freeze on the second
-  run and on closing, for a 10 GB file about to be deleted). Size: a 1920×1080 run of 2500 steps at
-  `VisualizeEvery` 2 with both planes is **10.4 GB** on disk (`FrameStore.SizeOf`;
-  `FrameCache.CheckSpace` refuses with the number when the drive lacks it); the file is marked
-  `Temporary` so the cache manager keeps it in RAM while it can. It is deleted on dispose/exit/crash
-  (`DeleteOnClose`); `FrameCache.Sweep` at start-up removes leftovers; the window disposes a store
-  on the thread pool, never on the UI thread, and `Dispose` closes the file outside the store's lock
-  (deleting 10 GB takes a second; a reader gets false instead of waiting). When a run is replaced the
+- **FrameStore, two tiers** (2026-10-14): the first frames of a run, as many as the memory budget holds
+  (`RamFrames`), live in native memory (`NativeMemory.Alloc` per frame, one block of all planes); the
+  rest go to a temporary file created only when the run does not fit (`FirstSpilledFrame`, `HasFile`),
+  pre-sized for the spilled frames, 64-byte header (`WDFS`, version 2, width, height, layers, every,
+  capacity, first frame in the file) then fixed-size frames, planes in `FrameLayer` order, only those
+  present (`RunSpec.Layers`: field always; intensity when the intensity preview or export is on or a
+  probe needs it). The budget is `FrameMemory.Budget(percent)`: the user's share of the physical RAM
+  (Simulation > Frames kept in memory: a quarter, half, three quarters; setting `FrameMemoryPercent`,
+  default 50) capped by what `GlobalMemoryStatusEx` says is free now minus a 2 GB margin, so a run never
+  pushes the machine into its page file; the window logs frames in memory and on disk with the run start,
+  and `FrameCache.CheckSpace` is only asked for the spilled part. An allocation that fails after all (the
+  commit limit) sends that frame and the rest to the file, noted once. The worker writes in order and
+  publishes `Count`; readers use `CopyLayer` (a memory copy, or `RandomAccess.Read`; safe against a
+  concurrent `Dispose`, which frees the memory under the lock and closes the file outside it).
+  **Why not the OS cache or a memory mapping** (2026-10-09 and 2026-10-14): both keep dirty pages only up
+  to the memory manager's own allowance and then write at disk speed whatever `FILE_ATTRIBUTE_TEMPORARY`
+  says (the 10.4 GB full-HD run took 14 s against the drive with 40 GB of RAM free, and the user's drive
+  was thrashed on every automatic re-run); a mapping also cost 14-20 ms per frame in page faults on both
+  sides and flushed everything on unmap (a minute-long freeze). Size: a 1920×1080 run of 2500 steps at
+  `VisualizeEvery` 2 with both planes is **10.4 GB**, in RAM here. The file is deleted on
+  dispose/exit/crash (`DeleteOnClose`); `FrameCache.Sweep` at start-up removes leftovers; the window
+  disposes a store on the thread pool, never on the UI thread. When a run is replaced the
   window drops `Run` before clearing the stale flag, so the preview never falls back to the old store
   for a moment (that showed the old frame for a second after every edit, 2026-10-09).
 - **Numbers (RTX 2080, 64 GB RAM, SATA SSD RAID, Debug build, 2026-10-09)**, from
@@ -533,12 +540,14 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   | pure stepping | 0.25 ms | 0.5 ms | 6 ms |
   | with pipelined half captures every 2 steps | 1.3 ms | 1.6 ms | 13 ms |
   | GPU engine build (OpenCL compile) | 230–300 ms | | CPU build 10 ms |
-  The stored full-HD run (2500 steps, 1250 frames, 10.4 GB) still takes **14 s**: the stepping thread
-  waits for free snapshots because the writer stores at ~11 ms per frame, which is the disk. Windows
-  throttles a process whose dirty cache pages outrun the drive, so a store larger than the cache's
-  allowance runs at disk speed whatever the code does (a 1 GB store writes at 600–1100 MB/s). The
-  fix, if wanted: a RAM-first store with an explicit budget that spills to the file in the
-  background (64 GB here would hold the whole run), or fewer bytes (`VisualizeEvery`, resolution).
+  The stored full-HD run (2500 steps, 1250 frames, 10.4 GB) took **14 s** while the store was a file:
+  the stepping thread waited for free snapshots because the writer stored at ~11 ms per frame, which
+  was the disk (Windows throttles a process whose dirty cache pages outrun the drive). Since the
+  two-tier store (2026-10-14) the same run takes **5.4 s** in RAM: 0.17 s stepping, 1.8 ms per frame
+  storing (a memory copy into a block the store's producer allocated and touched ahead of the writer;
+  the harness writes a 1 GB store at 1.4 ms per frame, 6 GB/s), and the rest is the stepping thread
+  waiting for free snapshots, i.e. the GPU readback of ~4 ms per capture on the in-order queue. The next
+  bottleneck is that readback (a second OpenCL queue, below), not the store.
   A second OpenCL queue would overlap the 4 ms readback with compute (today an in-order queue
   serialises them). The presenter costs ~22 ms per presented frame, so playback at 60 fps skips
   frames at 1080p (the clock stays correct; only the newest request is rendered).
@@ -549,7 +558,8 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   at least 50 steps; a request with no measurement yet always computes). Frames early in the run are proportionally cheaper (frame 0: 90 ms including
   the capture and the UI round trip).
 - Known limits: the probe signal lane under the timeline is not drawn yet (the graph boxes are, 2026-10-14);
-  export is not wired; `OpenClApi` imports `"OpenCL"` (resolves to `OpenCL.dll` here, `libOpenCL.so` elsewhere).
+  `OpenClApi` imports `"OpenCL"` (resolves to `OpenCL.dll` here, `libOpenCL.so` elsewhere); the library is
+  compiled with `AllowUnsafeBlocks` for the MP4 writer's buffer copy.
   The library is compiled with `<Optimize>true</Optimize>` in every configuration (2026-10-10): a
   Debug build of it ran the CPU engine's stencil loop at 33 ms per full-HD step instead of 14, which
   made the CPU preview unusable from the app. Flip it locally to step through engine code. The
@@ -740,24 +750,10 @@ PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next ses
   traces (`ProbeGraph.ComputeRanges` and its binning can be reused), and the box in exports (the layout is
   renderer-neutral; a `DrawingVisual` rendered into the frame would do). Author's point 7, second half.
 
-**Export (nothing wired).**
-- Frames: `FrameStore.CopyLayer(frame, layer, Span<Half>)` of a run (finished, or after
-  `Run.Completion`), rendered with `FrameRenderer.RenderField/RenderIntensity` and the layer's LUT
-  (`ColorSchemeCatalog.LutFor(project, name, blackLevel)`, brightness), then, per layer and only when
-  `DisplayLayer.OverlayInExport`, `GlowingEdges.BlendAdditive` with the layer's `OverlayGain` (the
-  author bakes the outline additively; the preview only composites it). Range:
-  `Display.ExportFrom/ExportTo` in **steps** (0 = start/end), one frame per `VisualizeEvery` steps.
-  Which outputs: `DisplayLayer.Export`. Encoder settings: `Video.Fps`, `Video.Quality`.
-- Writers: none in the library yet; the legacy `Wave_Dude_2D/MfVideoWriter.cs` (+ `IMF*Native`,
-  Media Foundation SinkWriter, .mp4) and `AviMjpegWriter.cs` (MJPEG fallback, spec-exact, see
-  `_tools/avi_check`) compile anywhere and were listed as movable as-is; stills can use WPF's
-  `PngBitmapEncoder` on the rendered `int[]`. The author names exports with a running number
-  (`_0001`, one above the highest in the folder) and stores them next to the project; the user told
-  him output goes relative to the project file (the folder of `Filename`; an unsaved project must be
-  saved first, like `RunErrorUnsavedImagePath`).
-- Needs: a progress item (status text only today), cancellation, a menu entry (Simulation or File),
-  and a decision whether export needs a finished run (simplest: export the frames that exist).
-  Author's point 10.
+**Export (done 2026-10-14, see "Export" in the WPF shell list).** Formats, menus, run-first, probe boxes,
+progress and cancel are in, and the still of the shown frame; `library_check -- export` and `ExportCheck.ps1`
+cover them. Left: probe data as CSV (series per step, profiles per frame), an integer upscale for small
+canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 
 **Also open, smaller.** A colour picker dialog for stops (hex only now; WinForms `ColorDialog` needs `UseWindowsForms`);
 offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
@@ -774,11 +770,11 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
 4. ~~**Make the engine loop `Task`-based**~~ (`SimulationRun`, 2026-10-09).
 5. **WPF UI** in `WaveDude.WPF`: the preview shows a live run and replays it from the frame store
    (done 2026-10-09); editors, colour schemes, scene image and outline, languages (done 2026-10-14,
-   see the handoff section); probe graph boxes (done 2026-10-14). Next, in this order of value: the
-   **probe signal lane**, **export from the store** (video and stills, rendered with the current display settings, the
-   export range, the outline when opted in), a progress bar.
-   Store: a RAM-first frame store with a budget and background spill (see the numbers above),
-   so a run is compute-bound instead of disk-bound.
+   see the handoff section); probe graph boxes and export from the store (done 2026-10-14). Next, in this
+   order of value: the **probe signal lane**, probe data as CSV, a progress bar for runs (the busy indicator
+   exists for exports and scratch frames).
+   Store: ~~a RAM-first frame store with a budget~~ (done 2026-10-14, two tiers, no background spill
+   needed: the file takes the tail of a run that does not fit).
    Timeline, agreed 2026-10-09 (the scrub bar, in/out range, transport keys and the available-frames
    shading are done; these stay inside the preview pane, below the pictures):
    - **Event tracks** under the bar, one row per source and probe on the same time axis: a source
