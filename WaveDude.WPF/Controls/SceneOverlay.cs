@@ -14,8 +14,9 @@ namespace WaveDude.WPF.Controls;
 /// <summary>
 /// The sources and probes of a <see cref="Project"/> drawn over a picture of the canvas, as draggable
 /// handles (<see cref="MarkerThumb"/>): a source's position, a point probe's point, a line probe's two
-/// ends with the line between them, plus the emitters of a composite source as dots and the item names
-/// as labels. Dragging a handle, or moving it with the arrow keys while it has keyboard focus, writes the
+/// ends with the line between them, plus the emitters of a composite source as dots, its rotation handle on
+/// the row axis (shown while the source is selected; drag turns the array; Shift snaps to 15°; the arrow keys
+/// turn it by a degree, 2026-10-14) and the item names as labels. Dragging a handle, or moving it with the arrow keys while it has keyboard focus, writes the
 /// new canvas coordinates to the model; grabbing or focusing a handle makes its item the
 /// <see cref="SelectedItem"/>. The overlay fills the same rectangle as the picture (an
 /// <see cref="Image"/> with <see cref="Stretch.Uniform"/>), so it maps canvas pixels to its own
@@ -45,6 +46,10 @@ public sealed class SceneOverlay : Panel
 	public static readonly DependencyProperty SourceStyleProperty = DependencyProperty.Register(
 		nameof(SourceStyle), typeof(Style), typeof(SceneOverlay), new PropertyMetadata(null, (d, _) => ((SceneOverlay)d).Rebuild()));
 
+	/// <summary>Identifies the <see cref="AngleStyle"/> property.</summary>
+	public static readonly DependencyProperty AngleStyleProperty = DependencyProperty.Register(
+		nameof(AngleStyle), typeof(Style), typeof(SceneOverlay), new PropertyMetadata(null, (d, _) => ((SceneOverlay)d).Rebuild()));
+
 	/// <summary>Identifies the <see cref="ProbeStyle"/> property.</summary>
 	public static readonly DependencyProperty ProbeStyleProperty = DependencyProperty.Register(
 		nameof(ProbeStyle), typeof(Style), typeof(SceneOverlay), new PropertyMetadata(null, (d, _) => ((SceneOverlay)d).Rebuild()));
@@ -65,6 +70,12 @@ public sealed class SceneOverlay : Panel
 	private const int KeyStep = 1;
 	private const int KeyStepFast = 10;
 	private const double LabelOffset = 13.0;
+
+	/// <summary>Least distance of a rotation handle from its source's centre, in pixels.</summary>
+	private const double AngleHandleReach = 28.0;
+
+	/// <summary>Room between the end of the first row and the rotation handle, in pixels.</summary>
+	private const double AngleHandleGap = 14.0;
 	private const double ElementDotRadius = 2.5;
 	private static readonly Brush HaloBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)));
 	private static readonly Typeface LabelTypeface = new("Segoe UI");
@@ -112,6 +123,13 @@ public sealed class SceneOverlay : Panel
 	{
 		get => (Style?)GetValue(SourceStyleProperty);
 		set => SetValue(SourceStyleProperty, value);
+	}
+
+	/// <summary>Style of the rotation handles of composite sources (a <see cref="MarkerThumb"/> style).</summary>
+	public Style? AngleStyle
+	{
+		get => (Style?)GetValue(AngleStyleProperty);
+		set => SetValue(AngleStyleProperty, value);
 	}
 
 	/// <summary>Style of the probe handles (a <see cref="MarkerThumb"/> style).</summary>
@@ -185,6 +203,10 @@ public sealed class SceneOverlay : Panel
 			}
 			Regenerate(source);
 			AddThumb(source, MarkerRole.Source, SourceStyle, source.Name, "Source:" + source.Name);
+			if (source.Array != null)
+			{
+				AddThumb(source, MarkerRole.SourceAngle, AngleStyle, source.Name, "SourceAngle:" + source.Name, "TipAngleMarkerFormat");
+			}
 		}
 		foreach (Probe probe in project.Probes)
 		{
@@ -207,10 +229,10 @@ public sealed class SceneOverlay : Panel
 		}
 	}
 
-	private void AddThumb(object item, MarkerRole role, Style? style, string name, string automationId)
+	private void AddThumb(object item, MarkerRole role, Style? style, string name, string automationId, string tipKey = "TipMarkerFormat")
 	{
 		var thumb = new MarkerThumb(item, role) { Style = style };
-		thumb.ToolTip = TryFindResource("TipMarkerFormat") is string format ? string.Format(CultureInfo.CurrentUICulture, format, name) : name;
+		thumb.ToolTip = TryFindResource(tipKey) is string format ? string.Format(CultureInfo.CurrentUICulture, format, name) : name;
 		AutomationProperties.SetName(thumb, name);
 		AutomationProperties.SetAutomationId(thumb, automationId);
 		thumb.DragStarted += OnDragStarted;
@@ -230,6 +252,10 @@ public sealed class SceneOverlay : Panel
 				return;
 			case Source source:
 				Regenerate(source);
+				break;
+			case SourceArray array when Project?.Sources.FirstOrDefault(s => ReferenceEquals(s.Array, array)) is { } owner:
+				// a grid edit (size, spacing, rotation) moves the emitter dots at once
+				Regenerate(owner);
 				break;
 		}
 		if (e.PropertyName is nameof(Source.Name) or nameof(Source.Enabled) or nameof(Probe.Active))
@@ -265,6 +291,11 @@ public sealed class SceneOverlay : Panel
 		foreach (MarkerThumb thumb in Children)
 		{
 			thumb.IsSelectedMarker = ReferenceEquals(thumb.Item, selected);
+			if (thumb.Role == MarkerRole.SourceAngle)
+			{
+				// the rotation handle only while its source is selected (the user's rule, 2026-10-14); collapsed, it is out of the Tab cycle too
+				thumb.Visibility = thumb.IsSelectedMarker ? Visibility.Visible : Visibility.Collapsed;
+			}
 		}
 		InvalidateVisual();
 	}
@@ -297,6 +328,39 @@ public sealed class SceneOverlay : Panel
 
 	/// <summary>The centre of canvas pixel (x, y) in this element's coordinates at its current size.</summary>
 	private Point ToView(int x, int y) => ToView(x, y, RenderSize);
+
+	/// <summary>
+	/// Where the rotation handle of a composite source sits, for an element of <paramref name="size"/>: on the
+	/// array's row axis, turned by its angle (counter-clockwise on the screen), just beyond the first row's
+	/// half-width and at least <see cref="AngleHandleReach"/> from the centre.
+	/// </summary>
+	private Point AnglePoint(Source source, Size size)
+	{
+		Point centre = ToView(source.X, source.Y, size);
+		SourceArray array = source.Array!;
+		double reach = Math.Max(AngleHandleReach, (array.SizeX - 1) / 2.0 * array.SpacingX * ScaleFor(size) + AngleHandleGap);
+		double radians = array.Angle * Math.PI / 180.0;
+		return new Point(centre.X + reach * Math.Cos(radians), centre.Y - reach * Math.Sin(radians));
+	}
+
+	/// <summary>Turns the array so its row axis points from the source to <paramref name="view"/>: to whole degrees, or to the nearest 15 with <paramref name="snap"/>.</summary>
+	private void SetAngle(Source source, Point view, bool snap)
+	{
+		Point centre = ToView(source.X, source.Y);
+		double degrees = Math.Atan2(-(view.Y - centre.Y), view.X - centre.X) * 180.0 / Math.PI;
+		double unit = snap ? 15.0 : 1.0;
+		SetAngle(source, Math.Round(degrees / unit) * unit);
+	}
+
+	/// <summary>Sets the array's angle, kept in (-180, 180].</summary>
+	private static void SetAngle(Source source, double degrees)
+	{
+		if (source.Array is { } array)
+		{
+			array.Angle = degrees;
+			array.Normalize();
+		}
+	}
 
 	private static (int X, int Y) PointOf(MarkerThumb thumb) => (thumb.Item, thumb.Role) switch
 	{
@@ -343,7 +407,7 @@ public sealed class SceneOverlay : Panel
 		foreach (MarkerThumb thumb in Children)
 		{
 			(int x, int y) = PointOf(thumb);
-			Point centre = ToView(x, y, finalSize);
+			Point centre = thumb.Role == MarkerRole.SourceAngle ? AnglePoint((Source)thumb.Item, finalSize) : ToView(x, y, finalSize);
 			Size size = thumb.DesiredSize;
 			thumb.Arrange(new Rect(centre.X - size.Width / 2, centre.Y - size.Height / 2, size.Width, size.Height));
 		}
@@ -378,8 +442,16 @@ public sealed class SceneOverlay : Panel
 			{
 				continue;
 			}
-			Brush dots = ReferenceEquals(source, selected) ? AccentBrush : LineBrush;
+			bool isSelected = ReferenceEquals(source, selected);
+			Brush dots = isSelected ? AccentBrush : LineBrush;
 			var halo = new Pen(HaloBrush, 1.5);
+			if (isSelected)
+			{
+				// the row axis from the centre to the rotation handle, so the turn reads as a lever; with the handle, only while selected
+				Point axisEnd = AnglePoint(source, RenderSize);
+				dc.DrawLine(new Pen(HaloBrush, 3.0), ToView(source.X, source.Y), axisEnd);
+				dc.DrawLine(new Pen(dots, 1.0) { DashStyle = DashStyles.Dot }, ToView(source.X, source.Y), axisEnd);
+			}
 			foreach (SourceElement element in source.Elements)
 			{
 				dc.DrawEllipse(dots, halo, ToView(element.X, element.Y), ElementDotRadius, ElementDotRadius);
@@ -387,7 +459,7 @@ public sealed class SceneOverlay : Panel
 		}
 		foreach (MarkerThumb thumb in Children)
 		{
-			if (thumb.Role == MarkerRole.ProbeB)
+			if (thumb.Role is MarkerRole.ProbeB or MarkerRole.SourceAngle)
 			{
 				continue;
 			}
@@ -395,8 +467,10 @@ public sealed class SceneOverlay : Panel
 			Point centre = ToView(x, y);
 			string name = thumb.Item is Source source ? source.Name : ((Probe)thumb.Item).Name;
 			var label = new FormattedText(name, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, LabelTypeface, 11, thumb.IsSelectedMarker ? AccentBrush : LabelBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
-			double lx = Math.Min(centre.X + LabelOffset, Math.Max(0, ActualWidth - label.Width));
-			double ly = Math.Clamp(centre.Y - label.Height / 2, 0, Math.Max(0, ActualHeight - label.Height));
+			// beside the point; below it for a composite source, whose rotation handle sits beside it at 0 degrees
+			bool below = thumb.Item is Source { Array: not null };
+			double lx = below ? Math.Clamp(centre.X - label.Width / 2, 0, Math.Max(0, ActualWidth - label.Width)) : Math.Min(centre.X + LabelOffset, Math.Max(0, ActualWidth - label.Width));
+			double ly = below ? Math.Min(centre.Y + LabelOffset, Math.Max(0, ActualHeight - label.Height)) : Math.Clamp(centre.Y - label.Height / 2, 0, Math.Max(0, ActualHeight - label.Height));
 			var origin = new Point(lx, ly);
 			// the text's outline in dark first (a halo), then the text
 			dc.DrawGeometry(null, new Pen(HaloBrush, 3.0) { LineJoin = PenLineJoin.Round }, label.BuildGeometry(origin));
@@ -424,6 +498,12 @@ public sealed class SceneOverlay : Panel
 		{
 			return;
 		}
+		if (thumb.Role == MarkerRole.SourceAngle)
+		{
+			// the handle follows the mouse around the centre; Shift snaps to 15 degrees
+			SetAngle((Source)thumb.Item, Mouse.GetPosition(this), (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+			return;
+		}
 		thumb.DragDeltaX += e.HorizontalChange / scale;
 		thumb.DragDeltaY += e.VerticalChange / scale;
 		SetPoint(thumb, thumb.DragStartX + (int)Math.Round(thumb.DragDeltaX), thumb.DragStartY + (int)Math.Round(thumb.DragDeltaY));
@@ -435,7 +515,7 @@ public sealed class SceneOverlay : Panel
 		return brush;
 	}
 
-	/// <summary>The arrow keys move the focused handle by one canvas pixel, ten with Shift.</summary>
+	/// <summary>The arrow keys move the focused handle by one canvas pixel, ten with Shift; on a rotation handle they turn the array by a degree (Right and Up counter-clockwise), ten with Shift.</summary>
 	protected override void OnKeyDown(KeyEventArgs e)
 	{
 		base.OnKeyDown(e);
@@ -444,6 +524,16 @@ public sealed class SceneOverlay : Panel
 			return;
 		}
 		int step = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? KeyStepFast : KeyStep;
+		if (thumb.Role == MarkerRole.SourceAngle)
+		{
+			int turn = e.Key switch { Key.Right or Key.Up => step, Key.Left or Key.Down => -step, _ => 0 };
+			if (turn != 0 && thumb.Item is Source turned)
+			{
+				SetAngle(turned, (turned.Array?.Angle ?? 0.0) + turn);
+				e.Handled = true;
+			}
+			return;
+		}
 		(int dx, int dy) = e.Key switch
 		{
 			Key.Left => (-step, 0),

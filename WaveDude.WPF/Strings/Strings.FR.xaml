@@ -86,6 +86,7 @@
 	<s:String x:Key="TipPreviewShowField">Afficher l'image du champ</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Afficher l'image de l'intensité</s:String>
 	<s:String x:Key="TipMarkerFormat">{0} : glisser pour déplacer ; avec le focus clavier, les flèches déplacent d'un pixel, de dix avec Maj</s:String>
+	<s:String x:Key="TipAngleMarkerFormat">{0} : glisser pour tourner la grille (Maj aligne sur 15 degrés) ; avec le focus clavier, les flèches la tournent d'un degré, de dix avec Maj</s:String>
 	<s:String x:Key="LabelPreviewStep">pas</s:String>
 	<s:String x:Key="TipPreviewStep">Pas de simulation de l'image affichée</s:String>
 	<s:String x:Key="TipPreviewSplitter">Glisser ou utiliser les flèches pour redimensionner ; double-clic ou Entrée remet au milieu</s:String>
@@ -310,6 +311,8 @@
 	<s:String x:Key="Hint.SourceArray.SpacingX">Distance entre colonnes voisines en pixels de toile.</s:String>
 	<s:String x:Key="Label.SourceArray.SpacingY">Espacement vertical</s:String>
 	<s:String x:Key="Hint.SourceArray.SpacingY">Distance entre lignes voisines en pixels de toile.</s:String>
+	<s:String x:Key="Label.SourceArray.Angle">Rotation</s:String>
+	<s:String x:Key="Hint.SourceArray.Angle">Rotation de la grille autour de la position de la source en degrés, dans le sens antihoraire à l'écran. 0 garde les lignes horizontales.</s:String>
 	<s:String x:Key="Label.SourceArray.RandomFrequency">Fréquence</s:String>
 	<s:String x:Key="Hint.SourceArray.RandomFrequency">Le niveau de chaque émetteur est décalé d'au plus ± cette valeur. 0 désactive.</s:String>
 	<s:String x:Key="Label.SourceArray.RandomPhase">Phase</s:String>

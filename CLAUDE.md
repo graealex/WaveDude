@@ -128,6 +128,18 @@ WPF shell as it stands:
   `PreviewPane.OverlayImage` on the picture cells). WPF composites source-over, not additively:
   the layer's alpha is the edge strength × gain and its colour the edge colour at full brightness,
   so the preview and a baked export differ slightly at strong edges.
+- **Array rotation** (2026-10-14, the user's request): `SourceArray.Angle` in degrees, counter-clockwise on
+  the screen (y points down, so x' = x cos + y sin, y' = y cos − x sin about the source position),
+  normalised into (−180, 180]; applied in `Source.GenerateElements` before the random offsets, edited in the
+  source view's Array section, and the emitter dots follow at once (the scene overlay regenerates the owner
+  of an edited array). The author's format has no rotation; the importer leaves it 0. On the pictures a
+  composite source carries a **rotation handle** (`MarkerThumb` role `SourceAngle`, id `SourceAngle:<name>`,
+  the `AngleMarker` style: a bent arrow) on its row axis just beyond the first row (at least 28 px from the
+  centre), joined to the centre by a dotted lever line, both shown only while the source is selected (the
+  user's rule; collapsed, the handle is out of the Tab cycle until the source is selected through its
+  handle or the tree): dragging turns the array to follow the mouse (whole
+  degrees, Shift snaps to 15), the arrow keys turn it by a degree (ten with Shift), focusing it selects the
+  source.
 - **Languages** (2026-10-14): `Strings/Strings.EN|DE|FR|NL.xaml` carry the same keys (menu headers
   with their mnemonics; the shortcut letters I/O/X/L/F/F5 stay). `Localization/LanguageController`
   mirrors the theme controller: View > Language lists "System" then the tables by their own names,

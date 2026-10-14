@@ -86,6 +86,7 @@
 	<s:String x:Key="TipPreviewShowField">Veldbeeld tonen</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Intensiteitsbeeld tonen</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: slepen om te verplaatsen; met toetsenbordfocus verplaatsen de pijltoetsen één pixel, tien met Shift</s:String>
+	<s:String x:Key="TipAngleMarkerFormat">{0}: slepen om het raster te draaien (Shift klikt vast op 15 graden); met toetsenbordfocus draaien de pijltoetsen het één graad, tien met Shift</s:String>
 	<s:String x:Key="LabelPreviewStep">stap</s:String>
 	<s:String x:Key="TipPreviewStep">Simulatiestap van het getoonde beeld</s:String>
 	<s:String x:Key="TipPreviewSplitter">Slepen of pijltoetsen om de verdeling te wijzigen; dubbelklik of Enter zet terug op de helft</s:String>
@@ -310,6 +311,8 @@
 	<s:String x:Key="Hint.SourceArray.SpacingX">Afstand tussen naburige kolommen in canvaspixels.</s:String>
 	<s:String x:Key="Label.SourceArray.SpacingY">Verticale afstand</s:String>
 	<s:String x:Key="Hint.SourceArray.SpacingY">Afstand tussen naburige rijen in canvaspixels.</s:String>
+	<s:String x:Key="Label.SourceArray.Angle">Rotatie</s:String>
+	<s:String x:Key="Hint.SourceArray.Angle">Rotatie van het raster om de bronpositie in graden, tegen de klok in op het scherm. 0 houdt de rijen horizontaal.</s:String>
 	<s:String x:Key="Label.SourceArray.RandomFrequency">Frequentie</s:String>
 	<s:String x:Key="Hint.SourceArray.RandomFrequency">Het niveau van elke emitter wordt tot ± dit bedrag verschoven. 0 schakelt het uit.</s:String>
 	<s:String x:Key="Label.SourceArray.RandomPhase">Fase</s:String>

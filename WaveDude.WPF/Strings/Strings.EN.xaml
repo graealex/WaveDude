@@ -86,6 +86,7 @@
 	<s:String x:Key="TipPreviewShowField">Show the field picture</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Show the intensity picture</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: drag to move; with keyboard focus the arrow keys move it by a pixel, ten with Shift</s:String>
+	<s:String x:Key="TipAngleMarkerFormat">{0}: drag to turn the array (Shift snaps to 15 degrees); with keyboard focus the arrow keys turn it by a degree, ten with Shift</s:String>
 	<s:String x:Key="LabelPreviewStep">step</s:String>
 	<s:String x:Key="TipPreviewStep">Simulation step of the frame shown</s:String>
 	<s:String x:Key="TipPreviewSplitter">Drag or use the arrow keys to resize; double-click or Enter resets to half</s:String>
@@ -310,6 +311,8 @@
 	<s:String x:Key="Hint.SourceArray.SpacingX">Distance between neighbouring columns in canvas pixels.</s:String>
 	<s:String x:Key="Label.SourceArray.SpacingY">Vertical spacing</s:String>
 	<s:String x:Key="Hint.SourceArray.SpacingY">Distance between neighbouring rows in canvas pixels.</s:String>
+	<s:String x:Key="Label.SourceArray.Angle">Rotation</s:String>
+	<s:String x:Key="Hint.SourceArray.Angle">Rotation of the grid about the source position in degrees, counter-clockwise on the screen. 0 keeps the rows horizontal.</s:String>
 	<s:String x:Key="Label.SourceArray.RandomFrequency">Frequency</s:String>
 	<s:String x:Key="Hint.SourceArray.RandomFrequency">Each emitter's level is offset by up to ± this amount. 0 turns it off.</s:String>
 	<s:String x:Key="Label.SourceArray.RandomPhase">Phase</s:String>

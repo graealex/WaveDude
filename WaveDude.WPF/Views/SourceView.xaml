@@ -110,6 +110,9 @@
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SpacingY}" />
 				<controls:NumberBox Text="{Binding SpacingY}" ToolTip="{meta:Hint model:SourceArray.SpacingY}" />
 
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.Angle}" />
+				<controls:NumberBox Text="{Binding Angle}" Minimum="-180" Maximum="180" Increment="5" ToolTip="{meta:Hint model:SourceArray.Angle}" />
+
 				<!-- the four random amounts are offsets added per emitter on top of the values above (the author's point 9) -->
 				<TextBlock controls:FormPanel.FullWidth="True" Style="{StaticResource FormSection}" Text="{DynamicResource SectionRandom}" />
 

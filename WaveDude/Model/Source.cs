@@ -262,7 +262,8 @@ public sealed class Source : ObservableObject
 
 	/// <summary>
 	/// Rebuilds <see cref="Elements"/>: one emitter for a single source, or the array grid
-	/// centred on (<see cref="X"/>, <see cref="Y"/>) with the array's random offsets applied.
+	/// centred on (<see cref="X"/>, <see cref="Y"/>), rotated by the array's <see cref="SourceArray.Angle"/>
+	/// (counter-clockwise on the screen, whose y axis points down), with the random offsets applied.
 	/// Deterministic for a given project seed, name and settings.
 	/// </summary>
 	public void GenerateElements(int projectSeed)
@@ -276,13 +277,19 @@ public sealed class Source : ObservableObject
 		}
 		else
 		{
+			double radians = array.Angle * Math.PI / 180.0;
+			double cos = Math.Cos(radians);
+			double sin = Math.Sin(radians);
 			for (int row = 0; row < array.SizeY; row++)
 			{
 				for (int column = 0; column < array.SizeX; column++)
 				{
-					// grid centred on (X, Y); with an even size the centre falls between two emitters
-					int x = X + (int)Math.Round((column - (array.SizeX - 1) / 2.0) * array.SpacingX);
-					int y = Y + (int)Math.Round((row - (array.SizeY - 1) / 2.0) * array.SpacingY);
+					// grid centred on (X, Y); with an even size the centre falls between two emitters. Rotated about the
+					// centre: with y pointing down, a counter-clockwise turn on the screen is x' = x cos + y sin, y' = y cos - x sin
+					double dx = (column - (array.SizeX - 1) / 2.0) * array.SpacingX;
+					double dy = (row - (array.SizeY - 1) / 2.0) * array.SpacingY;
+					int x = X + (int)Math.Round(dx * cos + dy * sin);
+					int y = Y + (int)Math.Round(dy * cos - dx * sin);
 					elements.Add(new SourceElement
 					{
 						X = x + Jitter(rng, array.RandomPosition),
@@ -324,6 +331,7 @@ public sealed class SourceArray : ObservableObject
 	private int _sizeY = 1;
 	private int _spacingX = DefaultSpacing;
 	private int _spacingY = DefaultSpacing;
+	private double _angle;
 	private int _randomFrequency;
 	private int _randomPhase;
 	private int _randomOffWidth;
@@ -375,6 +383,18 @@ public sealed class SourceArray : ObservableObject
 	{
 		get => _spacingY;
 		set => SetProperty(ref _spacingY, value);
+	}
+
+	/// <summary>Rotation of the grid about the source position in degrees, counter-clockwise as seen on the screen; 0 keeps the rows horizontal (2026-10-14, the user's request).</summary>
+	[XmlAttribute]
+	[DefaultValue(0.0)]
+	[Category("Grid")]
+	[DisplayName("Rotation")]
+	[Description("Rotation of the grid about the source position in degrees, counter-clockwise on the screen. 0 keeps the rows horizontal.")]
+	public double Angle
+	{
+		get => _angle;
+		set => SetProperty(ref _angle, value);
 	}
 
 	/// <summary>Half-range of the per-emitter frequency offset in levels; 0 turns it off.</summary>
@@ -430,11 +450,19 @@ public sealed class SourceArray : ObservableObject
 	[Browsable(false)]
 	public bool IsRandomized => RandomFrequency > 0 || RandomPhase > 0 || RandomOffWidth > 0 || RandomPosition > 0;
 
-	/// <summary>Clamps every value into its valid range.</summary>
+	/// <summary>Clamps every value into its valid range; the angle is brought into (-180, 180].</summary>
 	public void Normalize()
 	{
 		SizeX = Math.Max(1, SizeX);
 		SizeY = Math.Max(1, SizeY);
+		if (!double.IsFinite(Angle))
+		{
+			Angle = 0.0;
+		}
+		else if (Angle <= -180.0 || Angle > 180.0)
+		{
+			Angle = Angle - 360.0 * Math.Ceiling((Angle - 180.0) / 360.0);
+		}
 		RandomFrequency = Math.Max(0, RandomFrequency);
 		RandomPhase = Math.Max(0, RandomPhase);
 		RandomOffWidth = Math.Max(0, RandomOffWidth);

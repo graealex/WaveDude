@@ -8,6 +8,8 @@ public enum MarkerRole
 {
 	/// <summary>The position of a source (its centre for a composite source).</summary>
 	Source,
+	/// <summary>The rotation handle of a composite source: sits on the array's row axis and turns it (2026-10-14).</summary>
+	SourceAngle,
 	/// <summary>Point A of a probe (the point of a point probe, the start of a line probe).</summary>
 	ProbeA,
 	/// <summary>Point B of a line probe.</summary>
