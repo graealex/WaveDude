@@ -17,7 +17,8 @@ namespace WaveDude.WPF;
 /// starts a stored re-run once the user has been idle for a moment; an edit during an automatic run stops
 /// that run at once, since its snapshot is obsolete. Scrubbing asks for scratch frames whenever the store
 /// cannot show the position: no run, a stale run, or a run that has not got there yet. The scratch runner
-/// has its own engine, so a stored run in progress does not hold it back.
+/// has its own engine, and any run in progress is paused while a scratch frame computes, so the frame the
+/// user looks at always comes first (the user's rule, 2026-10-14).
 /// </summary>
 public partial class MainWindow
 {
@@ -30,6 +31,10 @@ public partial class MainWindow
 	/// <summary>Identifies the <see cref="IsRunStale"/> property.</summary>
 	public static readonly DependencyProperty IsRunStaleProperty = DependencyProperty.Register(
 		nameof(IsRunStale), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+
+	/// <summary>Identifies the <see cref="IsProbesStale"/> property.</summary>
+	public static readonly DependencyProperty IsProbesStaleProperty = DependencyProperty.Register(
+		nameof(IsProbesStale), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
 
 	/// <summary>Identifies the <see cref="ScratchFrame"/> property.</summary>
 	public static readonly DependencyProperty ScratchFrameProperty = DependencyProperty.Register(
@@ -53,6 +58,18 @@ public partial class MainWindow
 	{
 		get => (bool)GetValue(IsRunStaleProperty);
 		set => SetValue(IsRunStaleProperty, value);
+	}
+
+	/// <summary>
+	/// Whether a probe was edited (measurement, position, list) since the current run started: its frames are
+	/// still right, its recordings are not. The graphs then draw from the scratch frame's recording, and Play
+	/// or F5 starts a run that refreshes them; no run is started by the edit itself (the user's rule,
+	/// 2026-10-14: a probe never changes the picture, and a drag must not launch a simulation).
+	/// </summary>
+	public bool IsProbesStale
+	{
+		get => (bool)GetValue(IsProbesStaleProperty);
+		set => SetValue(IsProbesStaleProperty, value);
 	}
 
 	/// <summary>The newest scratch frame (or skip notice) for the preview's position; null when none applies.</summary>
@@ -83,6 +100,7 @@ public partial class MainWindow
 			UpdateScenePixels();
 		}, DispatcherPriority.Background);
 		IsRunStale = false;
+		IsProbesStale = false;
 		ScratchFrame = null;
 		if (project != null)
 		{
@@ -99,6 +117,16 @@ public partial class MainWindow
 		{
 			// a project scheme edited, added or removed: recolour the frame shown
 			previewPane.RefreshColors();
+			return;
+		}
+		if (change.AffectsProbes)
+		{
+			// the frames stay, the recordings are stale: the scratch frame brings the new recording for the position
+			if (Run != null)
+			{
+				IsProbesStale = true;
+			}
+			ScheduleScratch();
 			return;
 		}
 		if (!change.AffectsSimulation)
@@ -122,8 +150,8 @@ public partial class MainWindow
 		ScheduleRerun();
 	}
 
-	/// <summary>Whether the store cannot show the preview's position: no run, a stale one, or one that has not reached it.</summary>
-	private bool NeedsScratch => Run == null || IsRunStale || Run.FrameCount <= PreviewPosition;
+	/// <summary>Whether the store cannot show the preview's position, or its recordings are stale: no run, a stale one, stale probes, or a run that has not reached it.</summary>
+	private bool NeedsScratch => Run == null || IsRunStale || IsProbesStale || Run.FrameCount <= PreviewPosition;
 
 	private void OnPreviewPositionChanged()
 	{
@@ -158,9 +186,10 @@ public partial class MainWindow
 			_scratch = new ScratchRunner(SynchronizationContext.Current);
 			_scratch.Completed += OnScratchCompleted;
 		}
-		// the user's frame comes first: an automatic run in progress would otherwise take every core (CPU) or
-		// the card's time away from it; it continues once the frame is there
-		if (Run is { IsAutomatic: true, IsActive: true } run && !run.IsPauseRequested)
+		// the user's frame comes first: a run in progress, automatic or started by the user, would otherwise take
+		// every core (CPU) or the card's time away from it; it continues once the frame is there (any run since
+		// 2026-10-14; a run the user paused stays paused)
+		if (Run is { IsActive: true } run && !run.IsPauseRequested)
 		{
 			run.Pause();
 			_pausedForScratch = run;
@@ -206,9 +235,9 @@ public partial class MainWindow
 		{
 			return;
 		}
-		if (_scratch?.IsBusy == true)
+		if (_scratch?.IsBusy == true || _scratchTimer?.IsEnabled == true)
 		{
-			// the frame the user is looking at comes first; the run would take the cores away from it
+			// the frame the user is looking at comes first, requested or computing; the run would take the cores away from it
 			ScheduleRerun();
 			return;
 		}
@@ -230,6 +259,10 @@ public partial class MainWindow
 		{
 			ScheduleScratch();
 			ScheduleRerun();
+		}
+		else if (IsProbesStale)
+		{
+			ScheduleScratch();
 		}
 	}
 

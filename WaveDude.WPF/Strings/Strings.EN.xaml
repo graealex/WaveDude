@@ -87,6 +87,8 @@
 	<s:String x:Key="TipPreviewShowIntensity">Show the intensity picture</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: drag to move; with keyboard focus the arrow keys move it by a pixel, ten with Shift</s:String>
 	<s:String x:Key="TipAngleMarkerFormat">{0}: drag to turn the array (Shift snaps to 15 degrees); with keyboard focus the arrow keys turn it by a degree, ten with Shift</s:String>
+	<s:String x:Key="TipProbeBoxFormat">Graph of {0}: drag to move the box; with keyboard focus the arrow keys move it by a pixel, ten with Shift</s:String>
+	<s:String x:Key="TipProbeBoxCornerFormat">Graph of {0}: drag to resize the box (it snaps to the fixed sizes); with keyboard focus the arrow keys resize it by a pixel, ten with Shift</s:String>
 	<s:String x:Key="LabelPreviewStep">step</s:String>
 	<s:String x:Key="TipPreviewStep">Simulation step of the frame shown</s:String>
 	<s:String x:Key="TipPreviewSplitter">Drag or use the arrow keys to resize; double-click or Enter resets to half</s:String>
@@ -214,9 +216,13 @@
 	<s:String x:Key="Label.Probe.BoxSize">Box size</s:String>
 	<s:String x:Key="Hint.Probe.BoxSize">Nominal size of the graph box drawn over the output.</s:String>
 	<s:String x:Key="Label.Probe.BoxX">Box x</s:String>
-	<s:String x:Key="Hint.Probe.BoxX">Left edge of the graph box in canvas pixels.</s:String>
+	<s:String x:Key="Hint.Probe.BoxX">Left edge of the graph box in canvas pixels. A box placed on the probe's point A moves with the probe; dragging it close snaps it on.</s:String>
 	<s:String x:Key="Label.Probe.BoxY">Box y</s:String>
-	<s:String x:Key="Hint.Probe.BoxY">Top edge of the graph box in canvas pixels.</s:String>
+	<s:String x:Key="Hint.Probe.BoxY">Top edge of the graph box in canvas pixels. A box placed on the probe's point A moves with the probe; dragging it close snaps it on.</s:String>
+	<s:String x:Key="Label.Probe.BoxWidth">Box width</s:String>
+	<s:String x:Key="Hint.Probe.BoxWidth">Width of the graph box in canvas pixels; custom box size only.</s:String>
+	<s:String x:Key="Label.Probe.BoxHeight">Box height</s:String>
+	<s:String x:Key="Hint.Probe.BoxHeight">Height of the graph box in canvas pixels; custom box size only.</s:String>
 	<s:String x:Key="Label.Probe.ScaleMode">Step axis</s:String>
 	<s:String x:Key="Hint.Probe.ScaleMode">Sliding window of the last steps, or the whole run; point probes only.</s:String>
 	<s:String x:Key="Label.Probe.AutoScaleX">Auto-scale steps</s:String>
@@ -345,6 +351,7 @@
 	<s:String x:Key="Enum.ProbeBoxSize.Medium">Medium</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.Large">Large</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.ExtraLarge">Extra large</s:String>
+	<s:String x:Key="Enum.ProbeBoxSize.Custom">Custom</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Running">Running</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Full">Full</s:String>
 	<s:String x:Key="Enum.SceneMode.Canvas">Canvas</s:String>

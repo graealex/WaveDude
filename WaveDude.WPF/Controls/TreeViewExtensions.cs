@@ -6,14 +6,15 @@ namespace WaveDude.WPF.Controls;
 public static class TreeViewExtensions
 {
 	/// <summary>
-	/// Selects and focuses the container of a data item anywhere in the tree, optionally
-	/// expanding it. Only realised containers are searched, so call it once the tree has
-	/// generated its items. Returns false when the item was not found.
+	/// Selects the container of a data item anywhere in the tree, optionally expanding it and
+	/// giving it keyboard focus (not when the selection mirrors a handle on the preview, which
+	/// keeps the focus, 2026-10-14). Only realised containers are searched, so call it once the
+	/// tree has generated its items. Returns false when the item was not found.
 	/// </summary>
-	public static bool SetSelectedItem(this TreeView tree, object item, bool expand = false) =>
-		SetSelected(tree, item, expand);
+	public static bool SetSelectedItem(this TreeView tree, object item, bool expand = false, bool focus = true) =>
+		SetSelected(tree, item, expand, focus);
 
-	private static bool SetSelected(ItemsControl? parent, object item, bool expand)
+	private static bool SetSelected(ItemsControl? parent, object item, bool expand, bool focus)
 	{
 		if (parent == null)
 		{
@@ -21,7 +22,10 @@ public static class TreeViewExtensions
 		}
 		if (parent.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem container)
 		{
-			container.Focus();
+			if (focus)
+			{
+				container.Focus();
+			}
 			if (expand)
 			{
 				container.IsExpanded = true;
@@ -31,7 +35,7 @@ public static class TreeViewExtensions
 		}
 		foreach (object child in parent.Items)
 		{
-			if (SetSelected(parent.ItemContainerGenerator.ContainerFromItem(child) as ItemsControl, item, expand))
+			if (SetSelected(parent.ItemContainerGenerator.ContainerFromItem(child) as ItemsControl, item, expand, focus))
 			{
 				return true;
 			}

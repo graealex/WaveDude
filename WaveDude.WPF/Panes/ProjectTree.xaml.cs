@@ -58,9 +58,9 @@ public partial class ProjectTree : UserControl
 	/// <summary>Raised when <see cref="SelectedItem"/> changes.</summary>
 	public event RoutedPropertyChangedEventHandler<object>? SelectedItemChanged;
 
-	/// <summary>Selects the node of a model object once the tree has generated it.</summary>
-	public void Select(object item) =>
-		Dispatcher.InvokeAsync(() => tree.SetSelectedItem(item, expand: true), DispatcherPriority.Loaded);
+	/// <summary>Selects the node of a model object once the tree has generated it; with <paramref name="focus"/> the node also takes keyboard focus.</summary>
+	public void Select(object item, bool focus = true) =>
+		Dispatcher.InvokeAsync(() => tree.SetSelectedItem(item, expand: true, focus), DispatcherPriority.Loaded);
 
 	/// <summary>Selects the root node; call after setting <see cref="Project"/>.</summary>
 	public void SelectRoot()

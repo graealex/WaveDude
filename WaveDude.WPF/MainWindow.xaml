@@ -225,7 +225,7 @@
 			<docking:DockHost.DocumentContent>
 				<Border BorderThickness="1" BorderBrush="{DynamicResource ToolWindowBorder}">
 					<panes:PreviewPane x:Name="previewPane" Project="{Binding Project}" Run="{Binding Run}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
-					                   IsStale="{Binding IsRunStale}" ScratchFrame="{Binding ScratchFrame}"
+					                   IsStale="{Binding IsRunStale}" IsProbesStale="{Binding IsProbesStale}" ScratchFrame="{Binding ScratchFrame}"
 					                   Position="{Binding PreviewPosition, Mode=TwoWay}"
 					                   Orientation="{Binding Source={x:Static p:Settings.Default}, Path=PreviewOrientation, Mode=TwoWay}" />
 				</Border>

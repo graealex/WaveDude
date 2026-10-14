@@ -8,5 +8,5 @@
 		<Intensity ColorScheme="Default_intensity" />
 	</Display>
 	<Source Name="Source 1" X="429" Y="614" />
-	<Source Name="Source 2" X="1637" Y="481" />
+	<Probe Name="Probe 1" AX="1626" AY="603" BoxSize="Custom" BoxX="541" BoxY="23" BoxWidth="777" BoxHeight="454" />
 </Project>

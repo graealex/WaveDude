@@ -11,15 +11,28 @@ namespace WaveDude.Model;
 public sealed record ProjectChange(object Item, string? Property)
 {
 	/// <summary>
-	/// Whether the change alters what a simulation computes: the scene, the solver settings, the seed or a
-	/// source. Display settings, probes and the description do not.
+	/// Whether the change alters the frames a run computes: the scene, the solver settings, the seed or a
+	/// source. Display settings, probes (see <see cref="AffectsProbes"/>) and the description do not.
 	/// </summary>
 	public bool AffectsSimulation => Item switch
 	{
 		Scene or Simulation or Source or SourceArray => true,
 		Project => Property is nameof(Project.Seed) or nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Sources),
-		ObservableCollection<ColorScheme> => false,
+		ObservableCollection<ColorScheme> or ObservableCollection<Probe> => false,
 		INotifyCollectionChanged => true,
+		_ => false,
+	};
+
+	/// <summary>
+	/// Whether the change alters what a run records for its probes, and nothing else: what a probe measures
+	/// (<see cref="Probe.AffectsMeasurement"/>) or the probe list. A probe never changes the picture (the
+	/// user's rule, 2026-10-14), so a run's frames stay valid and only its recordings go stale.
+	/// </summary>
+	public bool AffectsProbes => Item switch
+	{
+		Probe => Probe.AffectsMeasurement(Property),
+		Project => Property == nameof(Project.Probes),
+		ObservableCollection<Probe> => true,
 		_ => false,
 	};
 }

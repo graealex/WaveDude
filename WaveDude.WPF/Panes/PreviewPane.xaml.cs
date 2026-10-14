@@ -158,6 +158,14 @@ public partial class PreviewPane : UserControl
 
 	public static void SetOverlayImage(DependencyObject element, ImageSource? value) => element.SetValue(OverlayImageProperty, value);
 
+	/// <summary>Attached to each picture cell: which output it shows, so its template draws the graph boxes of that layer's probes.</summary>
+	public static readonly DependencyProperty LayerProperty = DependencyProperty.RegisterAttached(
+		"Layer", typeof(ProbeLayer), typeof(PreviewPane), new PropertyMetadata(ProbeLayer.Field));
+
+	public static ProbeLayer GetLayer(DependencyObject element) => (ProbeLayer)element.GetValue(LayerProperty);
+
+	public static void SetLayer(DependencyObject element, ProbeLayer value) => element.SetValue(LayerProperty, value);
+
 	/// <summary>Identifies the <see cref="IntensityImage"/> property.</summary>
 	public static readonly DependencyProperty IntensityImageProperty = DependencyProperty.Register(
 		nameof(IntensityImage), typeof(ImageSource), typeof(PreviewPane));
@@ -170,9 +178,19 @@ public partial class PreviewPane : UserControl
 	public static readonly DependencyProperty IsStaleProperty = DependencyProperty.Register(
 		nameof(IsStale), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, (d, _) => ((PreviewPane)d).UpdateSource()));
 
+	/// <summary>Identifies the <see cref="IsProbesStale"/> property.</summary>
+	public static readonly DependencyProperty IsProbesStaleProperty = DependencyProperty.Register(
+		nameof(IsProbesStale), typeof(bool), typeof(PreviewPane), new PropertyMetadata(false, (d, _) => ((PreviewPane)d).UpdateSource()));
+
 	/// <summary>Identifies the <see cref="ScratchFrame"/> property.</summary>
 	public static readonly DependencyProperty ScratchFrameProperty = DependencyProperty.Register(
 		nameof(ScratchFrame), typeof(ScratchResult), typeof(PreviewPane), new PropertyMetadata(null, (d, _) => ((PreviewPane)d).UpdateSource()));
+
+	private static readonly DependencyPropertyKey GraphScratchKey = DependencyProperty.RegisterReadOnly(
+		nameof(GraphScratch), typeof(ScratchResult), typeof(PreviewPane), new PropertyMetadata(null));
+
+	/// <summary>Identifies the <see cref="GraphScratch"/> property.</summary>
+	public static readonly DependencyProperty GraphScratchProperty = GraphScratchKey.DependencyProperty;
 
 	private static readonly DependencyPropertyKey CanvasWidthKey = DependencyProperty.RegisterReadOnly(
 		nameof(CanvasWidth), typeof(int), typeof(PreviewPane), new PropertyMetadata(1));
@@ -429,6 +447,24 @@ public partial class PreviewPane : UserControl
 		set => SetValue(ScratchFrameProperty, value);
 	}
 
+	/// <summary>
+	/// The scratch frame the probe graphs draw from, or null while they draw from the run: the scratch frame the
+	/// pictures show, or, with only the probes stale (<see cref="IsProbesStale"/>: the pictures keep the stored
+	/// frame, a probe never changes it), the scratch frame computed for the position (2026-10-14).
+	/// </summary>
+	public ScratchResult? GraphScratch
+	{
+		get => (ScratchResult?)GetValue(GraphScratchProperty);
+		private set => SetValue(GraphScratchKey, value);
+	}
+
+	/// <summary>Whether a probe was edited since the run started: its frames hold, its recordings do not. Bound to the main window.</summary>
+	public bool IsProbesStale
+	{
+		get => (bool)GetValue(IsProbesStaleProperty);
+		set => SetValue(IsProbesStaleProperty, value);
+	}
+
 	/// <summary>Width in pixels of the canvas the pictures show: the run's while one exists, else the project's blank canvas size.</summary>
 	public int CanvasWidth
 	{
@@ -545,12 +581,15 @@ public partial class PreviewPane : UserControl
 				_scratchSource = new SnapshotFrameSource(scratch!.Snapshot!);
 			}
 			_presenter.Source = _scratchSource;
+			GraphScratch = scratch;
 			UpdateCanvas(_scratchSource);
 			_presenter.Show(0);
 		}
 		else if (run != null && run.FrameCount > Position)
 		{
 			_presenter.Source = run.Store;
+			// the stored frame is right even with the probes stale; the graphs then take the scratch recording for this position once it is there
+			GraphScratch = IsProbesStale && scratch is { Snapshot: not null } && scratch.Frame == Position ? scratch : null;
 			UpdateCanvas(run.Store);
 			_presenter.Show(Position);
 		}
@@ -560,6 +599,7 @@ public partial class PreviewPane : UserControl
 			// scratch frame for another position pending, the last picture stays: clearing here made every scrub
 			// without a run flash the empty picture before the new frame arrived (2026-10-13)
 			_presenter.Source = null;
+			GraphScratch = null;
 			UpdateCanvas(null);
 		}
 		else

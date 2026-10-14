@@ -957,7 +957,12 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		}
 		try
 		{
-			_probes.Program = BuildProgram(ProbeKernelSource(), "the probe program for the GPU");
+			if (_probeProgram == IntPtr.Zero)
+			{
+				// compiled once per engine, not per SetProbes: the scratch runner installs the probes on every request
+				// (2026-10-14), and a compile per request cost more than the frame it was for
+				_probeProgram = BuildProgram(ProbeKernelSource(), "the probe program for the GPU");
+			}
 			if (sampler.HasSeries)
 			{
 				SetUpSeriesProbes(sampler);
@@ -1014,7 +1019,7 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		_historyBuffer = CreateBuffer((long)ProbeRows * count * 4L, _probes);
 		for (int k = 0; k <= 1; k++)
 		{
-			IntPtr kernel = _probeKernel[k] = CreateKernel(_probes, "probe_sample");
+			IntPtr kernel = _probeKernel[k] = CreateKernel(_probes, _probeProgram, "probe_sample");
 			SetMem(kernel, 0U, _field[k]);
 			SetMem(kernel, 1U, _intensityOutBuffer);
 			SetMem(kernel, 2U, pixelBuffer);
@@ -1084,7 +1089,7 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		_profileOutBuffer = CreateBuffer(new float[totalPixels], _probes);
 		for (int k = 0; k <= 1; k++)
 		{
-			IntPtr kernel = _gatherKernel[k] = CreateKernel(_probes, "profile_gather");
+			IntPtr kernel = _gatherKernel[k] = CreateKernel(_probes, _probeProgram, "profile_gather");
 			SetMem(kernel, 0U, _field[k]);
 			SetMem(kernel, 1U, _intensityOutBuffer);
 			SetMem(kernel, 2U, pixelBuffer);
@@ -1095,7 +1100,7 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		}
 		if (_profileIntegrates)
 		{
-			IntPtr kernel = _accumulateKernel = CreateKernel(_probes, "profile_accumulate");
+			IntPtr kernel = _accumulateKernel = CreateKernel(_probes, _probeProgram, "profile_accumulate");
 			SetMem(kernel, 0U, _intensityOutBuffer);
 			SetMem(kernel, 1U, pixelBuffer);
 			SetMem(kernel, 2U, modeBuffer);
@@ -1251,6 +1256,11 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 			Quietly(() => OpenClApi.clFinish(_queue));
 		}
 		_probes.Release();
+		if (_probeProgram != IntPtr.Zero)
+		{
+			Quietly(() => OpenClApi.clReleaseProgram(_probeProgram));
+			_probeProgram = IntPtr.Zero;
+		}
 		_emitters.Release();
 		_scene.Release();
 		if (_queue != IntPtr.Zero)
@@ -1318,6 +1328,9 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 
 	/// <summary>Rows (steps) the probe history buffer holds before it must be read back to the host.</summary>
 	private const int ProbeRows = 2048;
+
+	/// <summary>The probe program (<see cref="ProbeKernelSource"/>), built on the first <see cref="SetProbes"/> and kept for the engine's life; its kernels and buffers live in <see cref="_probes"/>.</summary>
+	private IntPtr _probeProgram;
 
 	/// <summary>The device the context lives on; needed again to build the probe program.</summary>
 	private readonly GpuDeviceInfo _device;

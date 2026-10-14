@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Version="1" Seed="1524560584">
+	<Description>Featuring a 21 x 7 composite source that emits a continuous gaussian wave beam</Description>
+	<Scene DampingEdge="64" />
+	<Simulation Steps="4000" />
+	<Display>
+		<Field ColorScheme="Default_Field" Brightness="6" BlackLevel="-0.05" />
+		<Intensity ColorScheme="inferno" Brightness="7" />
+	</Display>
+	<Source Name="Source 2" X="442" Y="580" Frequency="50" Amplitude="30">
+		<Array SizeX="21" SizeY="7" SpacingX="32" SpacingY="16" />
+	</Source>
+	<Probe Name="Probe 1" Active="false" AX="1171" AY="226" BoxSize="Large" BoxX="13" BoxY="11" />
+	<Probe Name="Probe 2" Layer="Intensity" Measurement="IntegratedIntensity" Kind="Line" AX="1051" AY="534" BX="1294" BY="957" BoxSize="ExtraLarge" BoxX="16" BoxY="13" YMin="0" YMax="0.005" />
+</Project>

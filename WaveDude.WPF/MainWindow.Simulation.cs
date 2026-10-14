@@ -67,6 +67,7 @@ public partial class MainWindow
 		Logger.Info("{Kind} started: {Steps} steps, {Frames} frames of {Width}×{Height}; edits made from now on do not affect it",
 			automatic ? "Re-run" : "Run", spec.Steps, spec.FrameCount, spec.Width, spec.Height);
 		IsRunStale = false;
+		IsProbesStale = false;
 		Run = run;
 		run.Start();
 	}
@@ -97,7 +98,7 @@ public partial class MainWindow
 	/// <summary>Play pressed: a missing or stale run is started like an automatic one (position kept, not followed); errors go to the log and status bar.</summary>
 	private void OnEnsureRun(object sender, ExecutedRoutedEventArgs e)
 	{
-		if (Run?.IsActive == true || (Run != null && !IsRunStale))
+		if (Run?.IsActive == true || (Run != null && !IsRunStale && !IsProbesStale))
 		{
 			return;
 		}
@@ -126,6 +127,7 @@ public partial class MainWindow
 		// would make it pick the old store for a moment (and wait on its file being deleted)
 		Run = null;
 		IsRunStale = false;
+		IsProbesStale = false;
 		if (old == null)
 		{
 			return;

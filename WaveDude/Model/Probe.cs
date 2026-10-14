@@ -47,6 +47,8 @@ public enum ProbeBoxSize
 	Large,
 	/// <summary>Largest box.</summary>
 	ExtraLarge,
+	/// <summary>A box of <see cref="Probe.BoxWidth"/> × <see cref="Probe.BoxHeight"/> canvas pixels (set by dragging the box's corner).</summary>
+	Custom,
 }
 
 /// <summary>How the step axis of a point probe's time series is chosen.</summary>
@@ -70,6 +72,16 @@ public sealed class Probe : ObservableObject
 	public const int MinWindow = 10;
 	/// <summary>Largest accepted <see cref="Window"/>.</summary>
 	public const int MaxWindow = 1_000_000;
+	/// <summary>Default <see cref="BoxWidth"/> in canvas pixels (the Medium box).</summary>
+	public const int DefaultBoxWidth = 400;
+	/// <summary>Default <see cref="BoxHeight"/> in canvas pixels (the Medium box).</summary>
+	public const int DefaultBoxHeight = 200;
+	/// <summary>Smallest accepted <see cref="BoxWidth"/>.</summary>
+	public const int MinBoxWidth = 60;
+	/// <summary>Smallest accepted <see cref="BoxHeight"/>.</summary>
+	public const int MinBoxHeight = 30;
+	/// <summary>Largest accepted <see cref="BoxWidth"/> and <see cref="BoxHeight"/>.</summary>
+	public const int MaxBoxSide = 4096;
 
 	private string _name = "";
 	private bool _active = true;
@@ -83,6 +95,8 @@ public sealed class Probe : ObservableObject
 	private ProbeBoxSize _boxSize = ProbeBoxSize.Medium;
 	private int _boxX;
 	private int _boxY;
+	private int _boxWidth = DefaultBoxWidth;
+	private int _boxHeight = DefaultBoxHeight;
 	private ProbeScaleMode _scaleMode = ProbeScaleMode.Running;
 	private bool _autoScaleX = true;
 	private bool _autoScaleY = true;
@@ -152,7 +166,11 @@ public sealed class Probe : ObservableObject
 		set => SetProperty(ref _kind, value);
 	}
 
-	/// <summary>X of the probe pixel, or of the start of the line, in canvas pixels.</summary>
+	/// <summary>
+	/// X of the probe pixel, or of the start of the line, in canvas pixels. While the graph box is attached
+	/// (<see cref="IsBoxAttached"/>: its anchor on this point) the box moves along; a box dragged away stays
+	/// put (the user's rule, 2026-10-14: one attachment, not one per axis).
+	/// </summary>
 	[XmlAttribute]
 	[Category("Position")]
 	[DisplayName("A x")]
@@ -160,10 +178,17 @@ public sealed class Probe : ObservableObject
 	public int AX
 	{
 		get => _aX;
-		set => SetProperty(ref _aX, value);
+		set
+		{
+			bool attached = IsBoxAttached;
+			if (SetProperty(ref _aX, value) && attached)
+			{
+				BoxX = value;
+			}
+		}
 	}
 
-	/// <summary>Y of the probe pixel, or of the start of the line, in canvas pixels.</summary>
+	/// <summary>Y of the probe pixel, or of the start of the line, in canvas pixels. An attached graph box follows it like <see cref="AX"/>.</summary>
 	[XmlAttribute]
 	[Category("Position")]
 	[DisplayName("A y")]
@@ -171,8 +196,24 @@ public sealed class Probe : ObservableObject
 	public int AY
 	{
 		get => _aY;
-		set => SetProperty(ref _aY, value);
+		set
+		{
+			bool attached = IsBoxAttached;
+			if (SetProperty(ref _aY, value) && attached)
+			{
+				BoxY = value;
+			}
+		}
 	}
+
+	/// <summary>
+	/// Whether the graph box is attached to the probe: its anchor (<see cref="BoxX"/>, <see cref="BoxY"/>) sits on
+	/// point A, so the box moves with the probe. The preview snaps a box dragged close to the probe onto it and
+	/// detaches it when it is dragged away (2026-10-14).
+	/// </summary>
+	[XmlIgnore]
+	[Browsable(false)]
+	public bool IsBoxAttached => _boxX == _aX && _boxY == _aY;
 
 	/// <summary>X of the end of the line in canvas pixels; line probes only, omitted from the file otherwise.</summary>
 	[XmlAttribute]
@@ -210,28 +251,52 @@ public sealed class Probe : ObservableObject
 		set => SetProperty(ref _boxSize, value);
 	}
 
-	/// <summary>Left edge of the graph box in canvas pixels.</summary>
+	/// <summary>Left edge of the graph box in canvas pixels; with the box on point A (<see cref="IsBoxAttached"/>) it moves with the probe.</summary>
 	[XmlAttribute]
 	[DefaultValue(0)]
 	[Category("Graph")]
 	[DisplayName("Box x")]
-	[Description("Left edge of the graph box in canvas pixels.")]
+	[Description("Left edge of the graph box in canvas pixels. A box placed on the probe's point A moves with the probe; dragging it close snaps it on.")]
 	public int BoxX
 	{
 		get => _boxX;
 		set => SetProperty(ref _boxX, value);
 	}
 
-	/// <summary>Top edge of the graph box in canvas pixels.</summary>
+	/// <summary>Top edge of the graph box in canvas pixels; with the box on point A (<see cref="IsBoxAttached"/>) it moves with the probe.</summary>
 	[XmlAttribute]
 	[DefaultValue(0)]
 	[Category("Graph")]
 	[DisplayName("Box y")]
-	[Description("Top edge of the graph box in canvas pixels.")]
+	[Description("Top edge of the graph box in canvas pixels. A box placed on the probe's point A moves with the probe; dragging it close snaps it on.")]
 	public int BoxY
 	{
 		get => _boxY;
 		set => SetProperty(ref _boxY, value);
+	}
+
+	/// <summary>Width of the graph box in canvas pixels; used when <see cref="BoxSize"/> is <see cref="ProbeBoxSize.Custom"/>, omitted from the file otherwise.</summary>
+	[XmlAttribute]
+	[DefaultValue(DefaultBoxWidth)]
+	[Category("Graph")]
+	[DisplayName("Box width")]
+	[Description("Width of the graph box in canvas pixels; custom box size only.")]
+	public int BoxWidth
+	{
+		get => _boxWidth;
+		set => SetProperty(ref _boxWidth, value);
+	}
+
+	/// <summary>Height of the graph box in canvas pixels; used when <see cref="BoxSize"/> is <see cref="ProbeBoxSize.Custom"/>, omitted from the file otherwise.</summary>
+	[XmlAttribute]
+	[DefaultValue(DefaultBoxHeight)]
+	[Category("Graph")]
+	[DisplayName("Box height")]
+	[Description("Height of the graph box in canvas pixels; custom box size only.")]
+	public int BoxHeight
+	{
+		get => _boxHeight;
+		set => SetProperty(ref _boxHeight, value);
 	}
 
 	/// <summary>Sliding window of the last steps, or the whole run; point probes only.</summary>
@@ -324,14 +389,28 @@ public sealed class Probe : ObservableObject
 	/// <summary>Tells <see cref="XmlSerializer"/> to write B only for line probes.</summary>
 	public bool ShouldSerializeBY() => Kind == ProbeKind.Line;
 
+	/// <summary>Tells <see cref="XmlSerializer"/> to write the box width only for a custom box size.</summary>
+	public bool ShouldSerializeBoxWidth() => BoxSize == ProbeBoxSize.Custom;
+
+	/// <summary>Tells <see cref="XmlSerializer"/> to write the box height only for a custom box size.</summary>
+	public bool ShouldSerializeBoxHeight() => BoxSize == ProbeBoxSize.Custom;
+
+	/// <summary>
+	/// Whether a change of <paramref name="property"/> changes what a run measures (position, kind, layer,
+	/// measurement, start step, name, active), as opposed to how the graph is drawn (box and axes).
+	/// </summary>
+	public static bool AffectsMeasurement(string? property) =>
+		property is nameof(Name) or nameof(Active) or nameof(Layer) or nameof(Measurement) or nameof(Kind)
+			or nameof(AX) or nameof(AY) or nameof(BX) or nameof(BY) or nameof(StartAfter);
+
 	/// <summary>The measurements a probe on <paramref name="layer"/> can record (the editor offers only these).</summary>
 	public static ProbeMeasurement[] MeasurementsFor(ProbeLayer layer) =>
 		layer == ProbeLayer.Field ? [ProbeMeasurement.Amplitude] : [ProbeMeasurement.Intensity, ProbeMeasurement.IntegratedIntensity];
 
 	/// <summary>
 	/// Forces a consistent state: the field only allows <see cref="ProbeMeasurement.Amplitude"/>,
-	/// the intensity output never does; an empty or inverted Y range becomes -1..1; the window
-	/// and start step are clamped.
+	/// the intensity output never does; an empty or inverted Y range becomes -1..1; the window,
+	/// the custom box size and the start step are clamped.
 	/// </summary>
 	public void Normalize()
 	{
@@ -350,6 +429,8 @@ public sealed class Probe : ObservableObject
 			YMax = 1.0;
 		}
 		Window = Math.Clamp(Window, MinWindow, MaxWindow);
+		BoxWidth = Math.Clamp(BoxWidth, MinBoxWidth, MaxBoxSide);
+		BoxHeight = Math.Clamp(BoxHeight, MinBoxHeight, MaxBoxSide);
 		StartAfter = Math.Max(0, StartAfter);
 	}
 

@@ -85,7 +85,8 @@ public sealed class SceneOverlay : Panel
 
 	public SceneOverlay()
 	{
-		Background = Brushes.Transparent;
+		// no background: a click beside the handles falls through to the probe graph boxes under this layer
+		// (and on to the picture), 2026-10-14
 		IsHitTestVisible = true;
 		Focusable = false;
 	}
@@ -387,6 +388,18 @@ public sealed class SceneOverlay : Panel
 			case (Probe probe, _):
 				probe.AX = x;
 				probe.AY = y;
+				// a probe dragged onto its (detached) graph box picks it up, as the box does when dragged onto the probe
+				if (!probe.IsBoxAttached)
+				{
+					double scale = Scale;
+					double dx = (probe.BoxX - x) * scale;
+					double dy = (probe.BoxY - y) * scale;
+					if (dx * dx + dy * dy <= ProbeGraphOverlay.SnapRadius * ProbeGraphOverlay.SnapRadius)
+					{
+						probe.BoxX = x;
+						probe.BoxY = y;
+					}
+				}
 				break;
 		}
 	}

@@ -1,20 +1,24 @@
 using System.Diagnostics;
 using NLog;
 using WaveDude.Engine;
+using WaveDude.Probes;
 
 namespace WaveDude.Runs;
 
-/// <summary>The outcome of a scratch request: the frame, or why it was not computed.</summary>
+/// <summary>The outcome of a scratch request: the frame and the probe recordings up to it, or why it was not computed.</summary>
 /// <param name="Spec">The snapshot of the project the frame was computed for.</param>
 /// <param name="Frame">The frame index requested.</param>
 /// <param name="Snapshot">The frame, or null when it was skipped; owned by the runner and valid until the next outcome.</param>
 /// <param name="Estimate">How long the runner expected (or took) to compute it.</param>
-public sealed record ScratchResult(RunSpec Spec, int Frame, FrameSnapshot? Snapshot, TimeSpan Estimate);
+/// <param name="Traces">Per probe of <see cref="RunSpec.Probes"/>: the series up to the frame's step and, for a line probe, its one profile at the frame (index 0); empty when skipped or without probes. Owned by the result; read on the UI thread.</param>
+public sealed record ScratchResult(RunSpec Spec, int Frame, FrameSnapshot? Snapshot, TimeSpan Estimate, ProbeTrace[] Traces);
 
 /// <summary>
 /// Computes single frames of the current project state on demand, without a store: after an edit the
 /// preview asks for "frame k of the project as it is now", and the runner steps an engine from zero to that
-/// frame and captures it. The engine is kept between requests (a GPU engine takes a few hundred
+/// frame and captures it, sampling the project's probes along the way so their graphs are as live as the
+/// picture (2026-10-14; the sampling costs a kernel launch per step and a few kilobytes of readback, nothing
+/// against the stepping). The engine is kept between requests (a GPU engine takes a few hundred
 /// milliseconds to build) and only reset, or given new emitters when just the sources changed; it is rebuilt
 /// when the scene or the solver options change. Only the newest request is served: a request arriving
 /// while one is computing abandons it. A request whose predicted cost (steps × the measured cost per step)
@@ -164,10 +168,13 @@ public sealed class ScratchRunner : IDisposable
 		if (!double.IsNaN(msPerStep) && estimate > Budget)
 		{
 			Logger.Debug("Preview frame {Frame} skipped: {Steps} steps would take {Estimate:0.0} s", frame, steps, estimate.TotalSeconds);
-			Post(new ScratchResult(spec, frame, null, estimate));
+			Post(new ScratchResult(spec, frame, null, estimate, []));
 			return;
 		}
 		IWaveEngine engine = EngineFor(spec);
+		// the spec's probes, installed per request (Reset removes them; a fresh engine has none)
+		ProbeSampler? sampler = spec.Probes.Length > 0 ? ProbeSampler.Build(spec.Probes, spec.Width, spec.Height) : null;
+		engine.SetProbes(sampler);
 		var clock = Stopwatch.StartNew();
 		for (int i = 0; i < steps; i++)
 		{
@@ -176,6 +183,10 @@ public sealed class ScratchRunner : IDisposable
 				return; // the loop picks up the newer request
 			}
 			engine.AdvanceOneStep();
+			if (sampler != null)
+			{
+				engine.SampleProbes();
+			}
 		}
 		TimeSpan stepping = clock.Elapsed;
 		FrameSnapshot snapshot = NextSnapshot(spec);
@@ -183,6 +194,15 @@ public sealed class ScratchRunner : IDisposable
 		engine.AwaitFrame(snapshot);
 		snapshot.Frame = frame;
 		snapshot.Step = steps - 1;
+		// the recordings: every series up to this step (integrated probes summed by the collector), the profiles of this instant
+		ProbeTrace[] traces = [];
+		if (sampler != null)
+		{
+			var collector = new ProbeCollector(sampler);
+			collector.Collect(engine, steps);
+			collector.CollectProfiles(engine, steps);
+			traces = collector.Traces;
+		}
 		clock.Stop();
 		// the stepping loop alone rules the next prediction (the capture is a fixed cost, and the GPU's first
 		// steps include its warm-up), and only when there were enough steps to measure
@@ -191,7 +211,7 @@ public sealed class ScratchRunner : IDisposable
 			Volatile.Write(ref _msPerStep, stepping.TotalMilliseconds / steps);
 		}
 		Logger.Debug("Preview frame {Frame}: {Steps} steps in {Elapsed:0} ms on {Engine}", frame, steps, clock.Elapsed.TotalMilliseconds, engine.Description);
-		Post(new ScratchResult(spec, frame, snapshot, clock.Elapsed));
+		Post(new ScratchResult(spec, frame, snapshot, clock.Elapsed, traces));
 	}
 
 	/// <summary>The kept engine, reset to step 0 and given the spec's emitters; rebuilt when the scene or the options differ.</summary>

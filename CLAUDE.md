@@ -46,7 +46,7 @@ WPF shell as it stands:
   and closing the window discard the run and delete its cache file.
 - **Live editing** (`MainWindow.Live.cs`, 2026-10-09): a `ProjectWatcher` reports every model
   change; a simulation-affecting one (`ProjectChange.AffectsSimulation`: scene, solver, seed,
-  sources; not display or probes) marks the run **stale** (`IsRunStale`: status text gets
+  sources; not display settings and not probes) marks the run **stale** (`IsRunStale`: status text gets
   ", edited since", the timeline's available shading turns grey), asks the `ScratchRunner` for the
   frame the preview shows (debounced 120 ms, also on scrubbing while stale or without a run) and,
   with the persisted setting **Simulation > Re-run automatically after edits** (`AutoRerun`, default
@@ -69,7 +69,18 @@ WPF shell as it stands:
   Opening a project requests frame 0 right away so the engine (an OpenCL compile) is built before
   the first click. While a scratch frame computes, an active automatic run is paused (on the CPU the
   run would otherwise take every core and the frame never arrives) and resumed when it is there; an
-  automatic run is not started while a scratch frame computes. **A picture changes only when a frame
+  automatic run is not started while a scratch frame computes or is requested. **A probe edit never
+  starts a run** (the user's rule, 2026-10-14: a probe never changes the picture): what a probe measures
+  (`Probe.AffectsMeasurement`: position, kind, layer, measurement, start step, name, active, add/remove;
+  `ProjectChange.AffectsProbes`) marks only the run's recordings stale (`IsProbesStale`, no grey shading, no
+  ", edited since"), the pictures keep the stored frames, a scratch frame is requested for the position and
+  the graphs draw from its recording (`PreviewPane.GraphScratch`, also while the picture is the stored
+  frame), and Play or F5 starts the run that refreshes the recordings (`OnEnsureRun`). A probe's graph
+  settings change nothing but the drawing. Since 2026-10-14 (the user's
+  rule: the frame being looked at comes first) **any** active run is paused while a scratch frame computes,
+  one the user started too, and resumed when the frame is there; a run the user paused stays paused. The GPU
+  engine compiles its probe program once per engine (`_probeProgram`), not per `SetProbes`, since the scratch
+  runner installs the probes on every request. **A picture changes only when a frame
   for the position itself arrives** (scratch or stored); with nothing for it yet the last picture
   stays. Showing the run's newest frame meanwhile was tried twice and rejected both times: it reads
   as a replay from frame 0 (2026-10-10). That rule also holds without a run: the presenter is
@@ -174,6 +185,51 @@ WPF shell as it stands:
   attributes said on 2026-10-14. **Adding a model property means adding its keys to all four
   tables** (the key-set check in the notes' verification list catches a missing one). Not
   localised: log messages.
+- **Probe graphs** (2026-10-14, the author's point 7, first half): every active probe's graph box is drawn
+  over the picture of its layer, as the author's app did (translucent dark box, axes with "nice" ticks,
+  yellow curve, title strip with the live readout "= value" / "max value"). The numbers live in the
+  library, `Probes/ProbeGraph` (a port of `ProbeGraphPainter` without GDI+: `BoxInCanvas`, `ComputeRanges`,
+  `NiceTicks`, `Snap`, `Layout` giving a `ProbeGraphLayout` of plot rectangle, ticks with labels, the curve
+  reduced to a min/max pair per pixel column, title and readout; harness-checked against the author's
+  arithmetic), the WPF side only draws: `Controls/ProbeGraphOverlay`, a panel in each picture cell under
+  the `SceneOverlay` (so a handle over a box stays grabbable; the scene overlay lost its transparent
+  background for that), told its layer by the attached `PreviewPane.Layer`. **The graph is as live as the
+  picture** (the user's rule): it shows the run's recording as it stood at the frame shown, the series cut
+  off at that step and, for a line probe, the profile recorded with that frame. For that the collector reads
+  the line profiles once per recorded frame (`ProbeTrace.Profiles`, indexed by frame, `ProbeGraphData.At`),
+  no longer at 20 Hz. **Before a run, or while it is stale, the graph is live from the scratch frame**: the
+  `ScratchRunner` installs the spec's probes on its kept engine per request and samples them on its way to
+  the frame (a kernel launch per step, nothing against the stepping), and `ScratchResult.Traces` carries the
+  series up to that step and the frame's one profile; the pane exposes the scratch frame it shows as
+  `ShownScratch`, and the overlay's data comes from it whenever it is set (the same "a picture changes only
+  when its frame arrives" rule, so graph and picture always agree). A probe's trace is found through
+  `ProbeSpec.Origin`, the model probe as an identity key, so a rename keeps the graph. **The graph follows
+  the picture, whatever is on it** (2026-10-14, after a flicker on every scrub step): while the pane shows a
+  stored frame of a stale run, the box shows that run's (stale) data for the frame, and a profile the run has
+  not delivered yet (its probe batches trail its frames by up to 50 ms; a scrub can run ahead) is stood in for
+  by the newest one (`ProbeGraphData.At`), so the axis never drops to the fixed range for a moment. **The box
+  follows the probe while it is attached** (the user's rule, one attachment, not one per axis, 2026-10-14):
+  `Probe.IsBoxAttached` is the box anchor sitting on point A; `Probe.AX`/`AY` then move `BoxX`/`BoxY` along (in
+  the model, so every editor does it). Dragging the box within 14 screen pixels of point A snaps it on, and
+  an attached box comes off only when dragged more than 28 pixels away (hysteresis, after an attach/detach
+  flicker at the edge; `ProbeGraphOverlay.SetBoxPosition`, drags only, keyboard nudges stay exact); dragging
+  the probe onto its detached box picks the box up the same way (`SceneOverlay.SetPoint`). Each box is a `MarkerThumb` (role `ProbeBox`, id `ProbeBox:<name>`): drag moves it,
+  the arrow keys nudge it, writing `BoxX`/`BoxY`; a 12 px grip at the bottom-right corner (role
+  `ProbeBoxCorner`, id `ProbeBoxCorner:<name>`) resizes it, **snapping to the fixed sizes** within 8 % or
+  making it `ProbeBoxSize.Custom` with `Probe.BoxWidth`/`BoxHeight` (new, serialised only for Custom, 60 to
+  4096; the probe view's width/height boxes are enabled only then). Grabbing or focusing a box selects the
+  probe in the tree; the tree node no longer takes the focus when the selection comes from the preview
+  (`ProjectTree.Select(item, focus: false)`; it did, which broke the Tab cycle through the handles).
+  Colours are the author's, fixed, not themed: the box sits on the picture. **Text does not scale with the
+  box** (changed 2026-10-14 after the author's box-height-over-14 rule gave 9 px labels on small boxes):
+  the overlay sets 11 px like the handle labels and hands the layout a `ProbeGraphStyle` (font size, line
+  height, a measure function); the layout takes the margins from the measured labels (widest value label
+  left, one line below), uses fewer ticks when labels would collide, drops the labels before the plot when
+  the box is too small, and the renderer keeps the x labels inside the box. An export passes its own style
+  in canvas pixels. **An auto-scaled value axis is symmetric about zero** for an amplitude (±largest
+  magnitude + 8 %), from zero up for an intensity, and stays at the fixed range while the data is all zeros
+  (`ProbeGraph.AutoRange`, 2026-10-14, the user's rule: the author's independent fit of both ends made the
+  zero line wander and the labels flicker while the first oscillations arrived). Still open: the signal lane under the timeline (roadmap) and the box in exports.
 - Preview document: `Panes/PreviewPane`. Two pictures (field,
   intensity) side by side or stacked (`Orientation`, persisted as the `PreviewOrientation` user
   setting), each centred in its cell with its label laid out by `Controls/PictureFrame` (label above
@@ -304,7 +360,14 @@ passing harnesses for comfort, never all of them after an edit.
   and the embedded scene image bytes; editing a stop notifies once; a headless `SimulationRun` (CPU, Completed,
   frames and probe trace counted) and a GPU run paused, resumed and stopped; a 1 GB full-HD store
   must dispose in under 1.5 s (no flush); `CaptureFrame`/`AwaitFrame` (deferred, both planes),
-  `Reset` reproducing a run and `SetEmitters` matching a fresh engine, on both engines. Prints
+  `Reset` reproducing a run and `SetEmitters` matching a fresh engine, on both engines; the probe graph
+  geometry (box clamping and shrinking, snapping, ranges in every scale mode, start-after trimming, nice
+  ticks, locale labels, the 400 x 200 layout from measured labels, labels dropped on a low box, fewer step
+  labels on a narrow one, min/max binning, the line probe's gate) and a run's line
+  probe yielding one profile per frame, the box attached to the probe following it and a detached one staying put, and a
+  scratch frame's traces matching the run's bit for bit (series up to the step, the frame's profile, a second
+  request on the kept engine with an integrated line probe starting its sums afresh, and the same on the GPU
+  after the cancelled GPU run), and a rotated 3 × 1 array. Prints
   `skip GPU: …` when no OpenCL device works. `dotnet run --project _tools/library_check -c Release
   -- bench [w h]` prints the per-step cost table above for this machine.
 
@@ -343,6 +406,18 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   switches back to System. A window Windows never activated has no focused element and loses posted
   keys; `Start-App` posts `WM_SETFOCUS` then (`FocusedId` "(none)"). Settles are 60 ms per key
   (`Key`'s default), 100–300 ms where layout follows, `WaitFor` for anything the app computes.
+  `_tools/ui_check/ProbeGraphCheck.ps1` (2026-10-14, 29 checks, about 50 s) drives `tiny_probes.wdproj`
+  (320 x 240, 100 steps, a point probe with a custom 120 x 60 box on the field, a line probe with a Small
+  box at its own position on the intensity): one box per probe on its own picture at the box's canvas
+  position and size, the Small box shrunk to half the canvas width, the grip in the corner, the graph
+  showing the scratch frame's samples at frame 30 before any run, the box changing once the run has data
+  and following the position, Tab reaching the box (selecting the probe in the tree), arrows moving it and
+  resizing it from the grip without staling the run, a probe move leaving the run valid with the graph
+  recomputed from scratch and no run started, Play afterwards starting the refreshing run, a box at its
+  probe's position moving with the probe, and the composite source's rotation handle (on the row axis, Tab
+  reaches it once the source is selected, hidden before, ten Right arrows lift it by 10° on its arc, the run
+  goes stale); saves a screenshot
+  to `%TEMP%\probe_graph.png` for the look.
   `_tools/ui_check/ImportCheck.ps1` (2026-10-14, 10 checks, about 10 s) starts the app with Example 12's
   `configuration.json` on the command line and checks the import landed: an unsaved project (bare title),
   four sources and two probes in the tree with their enabled/active state, 7500 frames on the timeline, the
@@ -385,16 +460,18 @@ SimulationRun (Task.Run worker; ManualResetEventSlim pause gate, CancellationTok
    |             CPU: row copy) -> writer task: engine.AwaitFrame -> FrameStore.Write -> snapshot back to a pool of 3
    |- ProbeSampler/ProbeCollector -> ProbeUpdate batches (<= 20 Hz) applied to run.Traces on the UI context
    '- State/StepsDone/FrameCount/EngineDescription posted to the UI context (INotifyPropertyChanged, bindable)
-ScratchRunner (one long-running task, one kept engine: Reset/SetEmitters between requests, rebuilt when the scene or
-   the options change; computes "frame k of the project as it is now" from step 0, newest request wins, skips when
-   the predicted cost exceeds Budget) -> ScratchResult (a FrameSnapshot) -> FramePresenter via SnapshotFrameSource
+ScratchRunner (one long-running task, one kept engine: Reset/SetEmitters/SetProbes between requests, rebuilt when the
+   scene or the options change; computes "frame k of the project as it is now" from step 0, sampling the probes on the
+   way, newest request wins, skips when the predicted cost exceeds Budget) -> ScratchResult (a FrameSnapshot + a
+   ProbeTrace per probe) -> FramePresenter via SnapshotFrameSource, ProbeGraphOverlay via PreviewPane.ShownScratch
 FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-sized; Half planes, padding stripped;
    |           positional RandomAccess reads/writes through the OS cache, no memory mapping)
    '- read by FramePresenter (WPF): CopyLayer -> FrameRenderer (LUT, Parallel.For) -> WriteableBitmap
 ```
 
 - Namespaces: `WaveDude.Engine` (engines, `SceneData`, `Emitter`, `EngineOptions`, `OpenClApi`),
-  `WaveDude.Probes` (`ProbeSpec`, sampler, collector, series, trace, update), `WaveDude.Rendering`
+  `WaveDude.Probes` (`ProbeSpec`, sampler, collector, series, trace with per-frame profiles, update,
+  `ProbeGraph` geometry), `WaveDude.Rendering`
   (`Rgb` with hex text and a `TypeConverter`, `ColorScheme` as one evenly spaced colour list that is
   observable and XML-serialisable, `ColorLut`, `ColorSchemeStore` reading the author's JSON and
   reading/writing XML, built-in schemes embedded, `FrameRenderer`),
@@ -471,8 +548,8 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   skipped (`ScratchRunner.Budget` is 6 s, predicted from the stepping cost of the last request with
   at least 50 steps; a request with no measurement yet always computes). Frames early in the run are proportionally cheaper (frame 0: 90 ms including
   the capture and the UI round trip).
-- Known limits: probes are recorded (`SimulationRun.Traces`) but not drawn yet; export is not
-  wired; `OpenClApi` imports `"OpenCL"` (resolves to `OpenCL.dll` here, `libOpenCL.so` elsewhere).
+- Known limits: the probe signal lane under the timeline is not drawn yet (the graph boxes are, 2026-10-14);
+  export is not wired; `OpenClApi` imports `"OpenCL"` (resolves to `OpenCL.dll` here, `libOpenCL.so` elsewhere).
   The library is compiled with `<Optimize>true</Optimize>` in every configuration (2026-10-10): a
   Debug build of it ran the CPU engine's stencil loop at 33 ms per full-HD step instead of 14, which
   made the CPU preview unusable from the app. Flip it locally to step through engine code. The
@@ -581,8 +658,8 @@ functional spec for the WPF UI.
   replace with `Program.Main` (`EnableVisualStyles`, `SetCompatibleTextRenderingDefault`) when convenient.
 - Private `ref` parameters that are really `out` remain outside the engines (`TryPictureToCanvas`,
   `TryParseInt`, `DampingProblem`, `PromptForCValue`, `ComputeRanges`, `RgbToHsv`, …).
-- WPF: no progress bar for a run (status text only); the Simulation menu has no About/Help; probes
-  recorded but not drawn; export not rendered from the store yet; the preview skips frames at
+- WPF: no progress bar for a run (status text only); the Simulation menu has no About/Help; the probe
+  signal lane is not drawn yet (the graph boxes are); export not rendered from the store yet; the preview skips frames at
   1080p (see the numbers in the library architecture section).
 - WPF preview, frames vs. steps: the transport bar, scrubber and playback count **frames**
   (0..`LastFrame`, one per `VisualizeEvery` steps), while sources, probes, the export range and the
@@ -630,8 +707,10 @@ Thirteen points on a sneak peek of the WPF app; status as of 2026-10-12:
   carry `Tree:<name>` automation ids and the boxes `Enabled:<name>`).
   (1, second half) the step buttons now draw the frame-step look, "◀|" "|▶", instead of the players'
   skip glyphs, and the Run glyph is a 14 px ring (2026-10-13).
-- Still open: "re-run automatically does not always work" (by design: display and probe edits do
-  not re-run, and the run waits 1.5 s of quiet).
+- Done 2026-10-14: (7, first half) the probe graph boxes over the pictures, draggable and resizable
+  (see "Probe graphs" above); probe measurement edits now re-run automatically.
+- Still open: "re-run automatically does not always work" (by design: display edits and a probe's graph
+  settings do not re-run, and the run waits 1.5 s of quiet).
 - Roadmap already: (7) probe graphs, (10) export, (12) project format (the user answered: images
   embedded or relative, output next to the file, the JSON format imported).
 - The author also suggests dropping the 9-point Laplacian (confusing; only useful to show dispersion).
@@ -646,20 +725,20 @@ the language switches live, and three UI harnesses plus `library_check` are gree
 PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next session is meant for
 **probes** and **export**; here is what exists for each and what is decided.
 
-**Probes (nothing drawn yet).**
-- Recorded: `SimulationRun.Traces` (`ProbeTrace` per active probe, `ProbeSeries` of samples per
-  visualised step, line probes as profiles), filled on the UI context in `ProbeUpdate` batches
-  (at most 20 Hz). `ScratchRunner` does not sample probes; only a run has traces (decide whether a
-  scratch frame should carry a single sample).
+**Probes (graph boxes done 2026-10-14, see "Probe graphs" in the WPF shell list; the lane is open).**
+- Recorded: `SimulationRun.Traces` (`ProbeTrace` per active probe, `ProbeSeries` of one sample per
+  step, line probes as one profile per recorded frame), filled on the UI context in `ProbeUpdate` batches
+  (at most 20 Hz); the `ScratchRunner` records the same probes up to the frame it computes
+  (`ScratchResult.Traces`), so the graph is live before a run too.
 - Model: `Probe` has everything the author's graph box used: `Kind` (point/line), `Layer`,
   `Measurement` (amplitude | value | integrated value), `BoxSize`, `BoxX/BoxY` (canvas pixels),
   `ScaleMode` (running window / full run), `Window` (steps), `AutoScaleX/Y`, `YMin/YMax`,
   `StartAfter`. The handles on the pictures exist (`SceneOverlay`, ids `Probe:<name>:A|B`).
-- Spec: the author's `ProbeGraphPainter.cs` / `ProbeOverlay.cs` in `Wave_Dude_2D/` (GDI+, not
-  ported) draw the box over the output picture; `HelpForm.cs` describes the controls. Agreed plan: a
-  **probe signal lane** under the timeline on the same time axis (roadmap item 5), and the graph box
-  over the picture as the author had it. Rendering belongs in the library as pixel/geometry code (no
-  GDI+); the WPF side draws it (an `OnRender` layer like `TimelineBar`). Author's point 7.
+- Spec: the author's `ProbeGraphPainter.cs` / `ProbeOverlay.cs` in `Wave_Dude_2D/` (GDI+), now ported
+  as geometry to `WaveDude.Probes.ProbeGraph` and drawn by `ProbeGraphOverlay`. Still to do: the
+  **probe signal lane** under the timeline on the same time axis (roadmap item 5), drawn from the same
+  traces (`ProbeGraph.ComputeRanges` and its binning can be reused), and the box in exports (the layout is
+  renderer-neutral; a `DrawingVisual` rendered into the frame would do). Author's point 7, second half.
 
 **Export (nothing wired).**
 - Frames: `FrameStore.CopyLayer(frame, layer, Span<Half>)` of a run (finished, or after
@@ -695,8 +774,8 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
 4. ~~**Make the engine loop `Task`-based**~~ (`SimulationRun`, 2026-10-09).
 5. **WPF UI** in `WaveDude.WPF`: the preview shows a live run and replays it from the frame store
    (done 2026-10-09); editors, colour schemes, scene image and outline, languages (done 2026-10-14,
-   see the handoff section). Next, in this order of value: **probes** (graph box and signal lane),
-   **export from the store** (video and stills, rendered with the current display settings, the
+   see the handoff section); probe graph boxes (done 2026-10-14). Next, in this order of value: the
+   **probe signal lane**, **export from the store** (video and stills, rendered with the current display settings, the
    export range, the outline when opted in), a progress bar.
    Store: a RAM-first frame store with a budget and background spill (see the numbers above),
    so a run is compute-bound instead of disk-bound.

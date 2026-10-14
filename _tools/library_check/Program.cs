@@ -168,6 +168,7 @@ internal static class Program
 		CheckFrameStore(scene);
 		CheckRenderer();
 		CheckColorSchemes();
+		CheckProbeGraph();
 		CheckImport();
 		CheckRun();
 
@@ -685,6 +686,133 @@ internal static class Program
 		Check(frame[2 * 5 + 2] == unchecked((int)0xFFBFBFBF) && frame[2 * 5 + 3] == unchecked((int)0xFF404040), "additive blend adds edge x gain per channel and leaves flat pixels alone");
 	}
 
+	private static void CheckProbeGraph()
+	{
+		Console.WriteLine("--- probe graph geometry");
+		var inv = CultureInfo.InvariantCulture;
+		var probe = new Probe { Name = "P", BoxX = 1700, BoxY = 900 };
+		Check(ProbeGraph.NominalBoxSize(ProbeBoxSize.Medium) == new BoxSize(400, 200) && ProbeGraph.NominalBoxSize(ProbeBoxSize.Tiny) == new BoxSize(200, 100), "nominal box sizes");
+		var turned = new Source { Name = "Turned", X = 100, Y = 100, Array = new SourceArray { SizeX = 3, SizeY = 1, SpacingX = 10, Angle = 90 } };
+		turned.GenerateElements(1);
+		Check(turned.Elements.Select(e => (e.X, e.Y)).SequenceEqual([(100, 110), (100, 100), (100, 90)]), "a 3 x 1 array turned by 90 degrees stands vertical, counter-clockwise on the screen");
+		turned.Array.Angle = 45;
+		turned.GenerateElements(1);
+		Check(turned.Elements.Select(e => (e.X, e.Y)).SequenceEqual([(93, 107), (100, 100), (107, 93)]), "45 degrees: the ends at (-7, +7) and (+7, -7)");
+		turned.Array.Angle = 540;
+		turned.Array.Normalize();
+		bool wraps = turned.Array.Angle == 180;
+		turned.Array.Angle = -180;
+		turned.Array.Normalize();
+		wraps &= turned.Array.Angle == 180;
+		turned.Array.Angle = -190;
+		turned.Array.Normalize();
+		wraps &= turned.Array.Angle == 170;
+		turned.Array.Angle = 190;
+		turned.Array.Normalize();
+		Check(wraps && turned.Array.Angle == -170, "an angle is normalised into (-180, 180]: 540 -> 180, -180 -> 180, -190 -> 170, 190 -> -170");
+		var follower = new Probe { Name = "F" };
+		follower.AX = 50;
+		follower.AY = 60;
+		Check(follower.IsBoxAttached && follower.BoxX == 50 && follower.BoxY == 60, "an attached graph box moves with the probe");
+		follower.BoxX = 10;
+		follower.AX = 70;
+		follower.AY = 61;
+		Check(!follower.IsBoxAttached && follower.BoxX == 10 && follower.BoxY == 60, "a box moved away is detached on both axes and stays put");
+		follower.BoxX = 70;
+		follower.BoxY = 61;
+		follower.AX = 75;
+		Check(follower.IsBoxAttached && follower.BoxX == 75 && follower.BoxY == 61, "a box put back on the probe is attached again");
+		Check(ProbeGraph.BoxInCanvas(probe, 1920, 1080) == new BoxRect(1520, 880, 400, 200), "box clamped into a full-HD canvas");
+		Check(ProbeGraph.BoxInCanvas(probe, 64, 48) == new BoxRect(32, 32, 32, 16), "box shrunk to half the width of a 64 x 48 canvas, aspect kept");
+		probe.BoxSize = ProbeBoxSize.Custom;
+		probe.BoxWidth = 500;
+		probe.BoxHeight = 100;
+		Check(ProbeGraph.BoxSizeOf(probe) == new BoxSize(500, 100) && ProbeGraph.BoxInCanvas(probe, 1920, 1080) == new BoxRect(1420, 900, 500, 100), "custom box size used as it is");
+		Check(ProbeGraph.Snap(405, 195) == (ProbeBoxSize.Medium, new BoxSize(400, 200)) && ProbeGraph.Snap(690, 360) == (ProbeBoxSize.ExtraLarge, new BoxSize(700, 350)), "a dragged size near a preset snaps to it");
+		Check(ProbeGraph.Snap(450, 230) == (ProbeBoxSize.Custom, new BoxSize(450, 230)) && ProbeGraph.Snap(10, 10) == (ProbeBoxSize.Custom, new BoxSize(60, 30)), "other sizes stay custom, clamped to the minimum");
+		Check(ProbeGraph.NiceTicks(-1, 1, 4).SequenceEqual([-1.0, -0.5, 0.0, 0.5, 1.0]) && ProbeGraph.NiceTicks(0, 2500, 5).SequenceEqual([0.0, 500.0, 1000.0, 1500.0, 2000.0, 2500.0]), "nice ticks at 1/2/5 steps, zero exact");
+		Check(ProbeGraph.NiceTicks(0.3, 0.3, 4).Count == 0 && ProbeGraph.NiceTicks(double.NaN, 1, 4).Count == 0, "no ticks for an empty or NaN range");
+		Check(ProbeGraph.FormatTick(0.123456, inv) == "0.123" && ProbeGraph.FormatTick(0, inv) == "0" && ProbeGraph.FormatTick(0.5, new CultureInfo("de-DE")) == "0,5", "tick labels: 3 significant digits, locale decimal separator");
+		Check(ProbeGraph.FormatPosition(1234.6, 2500, inv) == "1235" && ProbeGraph.FormatPosition(2.25, 5, inv) == "2.3", "position labels: integers over wide spans, one decimal otherwise");
+
+		// a point probe's series: 120 samples, a sine between -0.5 and 0.5
+		float[] values = new float[1024];
+		for (int i = 0; i < 120; i++)
+		{
+			values[i] = 0.5f * MathF.Sin(i * 0.2f);
+		}
+		var point = new Probe { Name = "Point", Window = 500 };
+		var data = new ProbeGraphData(values, 120, null, 0, 120);
+		ProbeGraph.ComputeRanges(point, data, 2500, out double xMin, out double xMax, out double yMin, out double yMax);
+		Check(xMin == 0 && xMax == 120, "running window, auto x: 0..samples shown (" + xMin + ".." + xMax + ")");
+		Check(Math.Abs(yMin + 0.54) < 0.001 && Math.Abs(yMax - 0.54) < 0.001, "auto y: symmetric about zero, largest magnitude plus 8 % (" + yMin.ToString("0.000", inv) + ".." + yMax.ToString("0.000", inv) + ")");
+		float[] lopsided = new float[16];
+		lopsided[3] = -0.2f;
+		lopsided[7] = 0.5f;
+		ProbeGraph.ComputeRanges(point, new ProbeGraphData(lopsided, 16, null, 0, 16), 2500, out _, out _, out double lopMin, out double lopMax);
+		Check(Math.Abs(lopMin + 0.54) < 0.001 && Math.Abs(lopMax - 0.54) < 0.001, "lopsided data still gets a symmetric axis (" + lopMin.ToString("0.00", inv) + ".." + lopMax.ToString("0.00", inv) + ")");
+		ProbeGraph.ComputeRanges(point, new ProbeGraphData(new float[16], 16, null, 0, 16), 2500, out _, out _, out double zeroMin, out double zeroMax);
+		Check(zeroMin == -1 && zeroMax == 1, "all-zero data keeps the fixed range instead of a 1e-6 fit");
+		var intensityProbe = new Probe { Name = "I", Layer = ProbeLayer.Intensity, Measurement = ProbeMeasurement.Intensity };
+		float[] positive = new float[16];
+		positive[5] = 0.3f;
+		ProbeGraph.ComputeRanges(intensityProbe, new ProbeGraphData(positive, 16, null, 0, 16), 2500, out _, out _, out double intMin, out double intMax);
+		Check(intMin == 0 && Math.Abs(intMax - 0.324) < 0.001, "an intensity axis runs from zero to the largest value plus 8 %");
+		point.AutoScaleX = false;
+		ProbeGraph.ComputeRanges(point, data, 2500, out xMin, out xMax, out _, out _);
+		Check(xMin == 0 && xMax == 500, "running window, fixed x: full window from the start");
+		point.ScaleMode = ProbeScaleMode.Full;
+		ProbeGraph.ComputeRanges(point, data, 2500, out xMin, out xMax, out _, out _);
+		Check(xMin == 0 && xMax == 2500, "full scale, fixed x: the whole run");
+		point.StartAfter = 100;
+		point.AutoScaleX = true;
+		ProbeGraph.ComputeRanges(point, data, 2500, out xMin, out xMax, out _, out _);
+		Check(xMin == 100 && xMax == 120, "start after 100: x starts there");
+		point.AutoScaleY = false;
+		point.YMin = 2;
+		point.YMax = 1;
+		ProbeGraph.ComputeRanges(point, data, 2500, out _, out _, out yMin, out yMax);
+		Check(yMin == -1 && yMax == 1, "inverted fixed y range falls back to -1..1");
+		point.StartAfter = 0;
+		point.AutoScaleY = true;
+		point.ScaleMode = ProbeScaleMode.Running;
+		// the text keeps the renderer's size (11 px, 14.3 px lines, 6.6 px per character here); the margins come from the labels
+		ProbeGraphStyle style = ProbeGraphStyle.Estimate(11);
+		ProbeGraphLayout layout = ProbeGraph.Layout(point, data, 2500, 400, 200, style, inv);
+		float widest = layout.YTicks.Max(t => style.Measure(t.Label));
+		Check(layout.IsVisible && layout.HasPlot && layout.ShowLabels && layout.FontSize == 11 && Math.Abs(layout.PlotX - (3 + widest + 4)) < 0.01 && Math.Abs(layout.PlotY - (14.3 + 6)) < 0.01
+			&& Math.Abs(layout.PlotWidth - (400 - layout.PlotX - 8)) < 0.01 && Math.Abs(layout.PlotHeight - (200 - layout.PlotY - 14.3 - 4)) < 0.01,
+			"400 x 200 layout: font 11, plot at (" + layout.PlotX.ToString("0.0", inv) + ", " + layout.PlotY.ToString("0.0", inv) + ") " + layout.PlotWidth.ToString("0.0", inv) + " x " + layout.PlotHeight.ToString("0.0", inv) + " from the measured labels");
+		Check(layout.Curve.Length == 120 && layout.Curve[0].X > layout.PlotX && layout.Curve[^1].X <= layout.PlotX + layout.PlotWidth + 0.01 && layout.Title == "Point" && layout.Readout == "= " + ProbeGraph.FormatTick(values[119], inv),
+			"one point per sample inside the plot, title and readout");
+		Check(layout.YTicks.Any(t => t.IsZero && Math.Abs(t.Position - (layout.PlotY + layout.PlotHeight / 2)) < 2) && layout.XTicks.Count >= 4 && layout.XTicks[0].Label == "0", "zero line in the middle, step ticks from 0");
+		Check(ProbeGraph.Layout(point, data, 2500, 30, 20, style, inv).IsVisible == false && ProbeGraph.Layout(point, data, 2500, 80, 40, style, inv) is { IsVisible: true, HasPlot: false }, "too small: nothing, or the box alone");
+		ProbeGraphLayout bare = ProbeGraph.Layout(point, data, 2500, 120, 45, style, inv);
+		Check(bare is { HasPlot: true, ShowLabels: false } && bare.YTicks.All(t => t.Label == "") && bare.PlotX == 6 && Math.Abs(bare.PlotHeight - (45 - 20.3 - 6)) < 0.01, "a box too low for labels keeps the plot and drops the labels");
+		// the UI harness's 172 x 86 box at frame 49: three value labels 23 px apart fit a 47 px plot (asking for two ticks gave only the zero)
+		float[] lowValues = new float[1024];
+		for (int i = 40; i < 99; i++)
+		{
+			lowValues[i] = (i % 7 == 3 ? 0.0135f : 0.0126f) * MathF.Sin((i - 40) * 0.5f);
+		}
+		ProbeGraphLayout low = ProbeGraph.Layout(point, new ProbeGraphData(lowValues, 99, null, 0, 99), 100, 172, 86, new ProbeGraphStyle(11, 14.65f, t => t.Length * 6.2f), inv);
+		Check(low.ShowLabels && low.YTicks.Count == 3 && low.YTicks.All(t => t.Label.Length > 0), "a low plot keeps three value labels while they are a line apart (" + string.Join(" ", low.YTicks.Select(t => t.Label)) + ")");
+		ProbeGraphLayout narrow = ProbeGraph.Layout(point, data, 2500, 110, 80, style, inv);
+		Check(narrow.ShowLabels && narrow.XTicks.Count <= 3 && narrow.XTicks.Sum(t => style.Measure(t.Label) + 8) - 8 <= narrow.PlotWidth, "a narrow plot gets fewer step labels so they do not collide (" + narrow.XTicks.Count + ")");
+		var dense = new ProbeGraphData(Enumerable.Range(0, 1024).Select(i => (float)Math.Sin(i)).ToArray(), 1024, null, 0, 1024);
+		point.ScaleMode = ProbeScaleMode.Full;
+		ProbeGraphLayout denseLayout = ProbeGraph.Layout(point, dense, 1024, 200, 100, style, inv);
+		Check(denseLayout.Curve.Length <= 2 * (int)denseLayout.PlotWidth && denseLayout.Curve.Length > 100, "dense series binned to two points per pixel column (" + denseLayout.Curve.Length + ")");
+
+		// a line probe: 50 values along a 49-pixel line, gated by "start after step"
+		float[] profile = Enumerable.Range(0, 50).Select(i => 0.1f * i).ToArray();
+		var line = new Probe { Name = "Line", Kind = ProbeKind.Line, StartAfter = 100, Layer = ProbeLayer.Intensity };
+		ProbeGraphLayout before = ProbeGraph.Layout(line, new ProbeGraphData(null, 0, profile, 49, 50), 2500, 400, 200, style, inv);
+		ProbeGraphLayout after = ProbeGraph.Layout(line, new ProbeGraphData(null, 0, profile, 49, 100), 2500, 400, 200, style, inv);
+		Check(before.Curve.Length == 0 && before.Readout == "" && before.XTicks[^1].Label == "1", "line probe blank before its start step");
+		Check(after.Curve.Length == 50 && after.Readout == "max 4.9" && after.XTicks[^1].Label == "40" && after.YTicks[0].Label == "0", "line probe after its start step: profile over 0..49 pixels, intensity fitted from 0");
+	}
+
 	/// <summary>The repository root (the folder holding the author's examples), found by walking up from the harness binary; null when not found.</summary>
 	private static string? FindRepoRoot()
 	{
@@ -781,8 +909,24 @@ internal static class Program
 		Probe probe = project.AddProbe();
 		probe.AX = 20;
 		probe.AY = 24;
+		Probe lineProbe = project.AddProbe();
+		lineProbe.Kind = ProbeKind.Line;
+		lineProbe.AX = 5;
+		lineProbe.AY = 5;
+		lineProbe.BX = 40;
+		lineProbe.BY = 30;
+		Probe integrated = project.AddProbe();
+		integrated.Layer = ProbeLayer.Intensity;
+		integrated.Measurement = ProbeMeasurement.IntegratedIntensity;
+		integrated.Kind = ProbeKind.Line;
+		integrated.AX = 10;
+		integrated.AY = 30;
+		integrated.BX = 50;
+		integrated.BY = 30;
+		integrated.StartAfter = 50;
 		RunSpec spec = RunSpec.Create(project, null, preferGpu: false);
-		Check(spec.FrameCount == 100 && spec.Layers == (FrameLayers.Field | FrameLayers.Intensity) && spec.Emitters.Length == 1 && spec.Probes.Length == 1, "spec: 100 frames, both layers (intensity preview on), 1 emitter, 1 probe");
+		Check(spec.FrameCount == 100 && spec.Layers == (FrameLayers.Field | FrameLayers.Intensity) && spec.Emitters.Length == 1 && spec.Probes.Length == 3, "spec: 100 frames, both layers (intensity preview on), 1 emitter, 3 probes");
+		Check(ReferenceEquals(spec.Probes[0].Origin, probe) && ReferenceEquals(spec.Probes[1].Origin, lineProbe), "probe specs remember their model probe as the origin");
 
 		string path = Path.Combine(Path.GetTempPath(), "library_check-run-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
 		using (var store = FrameStore.Create(path, spec.Width, spec.Height, spec.Layers, spec.FrameCount, spec.VisualizeEvery))
@@ -806,6 +950,34 @@ internal static class Program
 			Check(states.SequenceEqual([RunState.Starting, RunState.Running, RunState.Completed]), "states: Starting, Running, Completed");
 			Check(run.StepsDone == 200 && run.FrameCount == 100 && store.Count == 100, "200 steps, 100 frames in the store");
 			Check(run.Traces[0].Series.Count == 200 && run.Traces[0].StepsSampled == 200, "probe trace has one sample per step");
+			Check(run.Traces[1].Profiles.Count == 100 && run.Traces[1].Profiles.All(p => p.Length == 36) && run.Traces[1].ProfileLength > 42.0 && run.Traces[1].Series.Count == 0,
+				"line probe trace has one profile per frame (36 pixels, length " + run.Traces[1].ProfileLength.ToString("0.0", CultureInfo.InvariantCulture) + "), no series");
+			Check(run.Traces[1].Profiles[0].All(v => v == 0f) && run.Traces[1].Profiles[99].Any(v => v != 0f) && !ReferenceEquals(run.Traces[1].Profiles[0], run.Traces[1].Profiles[99]), "profiles: frame 0 quiet, frame 99 has a wave, distinct arrays");
+			ProbeGraphData at = ProbeGraphData.At(run.Traces[0], 40, 20);
+			Check(at.Count == 41 && at.StepsSampled == 41 && at.Profile == null, "graph data at frame 20 / step 40: 41 samples");
+			ProbeGraphData lineAt = ProbeGraphData.At(run.Traces[1], 40, 20);
+			Check(ReferenceEquals(lineAt.Profile, run.Traces[1].Profiles[20]) && ReferenceEquals(ProbeGraphData.At(run.Traces[1], 400, 200).Profile, run.Traces[1].Profiles[99]), "graph data of the line probe: frame 20's profile; the newest stands in beyond the recorded frames");
+			Check(run.Traces[2].Profiles.Count == 100 && run.Traces[2].Profiles[20].All(v => v == 0f) && run.Traces[2].Profiles[99].Any(v => v > 0f) && run.Traces[2].Profiles[99].All(v => v >= 0f), "integrated line probe: nothing before its start step, non-negative sums after");
+			// the scratch runner records the same probes on its way to a frame (the graph is live before a run, 2026-10-14)
+			using (var scratch = new ScratchRunner(null))
+			using (var arrived = new ManualResetEventSlim())
+			{
+				ScratchResult? result = null;
+				scratch.Completed += (_, r) =>
+				{
+					result = r;
+					arrived.Set();
+				};
+				scratch.Request(spec, 20);
+				Check(arrived.Wait(30000) && result is { Snapshot: not null, Frame: 20 }, "scratch frame 20 computed");
+				Check(result!.Traces.Length == 3 && result.Traces[0].Series.Count == 41 && result.Traces[0].StepsSampled == 41, "scratch traces: the point probe's 41 samples up to step 40");
+				Check(result.Traces[0].Series.Values.AsSpan(0, 41).SequenceEqual(run.Traces[0].Series.Values.AsSpan(0, 41)), "scratch series equals the run's first 41 samples bit for bit");
+				Check(result.Traces[1].Profiles.Count == 1 && result.Traces[1].Profiles[0].AsSpan().SequenceEqual(run.Traces[1].Profiles[20]), "scratch profile equals the run's frame 20 profile");
+				// a second request on the kept engine, past the integrated probe's start step: its sums must start from zero again
+				arrived.Reset();
+				scratch.Request(spec, 60);
+				Check(arrived.Wait(30000) && result is { Frame: 60 } && result.Traces[2].Profiles.Count == 1 && result.Traces[2].Profiles[0].AsSpan().SequenceEqual(run.Traces[2].Profiles[60]), "a second scratch frame (60): the integrated profile equals the run's, the kept engine started its sums afresh");
+			}
 			Check(run.EngineDescription.StartsWith("CPU"), "CPU engine used");
 			var lastFrame = new Half[64 * 48];
 			Check(store.CopyLayer(99, FrameLayer.Field, lastFrame) && (float)lastFrame[24 * 64 + 20] != 0f, "last frame has a field at the source");
@@ -848,6 +1020,28 @@ internal static class Program
 			run.Stop();
 			Check(run.Completion.Wait(10000) && run.State == RunState.Cancelled && !run.IsActive, "stopped -> Cancelled, " + run.StepsDone + " steps, " + run.FrameCount + " frames");
 			Check(run.FrameCount == store.Count && run.FrameCount > 0, "frame count published matches the store");
+			if (run.EngineDescription.StartsWith("GPU", StringComparison.Ordinal) && run.FrameCount > 60)
+			{
+				// the GPU scratch path: two requests on one kept engine (the probe program compiled once), compared with the GPU run
+				using var scratch = new ScratchRunner(null);
+				using var arrived = new ManualResetEventSlim();
+				ScratchResult? result = null;
+				scratch.Completed += (_, r) =>
+				{
+					result = r;
+					arrived.Set();
+				};
+				scratch.Request(spec, 10);
+				bool first = arrived.Wait(30000) && result is { Snapshot: not null, Frame: 10 };
+				arrived.Reset();
+				var clock = Stopwatch.StartNew();
+				scratch.Request(spec, 60);
+				bool second = arrived.Wait(30000) && result is { Snapshot: not null, Frame: 60 };
+				clock.Stop();
+				Check(first && second, "GPU scratch frames 10 and 60 computed (" + clock.ElapsedMilliseconds + " ms for the second, probes re-installed without a compile)");
+				Check(second && MaxDiff(result!.Traces[0].Series.Values.AsSpan(0, 121), run.Traces[0].Series.Values.AsSpan(0, 121)) <= 1e-5f * Math.Max(1e-3f, MaxAbs(run.Traces[0].Series.Values.AsSpan(0, 121))), "GPU scratch series matches the GPU run's first 121 samples");
+				Check(second && MaxDiff(result!.Traces[2].Profiles[0], run.Traces[2].Profiles[60]) <= 1e-5f * Math.Max(1e-3f, MaxAbs(run.Traces[2].Profiles[60])), "GPU scratch integrated profile matches the GPU run's frame 60");
+			}
 		}
 		Check(!File.Exists(path), "second store deleted");
 	}

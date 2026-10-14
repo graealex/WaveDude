@@ -87,6 +87,8 @@
 	<s:String x:Key="TipPreviewShowIntensity">Intensitätsbild anzeigen</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: zum Verschieben ziehen; mit Tastaturfokus bewegen die Pfeiltasten um ein Pixel, mit Umschalt um zehn</s:String>
 	<s:String x:Key="TipAngleMarkerFormat">{0}: zum Drehen des Rasters ziehen (Umschalt rastet auf 15 Grad ein); mit Tastaturfokus drehen die Pfeiltasten um ein Grad, mit Umschalt um zehn</s:String>
+	<s:String x:Key="TipProbeBoxFormat">Diagramm von {0}: zum Verschieben des Kastens ziehen; mit Tastaturfokus bewegen die Pfeiltasten um ein Pixel, mit Umschalt um zehn</s:String>
+	<s:String x:Key="TipProbeBoxCornerFormat">Diagramm von {0}: zum Ändern der Kastengröße ziehen (rastet auf den festen Größen ein); mit Tastaturfokus ändern die Pfeiltasten die Größe um ein Pixel, mit Umschalt um zehn</s:String>
 	<s:String x:Key="LabelPreviewStep">Schritt</s:String>
 	<s:String x:Key="TipPreviewStep">Simulationsschritt des gezeigten Bildes</s:String>
 	<s:String x:Key="TipPreviewSplitter">Ziehen oder Pfeiltasten zum Umverteilen; Doppelklick oder Eingabe setzt auf die Mitte zurück</s:String>
@@ -214,9 +216,13 @@
 	<s:String x:Key="Label.Probe.BoxSize">Kastengröße</s:String>
 	<s:String x:Key="Hint.Probe.BoxSize">Nenngröße des Diagrammkastens über der Ausgabe.</s:String>
 	<s:String x:Key="Label.Probe.BoxX">Kasten x</s:String>
-	<s:String x:Key="Hint.Probe.BoxX">Linker Rand des Diagrammkastens in Leinwandpixeln.</s:String>
+	<s:String x:Key="Hint.Probe.BoxX">Linker Rand des Diagrammkastens in Leinwandpixeln. Ein Kasten auf Punkt A der Sonde wandert mit ihr; in die Nähe gezogen rastet er dort ein.</s:String>
 	<s:String x:Key="Label.Probe.BoxY">Kasten y</s:String>
-	<s:String x:Key="Hint.Probe.BoxY">Oberer Rand des Diagrammkastens in Leinwandpixeln.</s:String>
+	<s:String x:Key="Hint.Probe.BoxY">Oberer Rand des Diagrammkastens in Leinwandpixeln. Ein Kasten auf Punkt A der Sonde wandert mit ihr; in die Nähe gezogen rastet er dort ein.</s:String>
+	<s:String x:Key="Label.Probe.BoxWidth">Kastenbreite</s:String>
+	<s:String x:Key="Hint.Probe.BoxWidth">Breite des Diagrammkastens in Leinwandpixeln; nur bei eigener Kastengröße.</s:String>
+	<s:String x:Key="Label.Probe.BoxHeight">Kastenhöhe</s:String>
+	<s:String x:Key="Hint.Probe.BoxHeight">Höhe des Diagrammkastens in Leinwandpixeln; nur bei eigener Kastengröße.</s:String>
 	<s:String x:Key="Label.Probe.ScaleMode">Schrittachse</s:String>
 	<s:String x:Key="Hint.Probe.ScaleMode">Gleitendes Fenster der letzten Schritte oder der ganze Lauf; nur Punktsonden.</s:String>
 	<s:String x:Key="Label.Probe.AutoScaleX">Schritte automatisch skalieren</s:String>
@@ -345,6 +351,7 @@
 	<s:String x:Key="Enum.ProbeBoxSize.Medium">Mittel</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.Large">Groß</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.ExtraLarge">Sehr groß</s:String>
+	<s:String x:Key="Enum.ProbeBoxSize.Custom">Eigene</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Running">Gleitend</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Full">Ganzer Lauf</s:String>
 	<s:String x:Key="Enum.SceneMode.Canvas">Leinwand</s:String>

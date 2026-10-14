@@ -87,6 +87,8 @@
 	<s:String x:Key="TipPreviewShowIntensity">Intensiteitsbeeld tonen</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: slepen om te verplaatsen; met toetsenbordfocus verplaatsen de pijltoetsen één pixel, tien met Shift</s:String>
 	<s:String x:Key="TipAngleMarkerFormat">{0}: slepen om het raster te draaien (Shift klikt vast op 15 graden); met toetsenbordfocus draaien de pijltoetsen het één graad, tien met Shift</s:String>
+	<s:String x:Key="TipProbeBoxFormat">Grafiek van {0}: slepen om het kader te verplaatsen; met toetsenbordfocus verplaatsen de pijltoetsen het één pixel, tien met Shift</s:String>
+	<s:String x:Key="TipProbeBoxCornerFormat">Grafiek van {0}: slepen om het kader te vergroten of verkleinen (het klikt vast op de vaste maten); met toetsenbordfocus wijzigen de pijltoetsen de maat één pixel, tien met Shift</s:String>
 	<s:String x:Key="LabelPreviewStep">stap</s:String>
 	<s:String x:Key="TipPreviewStep">Simulatiestap van het getoonde beeld</s:String>
 	<s:String x:Key="TipPreviewSplitter">Slepen of pijltoetsen om de verdeling te wijzigen; dubbelklik of Enter zet terug op de helft</s:String>
@@ -214,9 +216,13 @@
 	<s:String x:Key="Label.Probe.BoxSize">Kadergrootte</s:String>
 	<s:String x:Key="Hint.Probe.BoxSize">Nominale grootte van het grafiekkader over de uitvoer.</s:String>
 	<s:String x:Key="Label.Probe.BoxX">Kader x</s:String>
-	<s:String x:Key="Hint.Probe.BoxX">Linkerrand van het grafiekkader in canvaspixels.</s:String>
+	<s:String x:Key="Hint.Probe.BoxX">Linkerrand van het grafiekkader in canvaspixels. Een kader op punt A van de sonde beweegt met haar mee; dichtbij gesleept klikt het daar vast.</s:String>
 	<s:String x:Key="Label.Probe.BoxY">Kader y</s:String>
-	<s:String x:Key="Hint.Probe.BoxY">Bovenrand van het grafiekkader in canvaspixels.</s:String>
+	<s:String x:Key="Hint.Probe.BoxY">Bovenrand van het grafiekkader in canvaspixels. Een kader op punt A van de sonde beweegt met haar mee; dichtbij gesleept klikt het daar vast.</s:String>
+	<s:String x:Key="Label.Probe.BoxWidth">Kaderbreedte</s:String>
+	<s:String x:Key="Hint.Probe.BoxWidth">Breedte van het grafiekkader in canvaspixels; alleen bij een eigen kadermaat.</s:String>
+	<s:String x:Key="Label.Probe.BoxHeight">Kaderhoogte</s:String>
+	<s:String x:Key="Hint.Probe.BoxHeight">Hoogte van het grafiekkader in canvaspixels; alleen bij een eigen kadermaat.</s:String>
 	<s:String x:Key="Label.Probe.ScaleMode">Stappenas</s:String>
 	<s:String x:Key="Hint.Probe.ScaleMode">Schuivend venster van de laatste stappen, of de hele run; alleen puntsondes.</s:String>
 	<s:String x:Key="Label.Probe.AutoScaleX">Stappen automatisch schalen</s:String>
@@ -345,6 +351,7 @@
 	<s:String x:Key="Enum.ProbeBoxSize.Medium">Middel</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.Large">Groot</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.ExtraLarge">Extra groot</s:String>
+	<s:String x:Key="Enum.ProbeBoxSize.Custom">Eigen maat</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Running">Schuivend</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Full">Hele run</s:String>
 	<s:String x:Key="Enum.SceneMode.Canvas">Canvas</s:String>

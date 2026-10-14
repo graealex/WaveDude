@@ -181,6 +181,53 @@
 				</Setter.Value>
 			</Setter>
 		</Style>
+		<!-- a probe's graph box: the thumb covering the box (transparent; focus and hover show a border) and the
+		     resize grip at its bottom-right corner. The box itself is drawn by the overlay -->
+		<Style x:Key="ProbeBoxThumb" TargetType="{x:Type controls:MarkerThumb}">
+			<Setter Property="Cursor" Value="SizeAll" />
+			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type controls:MarkerThumb}">
+						<Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" SnapsToDevicePixels="True" />
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="Bd" Property="BorderBrush" Value="#80FFFFFF" />
+							</Trigger>
+							<Trigger Property="IsKeyboardFocused" Value="True">
+								<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+								<Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<StreamGeometry x:Key="ResizeGripGlyph">M11,1 L11,3 L3,11 L1,11 Z M11,6 L11,8 L8,11 L6,11 Z</StreamGeometry>
+		<Style x:Key="ProbeBoxCornerThumb" TargetType="{x:Type controls:MarkerThumb}">
+			<Setter Property="Width" Value="12" />
+			<Setter Property="Height" Value="12" />
+			<Setter Property="Cursor" Value="SizeNWSE" />
+			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+			<Setter Property="Foreground" Value="#A0FFFFFF" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type controls:MarkerThumb}">
+						<Grid Background="Transparent">
+							<Path Data="{StaticResource ResizeGripGlyph}" Fill="{TemplateBinding Foreground}" />
+						</Grid>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+			<Style.Triggers>
+				<Trigger Property="IsMouseOver" Value="True">
+					<Setter Property="Foreground" Value="White" />
+				</Trigger>
+				<Trigger Property="IsKeyboardFocused" Value="True">
+					<Setter Property="Foreground" Value="{DynamicResource Accent}" />
+				</Trigger>
+			</Style.Triggers>
+		</Style>
 		<!-- the time axis: theme colours for the custom-drawn bar -->
 		<Style TargetType="{x:Type controls:TimelineBar}">
 			<Setter Property="Background" Value="{DynamicResource ScrollBarBackground}" />
@@ -365,6 +412,18 @@
 										<!-- the scene outline, a translucent layer of the same pixel size, so it lands exactly on the frame -->
 										<Image Source="{Binding Path=(local:PreviewPane.OverlayImage), RelativeSource={RelativeSource TemplatedParent}}"
 										       Stretch="Uniform" IsHitTestVisible="False" />
+										<!-- the probes' graph boxes, under the handles so a handle over a box stays grabbable; which
+										     probes depends on the cell's layer (the attached PreviewPane.Layer) -->
+										<controls:ProbeGraphOverlay BoxStyle="{StaticResource ProbeBoxThumb}" CornerStyle="{StaticResource ProbeBoxCornerThumb}"
+										                            AccentBrush="{DynamicResource Accent}"
+										                            Layer="{Binding Path=(local:PreviewPane.Layer), RelativeSource={RelativeSource TemplatedParent}}"
+										                            Project="{Binding Project, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                            Run="{Binding Run, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                            Scratch="{Binding GraphScratch, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                            Frame="{Binding Position, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                            CanvasWidth="{Binding CanvasWidth, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                            CanvasHeight="{Binding CanvasHeight, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}}"
+										                            SelectedItem="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType={x:Type local:PreviewPane}}, Mode=TwoWay}" />
 										<!-- styled here, not implicitly: WPF applies implicit styles inside a template only to Controls, and the overlay is a Panel -->
 										<controls:SceneOverlay SourceStyle="{StaticResource SourceMarker}" ProbeStyle="{StaticResource ProbeMarker}" AngleStyle="{StaticResource AngleMarker}"
 										                       LineBrush="White" LabelBrush="White" AccentBrush="{DynamicResource Accent}"
@@ -438,14 +497,14 @@
 				<RowDefinition Height="*" />
 			</Grid.RowDefinitions>
 			<HeaderedContentControl x:Name="fieldCell" Style="{StaticResource PictureCell}" Header="{DynamicResource SectionField}"
-			                        Content="{Binding FieldImage, ElementName=pane}" Tag="PreviewFieldImage"
+			                        Content="{Binding FieldImage, ElementName=pane}" Tag="PreviewFieldImage" local:PreviewPane.Layer="Field"
 			                        local:PreviewPane.OverlayImage="{Binding FieldOverlay, ElementName=pane}"
 			                        Visibility="{Binding FieldSettings.Preview, ElementName=pane, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}" />
 			<GridSplitter x:Name="pictureSplitter" Style="{StaticResource PictureSplitter}" ToolTip="{DynamicResource TipPreviewSplitter}"
 			              AutomationProperties.Name="{DynamicResource TipPreviewSplitter}" AutomationProperties.AutomationId="PreviewSplitter"
 			              MouseDoubleClick="OnSplitterMouseDoubleClick" KeyDown="OnSplitterKeyDown" />
 			<HeaderedContentControl x:Name="intensityCell" Style="{StaticResource SecondPictureCell}" Header="{DynamicResource SectionIntensity}"
-			                        Content="{Binding IntensityImage, ElementName=pane}" Tag="PreviewIntensityImage"
+			                        Content="{Binding IntensityImage, ElementName=pane}" Tag="PreviewIntensityImage" local:PreviewPane.Layer="Intensity"
 			                        local:PreviewPane.OverlayImage="{Binding IntensityOverlay, ElementName=pane}"
 			                        Visibility="{Binding IntensitySettings.Preview, ElementName=pane, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}" />
 		</Grid>

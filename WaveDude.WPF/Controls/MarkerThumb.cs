@@ -14,12 +14,16 @@ public enum MarkerRole
 	ProbeA,
 	/// <summary>Point B of a line probe.</summary>
 	ProbeB,
+	/// <summary>The graph box of a probe (moves it), see <see cref="ProbeGraphOverlay"/>.</summary>
+	ProbeBox,
+	/// <summary>The bottom-right corner of a probe's graph box (resizes it).</summary>
+	ProbeBoxCorner,
 }
 
 /// <summary>
-/// One draggable handle of the <see cref="SceneOverlay"/>: a <see cref="Thumb"/> that knows which model
-/// object and which of its points it moves. Focusable, so the arrow keys can move it too; the overlay
-/// does the geometry and the model updates. UI thread.
+/// One draggable handle of the <see cref="SceneOverlay"/> or <see cref="ProbeGraphOverlay"/>: a
+/// <see cref="Thumb"/> that knows which model object and which of its points (or its graph box) it moves.
+/// Focusable, so the arrow keys can move it too; the overlay does the geometry and the model updates. UI thread.
 /// </summary>
 public sealed class MarkerThumb : Thumb
 {
@@ -73,10 +77,10 @@ public sealed class MarkerThumb : Thumb
 	/// <summary>Width of the dark outline drawn under the glyph: <see cref="StrokeThickness"/> plus <see cref="HaloWidth"/> on each side.</summary>
 	public double HaloThickness => (double)GetValue(HaloThicknessProperty);
 
-	/// <summary>Model coordinate of the point when the current drag started (canvas pixels).</summary>
+	/// <summary>Model coordinate of the point (or the box's width, for a corner) when the current drag started (canvas pixels).</summary>
 	internal int DragStartX { get; set; }
 
-	/// <summary>Model coordinate of the point when the current drag started (canvas pixels).</summary>
+	/// <summary>Model coordinate of the point (or the box's height, for a corner) when the current drag started (canvas pixels).</summary>
 	internal int DragStartY { get; set; }
 
 	/// <summary>Mouse movement since the drag started, in canvas pixels (fractional, so slow drags add up).</summary>

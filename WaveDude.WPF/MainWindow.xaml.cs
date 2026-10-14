@@ -105,13 +105,17 @@ public partial class MainWindow : Window
 		set => SetValue(SelectedItemProperty, value);
 	}
 
-	/// <summary>A selection made elsewhere (a marker on the preview) is mirrored in the tree, which then raises its own change with the same item.</summary>
+	/// <summary>
+	/// A selection made elsewhere (a marker or graph box on the preview) is mirrored in the tree, which then
+	/// raises its own change with the same item. The tree node does not take the focus: the handle keeps it,
+	/// so Tab can move on to the next handle (the tree stole it and broke the Tab cycle, 2026-10-14).
+	/// </summary>
 	private void OnSelectedItemChanged(object? item)
 	{
 		CommandManager.InvalidateRequerySuggested();
 		if (item != null && !ReferenceEquals(projectTree.SelectedItem, item))
 		{
-			projectTree.Select(item);
+			projectTree.Select(item, focus: false);
 		}
 	}
 

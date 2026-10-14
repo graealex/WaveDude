@@ -9,10 +9,10 @@ namespace WaveDude.Probes;
 public sealed class ProbeUpdate
 {
 	/// <param name="samples">Per probe: series values since the previous batch (see <see cref="Samples"/>).</param>
-	/// <param name="profiles">Per probe: refreshed line profile or null (see <see cref="Profiles"/>).</param>
+	/// <param name="profiles">Per probe: the line profiles recorded since the previous batch (see <see cref="Profiles"/>).</param>
 	/// <param name="lengths">Per probe: line length in canvas pixels (see <see cref="Lengths"/>).</param>
 	/// <param name="stepsDone">Steps completed when the batch was taken.</param>
-	public ProbeUpdate(float[][] samples, float[]?[] profiles, double[] lengths, int stepsDone)
+	public ProbeUpdate(float[][] samples, float[][][] profiles, double[] lengths, int stepsDone)
 	{
 		Samples = samples;
 		Profiles = profiles;
@@ -27,11 +27,11 @@ public sealed class ProbeUpdate
 	public float[][] Samples { get; }
 
 	/// <summary>
-	/// Per probe: the new line profile when it was refreshed since the previous batch, otherwise null. The array
-	/// is the very instance the worker's trace holds; it is never written to after the engine produced it, so
-	/// sharing it is safe.
+	/// Per probe: the line profiles recorded since the previous batch, one per frame in frame order; empty
+	/// (never null) for point probes or when no frame was recorded. The arrays are the very instances the
+	/// worker's trace holds; they are never written to after the engine produced them, so sharing them is safe.
 	/// </summary>
-	public float[]?[] Profiles { get; }
+	public float[][][] Profiles { get; }
 
 	/// <summary>Per probe: line length in canvas pixels (0 for point probes). This is the <see cref="ProbeSampler.Lengths"/> array itself, shared read-only by all batches.</summary>
 	public double[] Lengths { get; }

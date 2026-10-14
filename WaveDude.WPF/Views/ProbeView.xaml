@@ -30,6 +30,15 @@
 				</DataTrigger>
 			</Style.Triggers>
 		</Style>
+		<!-- the box width and height only apply to a custom box size (set by dragging the box's corner, too) -->
+		<Style x:Key="CustomSizeOnly" TargetType="{x:Type controls:NumberBox}" BasedOn="{StaticResource {x:Type controls:NumberBox}}">
+			<Setter Property="IsEnabled" Value="False" />
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding BoxSize}" Value="Custom">
+					<Setter Property="IsEnabled" Value="True" />
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
 	</UserControl.Resources>
 
 	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -88,6 +97,12 @@
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BoxY}" />
 				<controls:NumberBox Text="{Binding BoxY}" Minimum="0" ToolTip="{meta:Hint model:Probe.BoxY}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BoxWidth}" />
+				<controls:NumberBox Style="{StaticResource CustomSizeOnly}" Text="{Binding BoxWidth}" Minimum="60" Maximum="4096" Increment="10" ToolTip="{meta:Hint model:Probe.BoxWidth}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BoxHeight}" />
+				<controls:NumberBox Style="{StaticResource CustomSizeOnly}" Text="{Binding BoxHeight}" Minimum="30" Maximum="4096" Increment="10" ToolTip="{meta:Hint model:Probe.BoxHeight}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionAxes}" />

@@ -4,11 +4,11 @@ namespace WaveDude.Probes;
 
 /// <summary>
 /// Accumulates probe samples and line profiles from the engine into <see cref="ProbeTrace"/>s and hands
-/// incremental batches to the UI. Lives entirely on the run's worker: <see cref="Collect"/> /
-/// <see cref="CollectProfiles"/> are called after every visualised step and about every 50 ms;
-/// <see cref="TakeForUi"/> then packages what arrived since the previous batch into a <see cref="ProbeUpdate"/>,
-/// which the run raises as <c>ProbesUpdated</c> and the UI applies to its own traces. The UI thread never touches
-/// this object itself.
+/// incremental batches to the UI. Lives entirely on the run's worker: <see cref="Collect"/> is called after
+/// every recorded frame and about every 50 ms, <see cref="CollectProfiles"/> once per recorded frame (the
+/// profiles are kept per frame); <see cref="TakeForUi"/> then packages what arrived since the previous batch
+/// into a <see cref="ProbeUpdate"/>, which the run raises as <c>ProbesUpdated</c> and the UI applies to its own
+/// traces. The UI thread never touches this object itself.
 /// </summary>
 public sealed class ProbeCollector
 {
@@ -19,11 +19,12 @@ public sealed class ProbeCollector
 		_sampler = sampler;
 		Traces = new ProbeTrace[sampler.Count];
 		_totals = new double[sampler.Count];
-		_fresh = new bool[sampler.Count];
+		_pendingProfiles = [];
 		for (int i = 0; i < sampler.Count; i++)
 		{
 			Traces[i] = new ProbeTrace();
 			_pending.Add(new List<float>());
+			_pendingProfiles.Add(new List<float[]>());
 		}
 	}
 
@@ -87,9 +88,9 @@ public sealed class ProbeCollector
 
 	/// <summary>
 	/// Reads the current line-probe profiles from the engine (<see cref="IWaveEngine.ReadProbeProfiles"/>),
-	/// stores them in the traces and marks them as fresh for the next <see cref="TakeForUi"/>. Does nothing
-	/// when there are no line probes. The runner only calls this when a frame or UI batch actually needs the
-	/// profiles, since the GPU engine has to read them back from the device.
+	/// appends them to the traces as the profiles of the next frame and queues them for the next
+	/// <see cref="TakeForUi"/>. Does nothing when there are no line probes. The run calls this exactly once
+	/// per recorded frame, in frame order, so a trace's profile list is indexed by frame.
 	/// </summary>
 	/// <param name="engine">Engine holding the current profiles.</param>
 	/// <param name="stepsDone">Steps completed so far; recorded as <see cref="ProbeTrace.StepsSampled"/>.</param>
@@ -106,33 +107,31 @@ public sealed class ProbeCollector
 			{
 				continue;
 			}
-			Traces[i].SetProfile(profile, _sampler.Lengths[i]);
+			Traces[i].AddProfile(profile, _sampler.Lengths[i]);
 			Traces[i].StepsSampled = stepsDone;
-			_fresh[i] = true;
+			_pendingProfiles[i].Add(profile);
 		}
 		_lastStepsDone = stepsDone;
 	}
 
 	/// <summary>
-	/// Drains the pending series samples and any freshly updated profiles into a <see cref="ProbeUpdate"/> for
-	/// the UI thread. Sample arrays are copied; profile arrays are handed over by reference, which is safe
-	/// because the engine allocates a new array on every read and nobody writes to it afterwards.
+	/// Drains the pending series samples and the profiles recorded since the previous call into a
+	/// <see cref="ProbeUpdate"/> for the UI thread. Sample arrays are copied; profile arrays are handed over by
+	/// reference, which is safe because the engine allocates a new array on every read and nobody writes to it
+	/// afterwards.
 	/// </summary>
 	/// <returns>A batch covering everything since the previous call; never null.</returns>
 	public ProbeUpdate TakeForUi()
 	{
 		int count = _sampler.Count;
 		float[][] samples = new float[count][];
-		float[]?[] profiles = new float[count][];
+		float[][][] profiles = new float[count][][];
 		for (int i = 0; i < count; i++)
 		{
 			samples[i] = _pending[i].ToArray();
 			_pending[i].Clear();
-			if (_fresh[i])
-			{
-				profiles[i] = Traces[i].Profile;
-				_fresh[i] = false;
-			}
+			profiles[i] = _pendingProfiles[i].ToArray();
+			_pendingProfiles[i].Clear();
 		}
 		return new ProbeUpdate(samples, profiles, _sampler.Lengths, _lastStepsDone);
 	}
@@ -149,8 +148,8 @@ public sealed class ProbeCollector
 	/// <summary>Per probe: series values collected since the last <see cref="TakeForUi"/>.</summary>
 	private readonly List<List<float>> _pending;
 
-	/// <summary>Per probe: true when a new profile arrived since the last <see cref="TakeForUi"/>.</summary>
-	private readonly bool[] _fresh;
+	/// <summary>Per probe: the profiles recorded since the last <see cref="TakeForUi"/>, in frame order.</summary>
+	private readonly List<List<float[]>> _pendingProfiles;
 
 	/// <summary>Steps completed at the most recent collect call; numbers the samples of the next batch and is reported as <see cref="ProbeUpdate.StepsDone"/>.</summary>
 	private int _lastStepsDone;

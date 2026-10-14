@@ -304,7 +304,10 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 				computeTicks += t1 - t0;
 				if (i % every == 0 && frame < Store.Capacity)
 				{
+					// the series up to this step and the line profiles of this frame (kept per frame, so the
+					// preview shows the profile of the frame it scrubs to)
 					collector?.Collect(engine, stepsDone);
+					collector?.CollectProfiles(engine, stepsDone);
 					// a free snapshot (waiting here is the back pressure when the writer lags), captured
 					// without waiting for the copy; the writer awaits and stores it
 					FrameSnapshot snapshot = pool.Take(token);
@@ -394,20 +397,19 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 		drain?.Invoke();
 	}
 
-	/// <summary>Collects what the engine has, takes a batch and applies it to <see cref="Traces"/> on the UI context.</summary>
+	/// <summary>Collects the series the engine has (the profiles are collected per frame), takes a batch and applies it to <see cref="Traces"/> on the UI context.</summary>
 	private void PublishProbes(IWaveEngine engine, ProbeCollector collector, int stepsDone)
 	{
 		collector.Collect(engine, stepsDone);
-		collector.CollectProfiles(engine, stepsDone);
 		ProbeUpdate update = collector.TakeForUi();
 		Post(() =>
 		{
 			for (int i = 0; i < Traces.Length && i < update.Samples.Length; i++)
 			{
 				Traces[i].Series.Add(update.Samples[i]);
-				if (update.Profiles[i] is { } profile)
+				foreach (float[] profile in update.Profiles[i])
 				{
-					Traces[i].SetProfile(profile, update.Lengths[i]);
+					Traces[i].AddProfile(profile, update.Lengths[i]);
 				}
 				Traces[i].StepsSampled = update.StepsDone;
 			}

@@ -87,6 +87,8 @@
 	<s:String x:Key="TipPreviewShowIntensity">Afficher l'image de l'intensité</s:String>
 	<s:String x:Key="TipMarkerFormat">{0} : glisser pour déplacer ; avec le focus clavier, les flèches déplacent d'un pixel, de dix avec Maj</s:String>
 	<s:String x:Key="TipAngleMarkerFormat">{0} : glisser pour tourner la grille (Maj aligne sur 15 degrés) ; avec le focus clavier, les flèches la tournent d'un degré, de dix avec Maj</s:String>
+	<s:String x:Key="TipProbeBoxFormat">Graphique de {0} : glisser pour déplacer le cadre ; avec le focus clavier, les flèches le déplacent d'un pixel, de dix avec Maj</s:String>
+	<s:String x:Key="TipProbeBoxCornerFormat">Graphique de {0} : glisser pour redimensionner le cadre (il s'aligne sur les tailles fixes) ; avec le focus clavier, les flèches le redimensionnent d'un pixel, de dix avec Maj</s:String>
 	<s:String x:Key="LabelPreviewStep">pas</s:String>
 	<s:String x:Key="TipPreviewStep">Pas de simulation de l'image affichée</s:String>
 	<s:String x:Key="TipPreviewSplitter">Glisser ou utiliser les flèches pour redimensionner ; double-clic ou Entrée remet au milieu</s:String>
@@ -214,9 +216,13 @@
 	<s:String x:Key="Label.Probe.BoxSize">Taille du cadre</s:String>
 	<s:String x:Key="Hint.Probe.BoxSize">Taille nominale du cadre du graphique dessiné sur la sortie.</s:String>
 	<s:String x:Key="Label.Probe.BoxX">Cadre x</s:String>
-	<s:String x:Key="Hint.Probe.BoxX">Bord gauche du cadre du graphique en pixels de toile.</s:String>
+	<s:String x:Key="Hint.Probe.BoxX">Bord gauche du cadre du graphique en pixels de toile. Un cadre posé sur le point A de la sonde la suit ; approché en le glissant, il s'y accroche.</s:String>
 	<s:String x:Key="Label.Probe.BoxY">Cadre y</s:String>
-	<s:String x:Key="Hint.Probe.BoxY">Bord supérieur du cadre du graphique en pixels de toile.</s:String>
+	<s:String x:Key="Hint.Probe.BoxY">Bord supérieur du cadre du graphique en pixels de toile. Un cadre posé sur le point A de la sonde la suit ; approché en le glissant, il s'y accroche.</s:String>
+	<s:String x:Key="Label.Probe.BoxWidth">Largeur du cadre</s:String>
+	<s:String x:Key="Hint.Probe.BoxWidth">Largeur du cadre du graphique en pixels de toile ; taille personnalisée seulement.</s:String>
+	<s:String x:Key="Label.Probe.BoxHeight">Hauteur du cadre</s:String>
+	<s:String x:Key="Hint.Probe.BoxHeight">Hauteur du cadre du graphique en pixels de toile ; taille personnalisée seulement.</s:String>
 	<s:String x:Key="Label.Probe.ScaleMode">Axe des pas</s:String>
 	<s:String x:Key="Hint.Probe.ScaleMode">Fenêtre glissante des derniers pas, ou toute l'exécution ; sondes ponctuelles seulement.</s:String>
 	<s:String x:Key="Label.Probe.AutoScaleX">Échelle auto des pas</s:String>
@@ -345,6 +351,7 @@
 	<s:String x:Key="Enum.ProbeBoxSize.Medium">Moyen</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.Large">Grand</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.ExtraLarge">Très grand</s:String>
+	<s:String x:Key="Enum.ProbeBoxSize.Custom">Personnalisée</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Running">Glissant</s:String>
 	<s:String x:Key="Enum.ProbeScaleMode.Full">Toute l'exécution</s:String>
 	<s:String x:Key="Enum.SceneMode.Canvas">Toile</s:String>
