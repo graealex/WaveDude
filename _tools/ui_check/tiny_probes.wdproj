@@ -12,5 +12,5 @@
 		<Array SizeX="3" SpacingX="10" />
 	</Source>
 	<Probe Name="Probe 1" AX="200" AY="120" BoxSize="Custom" BoxX="8" BoxY="8" BoxWidth="120" BoxHeight="60" />
-	<Probe Name="Probe 2" Layer="Intensity" Measurement="Intensity" Kind="Line" AX="40" AY="200" BX="280" BY="200" BoxSize="Small" BoxX="40" BoxY="200" />
+	<Probe Name="Probe 2" Layer="Intensity" Measurement="Value" Kind="Line" AX="40" AY="200" BX="280" BY="200" BoxSize="Small" BoxX="40" BoxY="200" />
 </Project>

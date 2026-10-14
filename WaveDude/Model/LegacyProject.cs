@@ -236,8 +236,8 @@ public static class LegacyProject
 			// the measurement after the layer, which coerces it
 			probe.Measurement = Text(item, "measurement", "amplitude") switch
 			{
-				"intensity" => ProbeMeasurement.Intensity,
-				"integrated_intensity" => ProbeMeasurement.IntegratedIntensity,
+				"intensity" => ProbeMeasurement.Value,
+				"integrated_intensity" => ProbeMeasurement.IntegratedValue,
 				_ => ProbeMeasurement.Amplitude,
 			};
 			// the box position last: setting A first would drag a box that happens to share its position along

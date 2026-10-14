@@ -17,12 +17,11 @@ public enum ProbeMeasurement
 {
 	/// <summary>Field value at the probe; field layer only.</summary>
 	Amplitude,
-	/// <summary>Averaged intensity at the probe; intensity layer only. Shown as "Value" (the layer already says intensity).</summary>
-	[Description("Value")]
-	Intensity,
+	/// <summary>Averaged intensity at the probe; intensity layer only (the layer already says intensity, so the member is just "Value"; renamed from Intensity on the author's point 8, 2026-10-14, before the format shipped).</summary>
+	Value,
 	/// <summary>Intensity summed over the run so far; intensity layer only. Shown as "Integrated value".</summary>
 	[Description("Integrated value")]
-	IntegratedIntensity,
+	IntegratedValue,
 }
 
 /// <summary>Point probe (position A) or line probe (A to B).</summary>
@@ -405,7 +404,7 @@ public sealed class Probe : ObservableObject
 
 	/// <summary>The measurements a probe on <paramref name="layer"/> can record (the editor offers only these).</summary>
 	public static ProbeMeasurement[] MeasurementsFor(ProbeLayer layer) =>
-		layer == ProbeLayer.Field ? [ProbeMeasurement.Amplitude] : [ProbeMeasurement.Intensity, ProbeMeasurement.IntegratedIntensity];
+		layer == ProbeLayer.Field ? [ProbeMeasurement.Amplitude] : [ProbeMeasurement.Value, ProbeMeasurement.IntegratedValue];
 
 	/// <summary>
 	/// Forces a consistent state: the field only allows <see cref="ProbeMeasurement.Amplitude"/>,
@@ -421,7 +420,7 @@ public sealed class Probe : ObservableObject
 		}
 		else if (Measurement == ProbeMeasurement.Amplitude)
 		{
-			Measurement = ProbeMeasurement.Intensity;
+			Measurement = ProbeMeasurement.Value;
 		}
 		if (YMax <= YMin)
 		{

@@ -346,8 +346,8 @@
 	<s:String x:Key="Enum.ProbeLayer.Field">Field</s:String>
 	<s:String x:Key="Enum.ProbeLayer.Intensity">Intensity</s:String>
 	<s:String x:Key="Enum.ProbeMeasurement.Amplitude">Amplitude</s:String>
-	<s:String x:Key="Enum.ProbeMeasurement.Intensity">Value</s:String>
-	<s:String x:Key="Enum.ProbeMeasurement.IntegratedIntensity">Integrated value</s:String>
+	<s:String x:Key="Enum.ProbeMeasurement.Value">Value</s:String>
+	<s:String x:Key="Enum.ProbeMeasurement.IntegratedValue">Integrated value</s:String>
 	<s:String x:Key="Enum.ProbeKind.Point">Point</s:String>
 	<s:String x:Key="Enum.ProbeKind.Line">Line</s:String>
 	<s:String x:Key="Enum.ProbeBoxSize.Tiny">Tiny</s:String>

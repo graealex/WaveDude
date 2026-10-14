@@ -73,7 +73,7 @@ public sealed class ProbeSampler
 			ProbeSpec probe = probes[i];
 			int ax = Clamp(probe.AX, w - 1);
 			int ay = Clamp(probe.AY, h - 1);
-			bool isIntegrated = probe.Measurement == ProbeMeasurement.IntegratedIntensity;
+			bool isIntegrated = probe.Measurement == ProbeMeasurement.IntegratedValue;
 			if (probe.Kind == ProbeKind.Line)
 			{
 				int bx = Clamp(probe.BX, w - 1);
@@ -90,7 +90,7 @@ public sealed class ProbeSampler
 				pixels[i] = new int[] { (ay + 1) * stride + ax + 1 };
 				cumulative[i] = isIntegrated;
 			}
-			// Intensity and IntegratedIntensity both read the intensity buffer.
+			// Value and IntegratedValue both read the intensity buffer.
 			useIntensity[i] = probe.Measurement != ProbeMeasurement.Amplitude;
 			useStartAfterStep[i] = probe.StartAfter > 0;
 			startAfterStep[i] = probe.StartAfter;
@@ -166,13 +166,13 @@ public sealed class ProbeSampler
 	/// <summary>Per probe: true for line probes (which deliver a profile), false for point probes (which deliver a time series).</summary>
 	public bool[] IsProfile { get; }
 
-	/// <summary>Per probe: true when the measurement is Intensity or IntegratedIntensity, i.e. the intensity buffer is sampled instead of the field.</summary>
+	/// <summary>Per probe: true when the measurement is Value or IntegratedValue, i.e. the intensity buffer is sampled instead of the field.</summary>
 	public bool[] UseIntensity { get; }
 
-	/// <summary>Per probe: point probe with IntegratedIntensity; <see cref="ProbeCollector.Collect"/> turns its per-step intensity samples into a running sum.</summary>
+	/// <summary>Per probe: point probe with IntegratedValue; <see cref="ProbeCollector.Collect"/> turns its per-step intensity samples into a running sum.</summary>
 	public bool[] Cumulative { get; }
 
-	/// <summary>Per probe: line probe with IntegratedIntensity; the engine accumulates per-pixel intensity totals over the steps.</summary>
+	/// <summary>Per probe: line probe with IntegratedValue; the engine accumulates per-pixel intensity totals over the steps.</summary>
 	public bool[] Integrate { get; }
 
 	/// <summary>Per probe: Euclidean length of the (clamped) probe line in canvas pixels; 0 for point probes.</summary>

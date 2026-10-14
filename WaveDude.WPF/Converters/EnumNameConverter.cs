@@ -22,7 +22,7 @@ public sealed partial class EnumNameConverter : IValueConverter
 		}
 		if (value is Enum member)
 		{
-			// the string table ("Enum.Type.Member") first, then a [Description] on the member (ProbeMeasurement.Intensity reads "Value")
+			// the string table ("Enum.Type.Member") first, then a [Description] on the member (ProbeMeasurement.IntegratedValue reads "Integrated value")
 			if (Application.Current?.TryFindResource($"Enum.{member.GetType().Name}.{member}") is string localized)
 			{
 				return localized;

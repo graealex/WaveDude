@@ -86,8 +86,8 @@ internal static class Program
 	private static ProbeSampler Probes(int w, int h) => ProbeSampler.Build(
 	[
 		new ProbeSpec("A", ProbeKind.Point, ProbeMeasurement.Amplitude, 20, 24, 0, 0, 0),
-		new ProbeSpec("B", ProbeKind.Line, ProbeMeasurement.IntegratedIntensity, 5, 5, 40, 30, 50),
-		new ProbeSpec("C", ProbeKind.Point, ProbeMeasurement.Intensity, 30, 20, 0, 0, 0),
+		new ProbeSpec("B", ProbeKind.Line, ProbeMeasurement.IntegratedValue, 5, 5, 40, 30, 50),
+		new ProbeSpec("C", ProbeKind.Point, ProbeMeasurement.Value, 30, 20, 0, 0, 0),
 	], w, h);
 
 	private static void Run(IWaveEngine engine, int steps)
@@ -806,7 +806,7 @@ internal static class Program
 		Check(Math.Abs(lopMin + 0.54) < 0.001 && Math.Abs(lopMax - 0.54) < 0.001, "lopsided data still gets a symmetric axis (" + lopMin.ToString("0.00", inv) + ".." + lopMax.ToString("0.00", inv) + ")");
 		ProbeGraph.ComputeRanges(point, new ProbeGraphData(new float[16], 16, null, 0, 16), 2500, out _, out _, out double zeroMin, out double zeroMax);
 		Check(zeroMin == -1 && zeroMax == 1, "all-zero data keeps the fixed range instead of a 1e-6 fit");
-		var intensityProbe = new Probe { Name = "I", Layer = ProbeLayer.Intensity, Measurement = ProbeMeasurement.Intensity };
+		var intensityProbe = new Probe { Name = "I", Layer = ProbeLayer.Intensity, Measurement = ProbeMeasurement.Value };
 		float[] positive = new float[16];
 		positive[5] = 0.3f;
 		ProbeGraph.ComputeRanges(intensityProbe, new ProbeGraphData(positive, 16, null, 0, 16), 2500, out _, out _, out double intMin, out double intMax);
@@ -918,12 +918,12 @@ internal static class Program
 		Check(composite.Array is { SizeX: 5, SizeY: 5, SpacingX: 3, SpacingY: 3, RandomFrequency: 50, RandomPhase: 90, RandomOffWidth: 19, RandomPosition: 1 } && composite.Elements.Count == 25, "a 5 x 5 array with its random amounts, 25 emitters regenerated");
 		Check(composite.Mode == SourceMode.Pulsed && composite.PulseWidth == 5 && composite.OffWidth == 20 && composite.DetachAfter == 2000 && composite.Enabled && notes.Any(n => n.Contains("random offsets")), "pulsed 5 / 20 cycles, detaching after step 2000, the regeneration noted");
 		Check(p.Simulation.WaveSpeed == 0.563 && p.Display.Field.ColorScheme == "Orange_symmetry" && p.Display.Intensity.ColorScheme == "Purple_rain" && p.Display.Field.Brightness == 50, "c 0.563 and the chosen schemes");
-		Check(p.Probes[0] is { Active: true, Kind: ProbeKind.Point, AutoScaleY: false, YMin: -0.02, YMax: 0.02, BoxSize: ProbeBoxSize.ExtraLarge, BoxX: 14, BoxY: 14 } && p.Probes[1] is { Layer: ProbeLayer.Intensity, Measurement: ProbeMeasurement.Intensity, Kind: ProbeKind.Line, StartAfter: 0, YMax: 0.0001 }, "probes: fixed value ranges, the unused start step dropped, use_probes honoured");
+		Check(p.Probes[0] is { Active: true, Kind: ProbeKind.Point, AutoScaleY: false, YMin: -0.02, YMax: 0.02, BoxSize: ProbeBoxSize.ExtraLarge, BoxX: 14, BoxY: 14 } && p.Probes[1] is { Layer: ProbeLayer.Intensity, Measurement: ProbeMeasurement.Value, Kind: ProbeKind.Line, StartAfter: 0, YMax: 0.0001 }, "probes: fixed value ranges, the unused start step dropped, use_probes honoured");
 
 		// start-after steps in use, an intensity probe, a detaching single source, the fallback decay
 		notes.Clear();
 		p = LegacyProject.Import(Path.Combine(root, "Wave_Dude_Examples", "Example3_Spherical_mirror", "configuration.json"), notes, out _);
-		Check(p.Probes[0] is { StartAfter: 600, Window: 3000, Layer: ProbeLayer.Intensity, Measurement: ProbeMeasurement.Intensity } && p.Probes[1] is { StartAfter: 600, Measurement: ProbeMeasurement.IntegratedIntensity, Kind: ProbeKind.Line }, "Example 3: start-after steps kept when their flag is on, intensity measurements");
+		Check(p.Probes[0] is { StartAfter: 600, Window: 3000, Layer: ProbeLayer.Intensity, Measurement: ProbeMeasurement.Value } && p.Probes[1] is { StartAfter: 600, Measurement: ProbeMeasurement.IntegratedValue, Kind: ProbeKind.Line }, "Example 3: start-after steps kept when their flag is on, intensity measurements");
 		Check(p.Sources[0] is { Array: null, DetachAfter: 670, PulseWidth: 70, OffWidth: 100, Frequency: 200 } && p.Simulation.TimeDecay == 8 && p.Display.Intensity.ColorScheme == "Copper", "a single detaching source (its unused array settings ignored), decay 8, Copper");
 		Check(p.Scene.Mode == SceneMode.Image && p.Scene.ImageData == null && notes.Count == 1, "image mode with the image missing: one note");
 
@@ -970,7 +970,7 @@ internal static class Program
 		lineProbe.BY = 30;
 		Probe integrated = project.AddProbe();
 		integrated.Layer = ProbeLayer.Intensity;
-		integrated.Measurement = ProbeMeasurement.IntegratedIntensity;
+		integrated.Measurement = ProbeMeasurement.IntegratedValue;
 		integrated.Kind = ProbeKind.Line;
 		integrated.AX = 10;
 		integrated.AY = 30;

@@ -705,8 +705,10 @@ Thirteen points on a sneak peek of the WPF app; status as of 2026-10-12:
   (`Simulation.Wavelength`: λ = c / f, the author's `UpdateLambdaLabel` formula; "(nominal)" with the
   9-point stencil, which disperses; the Properties pane got a `Project` DP for it); (8) the probe
   measurement combo offers only what the layer allows (`Probe.MeasurementsFor`, the layer setter
-  coerces) and the intensity measurements read "Value" / "Integrated value" (`[Description]` on the
-  enum members, honoured by `EnumNameConverter`); (9) the four random amounts of an array sit under
+  coerces) and the intensity measurements read "Value" / "Integrated value" (the enum members are
+  `ProbeMeasurement.Value` / `IntegratedValue` since 2026-10-14, renamed from Intensity / IntegratedIntensity
+  while the format could still change; the string tables name them, `EnumNameConverter` falls back to a
+  `[Description]`); (9) the four random amounts of an array sit under
   their own header "Random offsets, added per emitter"; (2) the in/out tooltips say "export range".
 - Done 2026-10-13: (1) a Run button (ring with a triangle, F5) left of Play, (4) two toggles left of
   the split radios show or hide each picture (bound to the layer's `Preview`, so hiding the intensity

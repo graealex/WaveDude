@@ -31,7 +31,7 @@ public sealed class ProbeCollector
 	/// <summary>
 	/// Drains the engine's buffered point-probe samples (<see cref="IWaveEngine.TakeProbeSamples"/>, one value
 	/// per step since the previous call) into the series traces and the pending UI batch. For cumulative
-	/// probes (point + IntegratedIntensity) the per-step intensities are replaced in place by their running
+	/// probes (point + IntegratedValue) the per-step intensities are replaced in place by their running
 	/// sum, which stays at 0 for steps before the probe's start step. Does nothing when there are no point
 	/// probes.
 	/// </summary>
