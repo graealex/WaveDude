@@ -17,9 +17,11 @@ public enum ProbeMeasurement
 {
 	/// <summary>Field value at the probe; field layer only.</summary>
 	Amplitude,
-	/// <summary>Averaged intensity at the probe; intensity layer only.</summary>
+	/// <summary>Averaged intensity at the probe; intensity layer only. Shown as "Value" (the layer already says intensity).</summary>
+	[Description("Value")]
 	Intensity,
-	/// <summary>Intensity summed over the run so far; intensity layer only.</summary>
+	/// <summary>Intensity summed over the run so far; intensity layer only. Shown as "Integrated value".</summary>
+	[Description("Integrated value")]
 	IntegratedIntensity,
 }
 
@@ -118,14 +120,21 @@ public sealed class Probe : ObservableObject
 	public ProbeLayer Layer
 	{
 		get => _layer;
-		set => SetProperty(ref _layer, value);
+		set
+		{
+			if (SetProperty(ref _layer, value))
+			{
+				// the measurement follows the layer at once, so the editor never shows an impossible pair
+				Measurement = MeasurementsFor(value).Contains(Measurement) ? Measurement : MeasurementsFor(value)[0];
+			}
+		}
 	}
 
-	/// <summary>Recorded quantity; must fit <see cref="Layer"/>, which <see cref="Normalize"/> enforces.</summary>
+	/// <summary>Recorded quantity; must fit <see cref="Layer"/>: setting the layer coerces it, <see cref="Normalize"/> re-checks it.</summary>
 	[XmlAttribute]
 	[DefaultValue(ProbeMeasurement.Amplitude)]
 	[Category("Measurement")]
-	[Description("Recorded quantity. The field only offers amplitude; the intensity output offers intensity or integrated intensity.")]
+	[Description("Recorded quantity. The field offers its amplitude only; the intensity layer its value, or the value integrated over the run.")]
 	public ProbeMeasurement Measurement
 	{
 		get => _measurement;
@@ -314,6 +323,10 @@ public sealed class Probe : ObservableObject
 
 	/// <summary>Tells <see cref="XmlSerializer"/> to write B only for line probes.</summary>
 	public bool ShouldSerializeBY() => Kind == ProbeKind.Line;
+
+	/// <summary>The measurements a probe on <paramref name="layer"/> can record (the editor offers only these).</summary>
+	public static ProbeMeasurement[] MeasurementsFor(ProbeLayer layer) =>
+		layer == ProbeLayer.Field ? [ProbeMeasurement.Amplitude] : [ProbeMeasurement.Intensity, ProbeMeasurement.IntegratedIntensity];
 
 	/// <summary>
 	/// Forces a consistent state: the field only allows <see cref="ProbeMeasurement.Amplitude"/>,

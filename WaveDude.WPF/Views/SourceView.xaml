@@ -3,11 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:WaveDude.WPF.Controls"
              xmlns:meta="clr-namespace:WaveDude.WPF.Markup"
+             xmlns:panes="clr-namespace:WaveDude.WPF.Panes"
+             xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
              xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
 
 	<UserControl.Resources>
+		<converters:WavelengthConverter x:Key="Wavelength" />
 		<!-- pulse settings only matter for a pulsed source -->
-		<Style x:Key="PulsedOnlyText" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+		<Style x:Key="PulsedOnlyText" TargetType="{x:Type controls:NumberBox}" BasedOn="{StaticResource {x:Type controls:NumberBox}}">
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding Mode}" Value="Continuous">
 					<Setter Property="IsEnabled" Value="False" />
@@ -37,22 +40,36 @@
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionPosition}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.X}" />
-				<TextBox Text="{Binding X}" ToolTip="{meta:Hint model:Source.X}" />
+				<controls:NumberBox Text="{Binding X}" Minimum="0" ToolTip="{meta:Hint model:Source.X}" AutomationProperties.AutomationId="SourceX" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Y}" />
-				<TextBox Text="{Binding Y}" ToolTip="{meta:Hint model:Source.Y}" />
+				<controls:NumberBox Text="{Binding Y}" Minimum="0" ToolTip="{meta:Hint model:Source.Y}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionWave}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Frequency}" />
-				<TextBox Text="{Binding Frequency}" ToolTip="{meta:Hint model:Source.Frequency}" />
+				<controls:NumberBox Text="{Binding Frequency}" Minimum="1" Maximum="255" ToolTip="{meta:Hint model:Source.Frequency}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Amplitude}" />
-				<TextBox Text="{Binding Amplitude}" ToolTip="{meta:Hint model:Source.Amplitude}" />
+				<controls:NumberBox Text="{Binding Amplitude}" Minimum="0" Maximum="100" ToolTip="{meta:Hint model:Source.Amplitude}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Phase}" />
-				<TextBox Text="{Binding Phase}" ToolTip="{meta:Hint model:Source.Phase}" />
+				<controls:NumberBox Text="{Binding Phase}" Minimum="-180" Maximum="180" ToolTip="{meta:Hint model:Source.Phase}" />
+
+				<!-- read-only: the wavelength this frequency gives with the project's wave speed (Simulation.Wavelength) -->
+				<TextBlock Style="{StaticResource FormLabel}" Text="{DynamicResource LabelWavelength}" />
+				<TextBlock VerticalAlignment="Center" ToolTip="{DynamicResource TipWavelength}"
+				           AutomationProperties.AutomationId="SourceWavelength">
+					<TextBlock.Text>
+						<MultiBinding Converter="{StaticResource Wavelength}">
+							<Binding Path="Frequency" />
+							<Binding Path="Project.Simulation.WaveSpeed" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+							<Binding Path="Project.Simulation.SourceFrequencyScale" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+							<Binding Path="Project.Simulation.FourthOrderLaplacian" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+						</MultiBinding>
+					</TextBlock.Text>
+				</TextBlock>
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionTiming}" />
@@ -66,13 +83,13 @@
 				          SelectedItem="{Binding PulseShape}" ToolTip="{meta:Hint model:Source.PulseShape}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.PulseWidth}" />
-				<TextBox Style="{StaticResource PulsedOnlyText}" Text="{Binding PulseWidth}" ToolTip="{meta:Hint model:Source.PulseWidth}" />
+				<controls:NumberBox Style="{StaticResource PulsedOnlyText}" Text="{Binding PulseWidth}" Minimum="1" ToolTip="{meta:Hint model:Source.PulseWidth}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.OffWidth}" />
-				<TextBox Style="{StaticResource PulsedOnlyText}" Text="{Binding OffWidth}" ToolTip="{meta:Hint model:Source.OffWidth}" />
+				<controls:NumberBox Style="{StaticResource PulsedOnlyText}" Text="{Binding OffWidth}" Minimum="1" ToolTip="{meta:Hint model:Source.OffWidth}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.DetachAfter}" />
-				<TextBox Text="{Binding DetachAfter}" ToolTip="{meta:Hint model:Source.DetachAfter}" />
+				<controls:NumberBox Text="{Binding DetachAfter}" Minimum="-1" ToolTip="{meta:Hint model:Source.DetachAfter}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionArray}" />
@@ -82,28 +99,31 @@
 			<controls:FormPanel DataContext="{Binding Array}"
 			                    IsEnabled="{Binding DataContext.IsComposite, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}">
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SizeX}" />
-				<TextBox Text="{Binding SizeX}" ToolTip="{meta:Hint model:SourceArray.SizeX}" />
+				<controls:NumberBox Text="{Binding SizeX}" Minimum="1" ToolTip="{meta:Hint model:SourceArray.SizeX}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SizeY}" />
-				<TextBox Text="{Binding SizeY}" ToolTip="{meta:Hint model:SourceArray.SizeY}" />
+				<controls:NumberBox Text="{Binding SizeY}" Minimum="1" ToolTip="{meta:Hint model:SourceArray.SizeY}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SpacingX}" />
-				<TextBox Text="{Binding SpacingX}" ToolTip="{meta:Hint model:SourceArray.SpacingX}" />
+				<controls:NumberBox Text="{Binding SpacingX}" ToolTip="{meta:Hint model:SourceArray.SpacingX}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SpacingY}" />
-				<TextBox Text="{Binding SpacingY}" ToolTip="{meta:Hint model:SourceArray.SpacingY}" />
+				<controls:NumberBox Text="{Binding SpacingY}" ToolTip="{meta:Hint model:SourceArray.SpacingY}" />
+
+				<!-- the four random amounts are offsets added per emitter on top of the values above (the author's point 9) -->
+				<TextBlock controls:FormPanel.FullWidth="True" Style="{StaticResource FormSection}" Text="{DynamicResource SectionRandom}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomFrequency}" />
-				<TextBox Text="{Binding RandomFrequency}" ToolTip="{meta:Hint model:SourceArray.RandomFrequency}" />
+				<controls:NumberBox Text="{Binding RandomFrequency}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomFrequency}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomPhase}" />
-				<TextBox Text="{Binding RandomPhase}" ToolTip="{meta:Hint model:SourceArray.RandomPhase}" />
+				<controls:NumberBox Text="{Binding RandomPhase}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomPhase}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomOffWidth}" />
-				<TextBox Text="{Binding RandomOffWidth}" ToolTip="{meta:Hint model:SourceArray.RandomOffWidth}" />
+				<controls:NumberBox Text="{Binding RandomOffWidth}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomOffWidth}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomPosition}" />
-				<TextBox Text="{Binding RandomPosition}" ToolTip="{meta:Hint model:SourceArray.RandomPosition}" />
+				<controls:NumberBox Text="{Binding RandomPosition}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomPosition}" />
 			</controls:FormPanel>
 		</StackPanel>
 	</ScrollViewer>

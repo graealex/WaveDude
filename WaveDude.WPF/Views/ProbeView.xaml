@@ -3,11 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:WaveDude.WPF.Controls"
              xmlns:meta="clr-namespace:WaveDude.WPF.Markup"
+             xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
              xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
 
 	<UserControl.Resources>
+		<converters:MeasurementsForLayerConverter x:Key="MeasurementsForLayer" />
 		<!-- point B and the step axis only apply to line and point probes respectively -->
-		<Style x:Key="LineOnly" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+		<Style x:Key="LineOnly" TargetType="{x:Type controls:NumberBox}" BasedOn="{StaticResource {x:Type controls:NumberBox}}">
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding Kind}" Value="Point">
 					<Setter Property="IsEnabled" Value="False" />
@@ -41,7 +43,7 @@
 				          IsChecked="{Binding Active}" ToolTip="{meta:Hint model:Probe.Active}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.StartAfter}" />
-				<TextBox Text="{Binding StartAfter}" ToolTip="{meta:Hint model:Probe.StartAfter}" />
+				<controls:NumberBox Text="{Binding StartAfter}" Minimum="0" ToolTip="{meta:Hint model:Probe.StartAfter}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionMeasurement}" />
@@ -51,7 +53,8 @@
 				          SelectedItem="{Binding Layer}" ToolTip="{meta:Hint model:Probe.Layer}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.Measurement}" />
-				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues model:ProbeMeasurement}"
+				<!-- only the measurements the layer offers: amplitude for the field, value / integrated value for the intensity -->
+				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{Binding Layer, Converter={StaticResource MeasurementsForLayer}}"
 				          SelectedItem="{Binding Measurement}" ToolTip="{meta:Hint model:Probe.Measurement}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.Kind}" />
@@ -62,16 +65,16 @@
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionPosition}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.AX}" />
-				<TextBox Text="{Binding AX}" ToolTip="{meta:Hint model:Probe.AX}" />
+				<controls:NumberBox Text="{Binding AX}" Minimum="0" ToolTip="{meta:Hint model:Probe.AX}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.AY}" />
-				<TextBox Text="{Binding AY}" ToolTip="{meta:Hint model:Probe.AY}" />
+				<controls:NumberBox Text="{Binding AY}" Minimum="0" ToolTip="{meta:Hint model:Probe.AY}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BX}" />
-				<TextBox Style="{StaticResource LineOnly}" Text="{Binding BX}" ToolTip="{meta:Hint model:Probe.BX}" />
+				<controls:NumberBox Style="{StaticResource LineOnly}" Text="{Binding BX}" Minimum="0" ToolTip="{meta:Hint model:Probe.BX}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BY}" />
-				<TextBox Style="{StaticResource LineOnly}" Text="{Binding BY}" ToolTip="{meta:Hint model:Probe.BY}" />
+				<controls:NumberBox Style="{StaticResource LineOnly}" Text="{Binding BY}" Minimum="0" ToolTip="{meta:Hint model:Probe.BY}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionGraph}" />
@@ -81,10 +84,10 @@
 				          SelectedItem="{Binding BoxSize}" ToolTip="{meta:Hint model:Probe.BoxSize}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BoxX}" />
-				<TextBox Text="{Binding BoxX}" ToolTip="{meta:Hint model:Probe.BoxX}" />
+				<controls:NumberBox Text="{Binding BoxX}" Minimum="0" ToolTip="{meta:Hint model:Probe.BoxX}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.BoxY}" />
-				<TextBox Text="{Binding BoxY}" ToolTip="{meta:Hint model:Probe.BoxY}" />
+				<controls:NumberBox Text="{Binding BoxY}" Minimum="0" ToolTip="{meta:Hint model:Probe.BoxY}" />
 			</controls:FormPanel>
 
 			<TextBlock Style="{StaticResource FormSection}" Text="{DynamicResource SectionAxes}" />
@@ -94,7 +97,7 @@
 				          SelectedItem="{Binding ScaleMode}" ToolTip="{meta:Hint model:Probe.ScaleMode}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.Window}" />
-				<TextBox Text="{Binding Window}" ToolTip="{meta:Hint model:Probe.Window}" />
+				<controls:NumberBox Text="{Binding Window}" Minimum="10" Maximum="1000000" Increment="10" ToolTip="{meta:Hint model:Probe.Window}" />
 
 				<CheckBox controls:FormPanel.FullWidth="True" Style="{StaticResource PointOnlyCheck}" Content="{meta:Label model:Probe.AutoScaleX}"
 				          IsChecked="{Binding AutoScaleX}" ToolTip="{meta:Hint model:Probe.AutoScaleX}" />
@@ -102,10 +105,10 @@
 				          IsChecked="{Binding AutoScaleY}" ToolTip="{meta:Hint model:Probe.AutoScaleY}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.YMin}" />
-				<TextBox Text="{Binding YMin}" ToolTip="{meta:Hint model:Probe.YMin}" />
+				<controls:NumberBox Text="{Binding YMin}" Increment="0.1" ToolTip="{meta:Hint model:Probe.YMin}" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Probe.YMax}" />
-				<TextBox Text="{Binding YMax}" ToolTip="{meta:Hint model:Probe.YMax}" />
+				<controls:NumberBox Text="{Binding YMax}" Increment="0.1" ToolTip="{meta:Hint model:Probe.YMax}" />
 			</controls:FormPanel>
 		</StackPanel>
 	</ScrollViewer>

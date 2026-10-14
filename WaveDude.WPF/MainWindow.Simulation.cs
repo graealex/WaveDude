@@ -47,6 +47,10 @@ public partial class MainWindow
 	/// <param name="automatic">Started after an edit rather than by the user: the preview keeps its position.</param>
 	private void StartRun(bool automatic = false)
 	{
+		if (!Settings.Default.UseGpu)
+		{
+			Logger.Info("Running on the CPU: 'Use the GPU' is off in the Simulation menu");
+		}
 		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu);
 		FrameCache.CheckSpace(FrameStore.SizeOf(spec.Width, spec.Height, spec.Layers, spec.FrameCount));
 		DiscardRun();

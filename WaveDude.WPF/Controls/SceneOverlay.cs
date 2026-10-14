@@ -274,19 +274,29 @@ public sealed class SceneOverlay : Panel
 
 	// ---------------------------------------------------------------- geometry
 
-	/// <summary>Pixels per canvas pixel: the picture's uniform scale inside this element.</summary>
-	private double Scale => Math.Min(ActualWidth / Math.Max(1, CanvasWidth), ActualHeight / Math.Max(1, CanvasHeight));
+	/// <summary>
+	/// Pixels per canvas pixel: the picture's uniform scale inside this element. Every mapping takes the
+	/// element size explicitly, because during <see cref="ArrangeOverride"/> <see cref="FrameworkElement.ActualWidth"/>
+	/// still holds the previous layout's size (WPF sets <see cref="UIElement.RenderSize"/> after arrange);
+	/// placing the handles from it left them where the picture used to be after every resize, while the
+	/// labels drawn in <see cref="OnRender"/> moved with it (2026-10-10).
+	/// </summary>
+	private double ScaleFor(Size size) => Math.Min(size.Width / Math.Max(1, CanvasWidth), size.Height / Math.Max(1, CanvasHeight));
 
-	/// <summary>Where canvas pixel (0, 0) starts: the picture is centred in the element.</summary>
-	private Point Origin => new((ActualWidth - CanvasWidth * Scale) / 2, (ActualHeight - CanvasHeight * Scale) / 2);
+	/// <summary>The current scale, for rendering and dragging (after layout).</summary>
+	private double Scale => ScaleFor(RenderSize);
 
-	/// <summary>The centre of canvas pixel (x, y) in this element's coordinates.</summary>
-	private Point ToView(int x, int y)
+	/// <summary>The centre of canvas pixel (x, y) in this element's coordinates, for an element of <paramref name="size"/>; the picture is centred in it.</summary>
+	private Point ToView(int x, int y, Size size)
 	{
-		double scale = Scale;
-		Point origin = Origin;
-		return new Point(origin.X + (x + 0.5) * scale, origin.Y + (y + 0.5) * scale);
+		double scale = ScaleFor(size);
+		double originX = (size.Width - CanvasWidth * scale) / 2;
+		double originY = (size.Height - CanvasHeight * scale) / 2;
+		return new Point(originX + (x + 0.5) * scale, originY + (y + 0.5) * scale);
 	}
+
+	/// <summary>The centre of canvas pixel (x, y) in this element's coordinates at its current size.</summary>
+	private Point ToView(int x, int y) => ToView(x, y, RenderSize);
 
 	private static (int X, int Y) PointOf(MarkerThumb thumb) => (thumb.Item, thumb.Role) switch
 	{
@@ -333,7 +343,7 @@ public sealed class SceneOverlay : Panel
 		foreach (MarkerThumb thumb in Children)
 		{
 			(int x, int y) = PointOf(thumb);
-			Point centre = ToView(x, y);
+			Point centre = ToView(x, y, finalSize);
 			Size size = thumb.DesiredSize;
 			thumb.Arrange(new Rect(centre.X - size.Width / 2, centre.Y - size.Height / 2, size.Width, size.Height));
 		}

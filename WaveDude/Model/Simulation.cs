@@ -123,6 +123,24 @@ public sealed class Simulation : ObservableObject
 		&& WaveSpeed == DefaultWaveSpeed && TimeDecay == DefaultTimeDecay
 		&& SourceFrequencyScale == DefaultSourceFrequencyScale && IntensityScale == DefaultIntensityScale;
 
+	/// <summary>
+	/// Estimated wavelength in canvas pixels of a source at <paramref name="level"/> (1 to 255):
+	/// λ = c / f with f = (level / 255 × 0.5 × <see cref="SourceFrequencyScale"/>) / 2π cycles per step
+	/// (the engines' angular frequency) and c = <see cref="WaveSpeed"/>; level 100, c = 1 and scale 2 give
+	/// 16.0 px. The author's reason for showing it: emitters one wavelength apart radiate in phase along
+	/// that direction (2026-10-10). An estimate only: the field's real speed comes from the scene's
+	/// refractive index, and the 9-point stencil disperses, so the value holds for the 4th-order
+	/// Laplacian. NaN when the level is not positive.
+	/// </summary>
+	public double WavelengthOf(int level) => Wavelength(level, WaveSpeed, SourceFrequencyScale);
+
+	/// <summary>The formula behind <see cref="WavelengthOf"/> for callers that bind the three inputs separately.</summary>
+	public static double Wavelength(int level, double waveSpeed, double sourceFrequencyScale)
+	{
+		double cyclesPerStep = level / 255.0 * 0.5 * sourceFrequencyScale / (2.0 * Math.PI);
+		return cyclesPerStep > 0 ? waveSpeed / cyclesPerStep : double.NaN;
+	}
+
 	/// <summary>Clamps every value into its valid range.</summary>
 	public void Normalize()
 	{
