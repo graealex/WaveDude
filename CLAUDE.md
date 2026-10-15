@@ -198,9 +198,26 @@ WPF shell as it stands:
   Both go through the model, so the project turns dirty (asterisk, save prompt), the run goes stale and the
   frame is recomputed; a path change alone is not a simulation change. No hash: the embedded bytes are the
   baseline and the file has to be read to re-embed it anyway. Open decisions: base64 vs BaseXML for the
-  bytes (base64 is what `XmlSerializer` does natively; BaseXML would need an in-house codec); a colour
-  picker dialog for the stops (hex text only today; the WinForms `ColorDialog` would need
-  `UseWindowsForms`); renaming a project scheme does not update the layers that refer to it.
+  bytes (base64 is what `XmlSerializer` does natively; BaseXML would need an in-house codec); renaming a project
+  scheme does not update the layers that refer to it. **The colour picker** (2026-10-15, the user's choice of an
+  in-house picker over the Windows dialog, which is not themed, has no live preview and cannot be driven by posted
+  keys): each stop row's swatch is a `Controls/ColorPickerButton` (a `ToggleButton`; Space, Enter or Down open a
+  popup below it, id `StopSwatch:<position>`, the hex box beside it `StopColor:<position>`, both in the locale's
+  number spelling) holding a `Controls/ColorPicker`: a saturation/value square under the pure hue (white-to-clear
+  and clear-to-black overlays), a hue strip, R/G/B `NumberBox`es and the hex, all views of its one `Color`
+  (`Rgb.ToHsv`/`FromHsv` in the library, exact round trip for every 8-bit colour, harness-checked; the HSV side
+  keeps its hue for a grey and whenever the colour set from outside is what the current hue, saturation and value
+  give, so a drag never jumps). Keyboard: the square and the strip are `Thumb`s (a thumb captures the mouse for
+  the drag and has an automation peer, a Border has neither), arrows move saturation/value by 1/100 and the hue
+  by a degree, ten with Shift; the colour follows every move, so the gradient and the preview recolour live, but
+  **the owner is told at most ten times a second** (`ColorPicker.CommitInterval`, 2026-10-15, after a drag felt
+  sluggish: every commit sets off the scheme's change, the gradient bar, the dirty flag and a re-render of both
+  pictures; the markers and the square move at once, the commit follows within 100 ms and once more when the drag
+  ends, and a colour set from outside, Escape's revert included, cancels a pending one); Enter keeps (a text box being edited is committed first), Escape puts the colour back and closes, a click
+  outside closes (the click that lands on the swatch is swallowed for 250 ms, else it reopened the popup). Ids
+  `ColorSquare`, `ColorHue`, `ColorRed|Green|Blue`, `ColorHex`. The markers live in the thumbs' own templates, so
+  the picker finds them through `Template.FindName` after `ApplyTemplate` on the thumb; `GetTemplateChild` on
+  the picker returned null and left both markers at the top-left corner.
 - **Scene image in the preview** (2026-10-13, the user's choice after the author's app was checked):
   the original shows the scene image itself as the picking background of its Sources/Probes tabs and
   lays a "glowing edges" outline (per-channel Sobel × 0.25, clamped) over the field and intensity
@@ -697,7 +714,15 @@ passing harnesses for comfort, never all of them after an edit.
   file and turns the project dirty, the status bar says so, the scene view shows the path; then the file is
   overwritten on disk and the picture follows within a moment; a second project without a path finds its
   image by name in `scene_images` and stores the relative path (8 checks, about 40 s).
-  `_tools/ui_check/AboutCheck.ps1` (2026-10-15, 17 checks, about 10 s) opens Help > About by keyboard (F10, Left wraps
+  `_tools/ui_check/ColorPickerCheck.ps1` (2026-10-15, 11 checks, about 12 s) drives the stop swatch's picker on
+  `tiny_scheme.wdproj` (tiny plus a project scheme with a middle stop #4080C0): End in the tree selects the scheme
+  (the tree is one tab stop, End goes to its last visible item), Tab reaches the swatch, Space opens the popup with
+  the focus on the square, ten Left arrows make the stop #538AC0 at once (hue 210, saturation 2/3 - 1/10, value
+  0.753, the number the library check also asserts), Escape puts #4080C0 back, Tab walks strip and red box, five
+  Up arrows make #4580C0, Enter keeps it; the popup's own window is captured as `%TEMP%\wavedude_color_picker.popup.png`.
+  A `Rectangle` has no automation peer (the gradient's id `SchemeGradient` is invisible to UIA; the "Add stop"
+  button marks the editor instead).
+  `_tools/ui_check/AboutCheck.ps1` (2026-10-15, 18 checks, about 10 s) opens Help > About by keyboard (F10, Left wraps
   to the Help header, Down, Enter), finds the dialog as a child of the main window, posts its keys to the dialog's own
   handle (`DKey`), and checks the version line against `git rev-parse --short=7 HEAD`, the copyright and credit lines,
   the five links, the eight system lines, the focus on Close, the Tab cycle, Space on the license toggle showing the
@@ -962,8 +987,7 @@ progress and cancel are in, and the still of the shown frame; `library_check -- 
 cover them. Left: probe data as CSV (series per step, profiles per frame), an integer upscale for small
 canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 
-**Also open, smaller.** A colour picker dialog for stops (hex only now; WinForms `ColorDialog` needs `UseWindowsForms`);
-offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
+**Also open, smaller.** Offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
 refer to it; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
 dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
 pan (roadmap); dock pane titles are not exposed to UI Automation.

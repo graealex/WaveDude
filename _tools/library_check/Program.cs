@@ -1014,6 +1014,22 @@ internal static class Program
 			Check(uneven.GetEntry(0) == new Rgb(0, 0, 0) && uneven.GetEntry(127) == new Rgb(170, 170, 255) && uneven.GetEntry(254) == new Rgb(0, 0, 255) && uneven.GetEntry(32) == new Rgb(129, 129, 129), "stops at any position interpolate between their neighbours (0, 0.25, 1)");
 			ColorStop added = uneven.AddStop();
 			Check(uneven.Stops.Count == 4 && Math.Abs(added.Position - 0.625) < 1e-9 && uneven.Stops.IndexOf(added) == 2, "AddStop fills the widest gap, in position order");
+			bool hsvRoundTrip = true;
+			for (int r = 0; r < 256; r += 5)
+			{
+				for (int g = 0; g < 256; g += 5)
+				{
+					for (int b = 0; b < 256; b += 5)
+					{
+						var c = new Rgb((byte)r, (byte)g, (byte)b);
+						(double h, double s, double v) = c.ToHsv();
+						hsvRoundTrip &= Rgb.FromHsv(h, s, v) == c;
+					}
+				}
+			}
+			Check(hsvRoundTrip && Rgb.FromHsv(0, 1, 1) == new Rgb(255, 0, 0) && Rgb.FromHsv(120, 1, 1) == new Rgb(0, 255, 0) && Rgb.FromHsv(240, 1, 0.5) == new Rgb(0, 0, 128)
+				&& new Rgb(64, 128, 192).ToHsv().Hue == 210 && Rgb.FromHsv(210, 0.5667, 0.7529) == new Rgb(83, 138, 192) && Rgb.FromHsv(-150, 2, 1) == Rgb.FromHsv(210, 1, 1),
+				"HSV: every sampled colour round-trips, the primaries, #4080C0's hue, a lowered saturation and the wrapping come out right");
 			var project = new Project();
 			project.ColorSchemes.Add(field.Clone("Mine"));
 			project.Scene.ImageData = [1, 2, 3, 4, 250, 0, 255];

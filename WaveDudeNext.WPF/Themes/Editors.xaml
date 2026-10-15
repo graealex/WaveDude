@@ -380,6 +380,140 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<!-- property forms -->
 	<!-- a group header in the Properties pane: the name over a rule across the width, so the groups read apart
 	     (2026-10-15, after the Field and Intensity groups of the Display view were taken for one list) -->
+	<!-- the colour picker (2026-10-15): the square is the pure hue under a white-to-clear and a clear-to-black overlay,
+	     the strip the hue circle top to bottom; the markers are placed by the control; square and strip take the focus -->
+	<converters:RgbBrushConverter x:Key="RgbBrush" />
+	<Style TargetType="{x:Type controls:ColorPicker}">
+		<Setter Property="Focusable" Value="False" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type controls:ColorPicker}">
+					<StackPanel Margin="8">
+						<DockPanel>
+							<Thumb x:Name="PART_Square" DockPanel.Dock="Left" Width="160" Height="160" Focusable="True" FocusVisualStyle="{x:Null}"
+							       BorderThickness="1" BorderBrush="{DynamicResource TextBoxBorder}" ToolTip="{DynamicResource TipColorSquare}"
+							       AutomationProperties.AutomationId="ColorSquare">
+								<Thumb.Template>
+									<ControlTemplate TargetType="{x:Type Thumb}">
+										<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+											<Grid Background="{Binding HueBrush, RelativeSource={RelativeSource AncestorType={x:Type controls:ColorPicker}}}">
+												<Rectangle>
+													<Rectangle.Fill>
+														<LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+															<GradientStop Color="#FFFFFFFF" Offset="0" />
+															<GradientStop Color="#00FFFFFF" Offset="1" />
+														</LinearGradientBrush>
+													</Rectangle.Fill>
+												</Rectangle>
+												<Rectangle>
+													<Rectangle.Fill>
+														<LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+															<GradientStop Color="#00000000" Offset="0" />
+															<GradientStop Color="#FF000000" Offset="1" />
+														</LinearGradientBrush>
+													</Rectangle.Fill>
+												</Rectangle>
+												<Canvas IsHitTestVisible="False">
+													<Grid x:Name="PART_SquareMarker" Width="13" Height="13">
+														<Ellipse Stroke="Black" StrokeThickness="3" />
+														<Ellipse Stroke="White" StrokeThickness="1.5" Margin="0.75" />
+													</Grid>
+												</Canvas>
+											</Grid>
+										</Border>
+									</ControlTemplate>
+								</Thumb.Template>
+							</Thumb>
+							<Thumb x:Name="PART_HueStrip" Width="20" Height="160" Margin="8,0,0,0" HorizontalAlignment="Left" Focusable="True" FocusVisualStyle="{x:Null}"
+							       BorderThickness="1" BorderBrush="{DynamicResource TextBoxBorder}" ToolTip="{DynamicResource TipColorHue}"
+							       AutomationProperties.AutomationId="ColorHue">
+								<Thumb.Template>
+									<ControlTemplate TargetType="{x:Type Thumb}">
+										<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+											<Grid>
+												<Rectangle>
+													<Rectangle.Fill>
+														<LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+															<GradientStop Color="#FF0000" Offset="0" />
+															<GradientStop Color="#FFFF00" Offset="0.1667" />
+															<GradientStop Color="#00FF00" Offset="0.3333" />
+															<GradientStop Color="#00FFFF" Offset="0.5" />
+															<GradientStop Color="#0000FF" Offset="0.6667" />
+															<GradientStop Color="#FF00FF" Offset="0.8333" />
+															<GradientStop Color="#FF0000" Offset="1" />
+														</LinearGradientBrush>
+													</Rectangle.Fill>
+												</Rectangle>
+												<Canvas IsHitTestVisible="False">
+													<Border x:Name="PART_HueMarker" Width="22" Height="7" Canvas.Left="-2" BorderBrush="White" BorderThickness="1">
+														<Border BorderBrush="Black" BorderThickness="1" />
+													</Border>
+												</Canvas>
+											</Grid>
+										</Border>
+									</ControlTemplate>
+								</Thumb.Template>
+							</Thumb>
+						</DockPanel>
+						<DockPanel Margin="0,8,0,0">
+							<TextBlock DockPanel.Dock="Left" Text="R" VerticalAlignment="Center" Margin="0,0,3,0" />
+							<controls:NumberBox DockPanel.Dock="Left" Width="56" Minimum="0" Maximum="255" Increment="1" ToolTip="{DynamicResource TipColorChannel}"
+							                    Text="{Binding Red, RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.AutomationId="ColorRed" />
+							<TextBlock DockPanel.Dock="Left" Text="G" VerticalAlignment="Center" Margin="8,0,3,0" />
+							<controls:NumberBox DockPanel.Dock="Left" Width="56" Minimum="0" Maximum="255" Increment="1" ToolTip="{DynamicResource TipColorChannel}"
+							                    Text="{Binding Green, RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.AutomationId="ColorGreen" />
+							<TextBlock DockPanel.Dock="Left" Text="B" VerticalAlignment="Center" Margin="8,0,3,0" />
+							<controls:NumberBox DockPanel.Dock="Left" Width="56" Minimum="0" Maximum="255" Increment="1" ToolTip="{DynamicResource TipColorChannel}"
+							                    Text="{Binding Blue, RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.AutomationId="ColorBlue" />
+							<TextBox Margin="8,0,0,0" ToolTip="{DynamicResource TipStopColor}" AutomationProperties.AutomationId="ColorHex"
+							         Text="{Binding Color, RelativeSource={RelativeSource TemplatedParent}}" />
+						</DockPanel>
+					</StackPanel>
+					<ControlTemplate.Triggers>
+						<Trigger SourceName="PART_Square" Property="IsKeyboardFocused" Value="True">
+							<Setter TargetName="PART_Square" Property="BorderBrush" Value="{DynamicResource Accent}" />
+						</Trigger>
+						<Trigger SourceName="PART_HueStrip" Property="IsKeyboardFocused" Value="True">
+							<Setter TargetName="PART_HueStrip" Property="BorderBrush" Value="{DynamicResource Accent}" />
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
+	<!-- the swatch that opens the picker in a popup below it; the popup's open state is the button's checked state -->
+	<Style TargetType="{x:Type controls:ColorPickerButton}">
+		<Setter Property="Width" Value="22" />
+		<Setter Property="Height" Value="18" />
+		<Setter Property="FocusVisualStyle" Value="{x:Null}" />
+		<Setter Property="Template">
+			<Setter.Value>
+				<ControlTemplate TargetType="{x:Type controls:ColorPickerButton}">
+					<Grid>
+						<Border x:Name="Bd" BorderBrush="{DynamicResource TextBoxBorder}" BorderThickness="1" SnapsToDevicePixels="True"
+						        Background="{Binding Color, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource RgbBrush}}" />
+						<Popup x:Name="PART_Popup" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="None"
+						       PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+						       IsOpen="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+							<Border Background="{DynamicResource ComboBoxListBackground}" BorderBrush="{DynamicResource MenuPopupBorder}" BorderThickness="1" SnapsToDevicePixels="True">
+								<controls:ColorPicker x:Name="PART_Picker" Color="{Binding Color, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+							</Border>
+						</Popup>
+					</Grid>
+					<ControlTemplate.Triggers>
+						<Trigger Property="IsMouseOver" Value="True">
+							<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TextBoxHoverBorder}" />
+						</Trigger>
+						<Trigger Property="IsKeyboardFocused" Value="True">
+							<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+						</Trigger>
+					</ControlTemplate.Triggers>
+				</ControlTemplate>
+			</Setter.Value>
+		</Setter>
+	</Style>
+
 	<!-- links (About): accent colour, underlined on hover and when focused by keyboard; the focus rectangle is WPF's own -->
 	<Style TargetType="{x:Type Hyperlink}">
 		<Setter Property="Foreground" Value="{DynamicResource Accent}" />

@@ -109,7 +109,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			<Rectangle Height="18" Margin="0,0,0,6" Stroke="{DynamicResource TextBoxBorder}" StrokeThickness="1"
 			           Fill="{Binding Stops, Converter={StaticResource ColorSchemeBrush}}" AutomationProperties.AutomationId="SchemeGradient" />
 
-			<!-- one row per stop: position (0..1), swatch, colour as #RRGGBB, remove -->
+			<!-- one row per stop: position (0..1), swatch (the picker), colour as #RRGGBB, remove -->
 			<ItemsControl ItemsSource="{Binding Stops}" Focusable="False">
 				<ItemsControl.ItemTemplate>
 					<DataTemplate>
@@ -118,9 +118,11 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 							        Command="{x:Static commands:ColorSchemeCommands.RemoveStop}" CommandParameter="{Binding}" />
 							<controls:NumberBox DockPanel.Dock="Left" Width="64" Minimum="0" Maximum="1" Increment="0.01" Text="{Binding Position}"
 							                    ToolTip="{DynamicResource TipStopPosition}" />
-							<Rectangle DockPanel.Dock="Left" Width="22" Height="18" Margin="4,0" Stroke="{DynamicResource TextBoxBorder}" StrokeThickness="1"
-							           Fill="{Binding Color, Converter={StaticResource RgbBrush}}" />
-							<TextBox Text="{Binding Color}" ToolTip="{DynamicResource TipStopColor}" />
+							<!-- the swatch opens the colour picker (Space, Enter, Down); ids carry the stop's position -->
+							<controls:ColorPickerButton DockPanel.Dock="Left" Margin="4,0" Color="{Binding Color}" ToolTip="{DynamicResource TipStopSwatch}"
+							                            AutomationProperties.AutomationId="{Binding Position, StringFormat='StopSwatch:{0}'}" />
+							<TextBox Text="{Binding Color}" ToolTip="{DynamicResource TipStopColor}"
+							         AutomationProperties.AutomationId="{Binding Position, StringFormat='StopColor:{0}'}" />
 						</DockPanel>
 					</DataTemplate>
 				</ItemsControl.ItemTemplate>

@@ -257,6 +257,10 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="TipRemoveStop">Remove this stop</s:String>
 	<s:String x:Key="TipStopPosition">Position along the gradient: 0 at the lowest value, 1 at the highest</s:String>
 	<s:String x:Key="TipStopColor">Colour as #RRGGBB; Enter applies it</s:String>
+	<s:String x:Key="TipStopSwatch">Pick the colour: Space opens the picker, Enter keeps it, Escape puts the old colour back</s:String>
+	<s:String x:Key="TipColorSquare">Saturation (Left, Right) and brightness (Up, Down); Shift moves by ten steps</s:String>
+	<s:String x:Key="TipColorHue">Hue: Up and Down move by a degree, ten with Shift</s:String>
+	<s:String x:Key="TipColorChannel">Channel 0 to 255; Up and Down step it</s:String>
 	<s:String x:Key="OpenFileDialogFilter">WaveDude Next projects (*.wdproj)|*.wdproj|Wave Dude 2D projects (configuration.json)|configuration.json;*.json|XML files (*.xml)|*.xml|All files (*.*)|*.*</s:String>
 	<s:String x:Key="SaveFileDialogFilter">WaveDude Next projects (*.wdproj)|*.wdproj|XML files (*.xml)|*.xml</s:String>
 	<s:String x:Key="OpenError">Could not open '{0}'.</s:String>

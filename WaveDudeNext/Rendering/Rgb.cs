@@ -42,6 +42,50 @@ public readonly record struct Rgb(byte R, byte G, byte B)
 	/// <summary><c>#RRGGBB</c>, upper case.</summary>
 	public override string ToString() => $"#{R:X2}{G:X2}{B:X2}";
 
+	/// <summary>
+	/// Hue in degrees (0 to 360, 0 for a grey), saturation and value (0 to 1) of this colour: the HSV model the
+	/// colour picker works in (2026-10-15). <see cref="FromHsv"/> gives the colour back exactly for every 8-bit colour.
+	/// </summary>
+	public (double Hue, double Saturation, double Value) ToHsv()
+	{
+		double r = R / 255.0, g = G / 255.0, b = B / 255.0;
+		double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), delta = max - min;
+		double hue = 0;
+		if (delta > 0)
+		{
+			hue = 60 * (max == r ? (g - b) / delta : max == g ? (b - r) / delta + 2 : (r - g) / delta + 4);
+			if (hue < 0)
+			{
+				hue += 360;
+			}
+		}
+		return (hue, max > 0 ? delta / max : 0, max);
+	}
+
+	/// <summary>
+	/// The colour of a hue in degrees (wrapped into 0 to 360), a saturation and a value (both clamped to 0 to 1),
+	/// each channel rounded to 8 bits.
+	/// </summary>
+	public static Rgb FromHsv(double hue, double saturation, double value)
+	{
+		hue = (hue % 360 + 360) % 360;
+		saturation = Math.Clamp(saturation, 0, 1);
+		value = Math.Clamp(value, 0, 1);
+		double c = value * saturation;
+		double x = c * (1 - Math.Abs(hue / 60 % 2 - 1));
+		double m = value - c;
+		(double r, double g, double b) = hue switch
+		{
+			< 60 => (c, x, 0.0),
+			< 120 => (x, c, 0.0),
+			< 180 => (0.0, c, x),
+			< 240 => (0.0, x, c),
+			< 300 => (x, 0.0, c),
+			_ => (c, 0.0, x),
+		};
+		return Clamped((int)Math.Round((r + m) * 255), (int)Math.Round((g + m) * 255), (int)Math.Round((b + m) * 255));
+	}
+
 	/// <summary>Parses <c>#RRGGBB</c>, <c>RRGGBB</c>, <c>#RGB</c> or <c>[r,g,b]</c>.</summary>
 	/// <exception cref="FormatException">The text is none of those.</exception>
 	public static Rgb Parse(string text) =>
