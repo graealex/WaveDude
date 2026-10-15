@@ -338,7 +338,7 @@ WPF shell as it stands:
   in canvas pixels. **An auto-scaled value axis is symmetric about zero** for an amplitude (±largest
   magnitude + 8 %), from zero up for an intensity, and stays at the fixed range while the data is all zeros
   (`ProbeGraph.AutoRange`, 2026-10-14, the user's rule: the author's independent fit of both ends made the
-  zero line wander and the labels flicker while the first oscillations arrived). Still open: the signal lane under the timeline (roadmap); the box in exports is drawn (see "Export").
+  zero line wander and the labels flicker while the first oscillations arrived). The box in exports is drawn (see "Export").
 - **Export** (2026-10-14, the user's design): File > Export > Field… / Intensity… / Both…, the same three on each
   picture's context menu (its own layer first; `Controls`-less: a `ContextMenu` on the picture cell with
   `CommandTarget` = the cell, ids `ContextExportField|Intensity|Both`). The standard Save dialog picks the
@@ -894,7 +894,7 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, 
   skipped (`ScratchRunner.Budget` is 6 s, predicted from the stepping cost of the last request with
   at least 50 steps; a request with no measurement yet always computes). Frames early in the run are proportionally cheaper (frame 0: 90 ms including
   the capture and the UI round trip).
-- Known limits: the probe signal lane under the timeline is not drawn yet (the graph boxes are, 2026-10-14);
+- Known limits:
   `OpenClApi` imports `"OpenCL"` (resolves to `OpenCL.dll` here, `libOpenCL.so` elsewhere); the library is
   compiled with `AllowUnsafeBlocks` for the MP4 writer's buffer copy.
   The library is compiled with `<Optimize>true</Optimize>` in every configuration (2026-10-10): a
@@ -926,9 +926,9 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, 
 ## Known issues (open)
 
 
-- WPF: no progress bar for a run (status text only; the export has one); the probe
-  signal lane is not drawn yet (the graph boxes are); the preview skips frames at
-  1080p (see the numbers in the library architecture section).
+- WPF: the preview skips frames at 1080p (see the numbers in the library architecture section). A progress
+  bar for runs was **dropped on 2026-10-16** (the user: the status text and the timeline's shading show the
+  run's progress already); do not resurrect it.
 - WPF preview, frames vs. steps: the transport bar, scrubber and playback count **frames**
   (0..`LastFrame`, one per `VisualizeEvery` steps), while sources, probes, the export range and the
   Properties pane use **steps**; the readout shows both (`773 / 1249  step 1546`), which reads as
@@ -967,7 +967,7 @@ Thirteen points on a sneak peek of the WPF app; status as of 2026-10-12:
 - Still open: "re-run automatically does not always work" (by design: display edits and a probe's graph
   settings do not re-run, and the run waits 1.5 s of quiet).
 - Done 2026-10-14: (10) export, from the store at any time (see "Export" in the WPF shell list).
-- Roadmap already: (7) probe graphs (the lane), (12) project format (the user answered: images
+- Roadmap already: (12) project format (the user answered: images
   embedded or relative, output next to the file, the JSON format imported).
 - The author also suggests dropping the 9-point Laplacian (confusing; only useful to show dispersion).
 
@@ -991,10 +991,9 @@ PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next ses
   `ScaleMode` (running window / full run), `Window` (steps), `AutoScaleX/Y`, `YMin/YMax`,
   `StartAfter`. The handles on the pictures exist (`SceneOverlay`, ids `Probe:<name>:A|B`).
 - Spec: the author's GDI+ `ProbeGraphPainter` / `ProbeOverlay` (in git history), now ported
-  as geometry to `WaveDudeNext.Probes.ProbeGraph` and drawn by `ProbeGraphOverlay`. Still to do: the
-  **probe signal lane** under the timeline on the same time axis (roadmap item 5), drawn from the same
-  traces (`ProbeGraph.ComputeRanges` and its binning can be reused), and the box in exports (the layout is
-  renderer-neutral; a `DrawingVisual` rendered into the frame would do). Author's point 7, second half.
+  as geometry to `WaveDudeNext.Probes.ProbeGraph` and drawn by `ProbeGraphOverlay`, in exports too. A "probe
+  signal lane" under the timeline, which an earlier session had attached to Jeroen's point 7, was **dropped
+  on 2026-10-16** (the user: not asked for, the boxes show the same recording); do not resurrect it.
 
 **Export (done 2026-10-14, see "Export" in the WPF shell list).** Formats, menus, run-first, probe boxes,
 progress and cancel are in, and the still of the shown frame; `library_check -- export` and `ExportCheck.ps1`
@@ -1014,8 +1013,7 @@ pan (roadmap).
 5. **WPF UI** in `WaveDudeNext.WPF`: the preview shows a live run and replays it from the frame store
    (done 2026-10-09); editors, colour schemes, scene image and outline, languages (done 2026-10-14,
    see the handoff section); probe graph boxes and export from the store (done 2026-10-14). Next, in this
-   order of value: the **probe signal lane**, probe data as CSV, a progress bar for runs (the busy indicator
-   exists for exports and scratch frames).
+   order of value: probe data as CSV.
    Store: ~~a RAM-first frame store with a budget~~ (done 2026-10-14, two tiers, no background spill
    needed: the file takes the tail of a run that does not fit).
    Timeline, agreed 2026-10-09 (the scrub bar, in/out range, transport keys and the available-frames
@@ -1025,8 +1023,6 @@ pan (roadmap).
      its start step as a flag; clicking selects the item in the Project tree, dragging a bar's
      edge changes its start/stop steps. Needs a scrollable track area and a collapse rule for
      many rows.
-   - **Probe signal lane**: the probe's sampled amplitude/intensity over time drawn like an audio
-     track on the same axis, so graph and picture line up; only meaningful once a run has data.
    - **Zoom and pan of the time axis**: Ctrl+wheel zooms around the cursor, Shift+wheel pans, a
      thin overview bar shows the visible window; needed once tracks exist, since 2500 steps at
      one pixel per frame do not fit.
