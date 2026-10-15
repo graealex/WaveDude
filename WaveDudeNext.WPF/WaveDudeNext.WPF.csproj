@@ -10,17 +10,21 @@
     <StartupObject>WaveDudeNext.WPF.Program</StartupObject>
     <!-- executable icon (Explorer, taskbar); the window icon is the same file as a resource -->
     <ApplicationIcon>App.ico</ApplicationIcon>
-    <!-- read by About and the file properties; the licence text is LICENSE.md, the header of every source file names it -->
+    <!-- read by About and the file properties; the license text is LICENSE.md, the header of every source file names it -->
     <Authors>Alexander Graef</Authors>
     <Copyright>Copyright (C) 2026 Alexander Graef</Copyright>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
-    <!-- the .editorconfig code-style rules are build warnings too: a file without the licence header (IDE0073) -->
+    <!-- the .editorconfig code-style rules are build warnings too: a file without the license header (IDE0073) -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="App.ico" />
+    <Resource Include="App.png" />
   </ItemGroup>
+
+  <!-- LICENSE.md becomes the embedded FlowDocument "License.xaml" that Help > About shows -->
+  <Import Project="Build\LicenseDocument.targets" />
 
   <ItemGroup>
     <PackageReference Include="NLog" Version="6.2.1" />

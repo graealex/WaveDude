@@ -7,7 +7,7 @@ Last updated 2026-10-15. Update this file when the facts below change.
 **WaveDude Next** — a 2D wave-equation simulator (field + accumulated intensity views, refractive-index
 scenes from images, point/composite sources, probes with live graphs, video export), the successor of
 Jeroen Vleggaar's (Huygens Optics) **Wave Dude 2D v0.29**, rebuilt as a .NET 10 library plus a WPF app with a
-live, scrubbable preview. Licence **GPL-3.0-or-later** (see "Rebrand and licensing" below for the people,
+live, scrubbable preview. License **GPL-3.0-or-later** (see "Rebrand and licensing" below for the people,
 the header and LICENSE.md).
 
 **The old sources are gone from the tree** (2026-10-15, the first rebrand step): the author's VB.NET
@@ -441,6 +441,29 @@ WPF shell as it stands:
   compresses slower, about 33 ms per frame in the job (`CompressionLevel.Fastest` would be the lever, at some
   size). `JpegEncoder.ParallelRows` and `LastPhases` exist for the bench. The harness project is
   `net10.0-windows` with `UseWPF` for that bench (the library stays `net10.0`).
+- **Help > About** (2026-10-15, the user's go on the recommendation): `Help/AboutWindow`, a modal window owned by the
+  main window (themed, dark title bar, `HelpCommands.About`, id `MenuHelpAbout`; Esc and Enter close, every link and
+  button in the Tab cycle, the focus starts on Close; sized to its content at first and **resizable** (the user's
+  rule, 2026-10-15: modal does not mean fixed), the license document taking the extra height while it is shown, a
+  filler row above the buttons otherwise, so Close stays at the bottom). One page: the icon, product, "Version 0.1.0 (05e5865)" and the
+  copyright from the assembly attributes (`Help/AboutInfo`; the version is `Directory.Build.props`' `Version` plus the
+  commit hash the SDK puts into the informational version, shortened to seven characters); the credits word for word
+  as in the source header, in English, with the four links; the GPL sentence (localised) with the link to gnu.org and
+  a button that shows LICENSE.md as a document (the user's rule, 2026-10-15: no raw Markdown on screen, no Markdown
+  library and no Markdown code in the app): `Build/LicenseDocument.targets` turns the file into a `FlowDocument`
+  at build time with an inline C# task (`RoslynCodeTaskFactory`, part of MSBuild; headings, paragraphs, the rule,
+  bullet lists, indented code and the bare URL links, which is all the FSF's file has) into
+  `obj/<Configuration>/License.xaml`, embedded as the resource `License.xaml`, regenerated only when LICENSE.md is
+  newer; `AboutInfo.LicenseDocument` loads it with `XamlReader` into a `FlowDocumentScrollViewer`, whose links
+  bubble `RequestNavigate` to the window's one handler; a System block as "label: value" lines (program and version, runtime,
+  OS, logical cores, memory free of physical, the GPU setting, the OpenCL devices with vendor and memory, the H.264
+  encoders of Media Foundation; a missing OpenCL or Media Foundation is a line, not an exception) in a read-only text
+  box, and "Copy system info" putting those lines on the clipboard for a bug report. Labels are `About*` keys in the
+  four tables; the credits and the license text stay English. Ids `AboutWindow`, `AboutVersion`, `AboutProduct`,
+  `AboutCopyright`, `AboutCredit*`, `AboutLink*`, `AboutLicenseToggle`, `AboutLicenseText`, `AboutSystemText`,
+  `AboutCopy`, `AboutClose`. A `Hyperlink` style (accent, underlined on hover and keyboard focus) went into
+  `Editors.xaml`. UI Automation lists the owned dialog under the main window, not at the root like a popup. Spelling: **"license"**, the
+  GPL's own, everywhere (the user's rule, 2026-10-15), while the UI otherwise keeps "colour".
 - **Unsaved edits** (2026-10-14): `MainWindow.IsDirty`, set by the watcher on any model change, cleared on
   open/new/save; the title gets `*` after the file (or "Untitled*", `TitleConverter`, re-read on a language
   switch) and New, Open, Close, Exit and a drop ask Yes/No/Cancel (`ConfirmDiscard`, `SaveChangesFormat`).
@@ -550,6 +573,9 @@ No automated tests in the solution; standalone harnesses exist under `_tools/` (
 - Publish: `dotnet publish WaveDudeNext.WPF/WaveDudeNext.WPF.csproj -p:PublishProfile=SingleFile` →
   `WaveDudeNext.WPF/bin/Publish/`: one framework-dependent win-x64 `WaveDudeNext.WPF.exe`, nothing else needed.
   The profile takes the framework from the project.
+- `Directory.Build.props` at the repo root carries `Version` (0.1.0), `Product` and `Description` for every project
+  under it; the SDK appends the commit hash to the informational version by itself (`0.1.0+<sha>`), which About and
+  the exe's file properties show. Bump the version there, nowhere else.
 - Expected result: 0 errors, 0 warnings. `DocumentationFile` is on, so malformed `///` XML or a wrong
   `<param>` name is a build warning — keep it at zero.
 
@@ -671,6 +697,13 @@ passing harnesses for comfort, never all of them after an edit.
   file and turns the project dirty, the status bar says so, the scene view shows the path; then the file is
   overwritten on disk and the picture follows within a moment; a second project without a path finds its
   image by name in `scene_images` and stores the relative path (8 checks, about 40 s).
+  `_tools/ui_check/AboutCheck.ps1` (2026-10-15, 17 checks, about 10 s) opens Help > About by keyboard (F10, Left wraps
+  to the Help header, Down, Enter), finds the dialog as a child of the main window, posts its keys to the dialog's own
+  handle (`DKey`), and checks the version line against `git rev-parse --short=7 HEAD`, the copyright and credit lines,
+  the five links, the eight system lines, the focus on Close, the Tab cycle, Space on the license toggle showing the
+  GPL document and hiding it again, a resize through `SetWindowPos` giving the height to the document, and Esc closing;
+  saves `%TEMP%\wavedude_about.png` with the license text shown and
+  prints the system report.
   `FocusedId` is **one** UI Automation query for the element with keyboard focus (a template part's
   id such as `PART_EditableTextBox` is mapped to its owner); asking 17 ids one by one cost half a
   second per Tab and made `FocusOn` crawl. Timings after the 2026-10-14 clean-up: RunCheck 67 s
@@ -854,7 +887,7 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, 
 ## Known issues (open)
 
 
-- WPF: no progress bar for a run (status text only; the export has one); the Simulation menu has no About/Help; the probe
+- WPF: no progress bar for a run (status text only; the export has one); the probe
   signal lane is not drawn yet (the graph boxes are); the preview skips frames at
   1080p (see the numbers in the library architecture section).
 - WPF preview, frames vs. steps: the transport bar, scrubber and playback count **frames**
@@ -933,7 +966,7 @@ canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
 refer to it; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
 dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
-pan (roadmap); Help > About has no content; dock pane titles are not exposed to UI Automation.
+pan (roadmap); dock pane titles are not exposed to UI Automation.
 
 ## Roadmap
 
@@ -987,7 +1020,7 @@ JJM (Jeroen) Vleggaar, Huygens Optics (author of Wave Dude 2D, GPL-3.0-or-later,
 Manuel, GitHub `0x23`, YouTube "Diffraction Limited" (author of WaveSimulator2D, the Python/CuPy
 numerics Jeroen's engine took its design from; surname not public; the 0x23 = Manuel link comes from
 Jeroen's mail of 2026-10-08, which also says Manuel consented to publication and will add an MIT
-licence to his repo). Private addresses stay out of files.
+license to his repo). Private addresses stay out of files.
 
 **Source header** (accepted 2026-10-15, applied to every `.cs`, `.xaml`, `.ps1` and `.py` file the same day, the
 generated `Settings.Designer.cs` excepted; the same text in every file, `'` in VB, `//` in C#, `<!-- -->` as one
@@ -1020,11 +1053,11 @@ was removed from the repo on 2026-10-15; his headers live on in git history.
 
 **LICENSE.md** (written 2026-10-15, the user's call): a short attribution block on top (the project
 name, the copyright line, the same "Based on the work of" list as the header, one GPL sentence, a
-rule), then the FSF's own Markdown of the licence, <https://www.gnu.org/licenses/gpl-3.0.md>,
+rule), then the FSF's own Markdown of the license, <https://www.gnu.org/licenses/gpl-3.0.md>,
 **verbatim** (34,893 bytes, md5 `ba29b1da0f9c28e2a9e072aba46cf040`; `tail -n +19 LICENSE.md | md5sum`
 must give that). The block is about 2 % of the file, which should stay inside the near-exact match
-GitHub's licence detection (licensee) needs to label the repo "GPL-3.0"; **check the sidebar after the
-first push** and move the block into the README if the label is missing. The licence text itself is
+GitHub's license detection (licensee) needs to label the repo "GPL-3.0"; **check the sidebar after the
+first push** and move the block into the README if the label is missing. The license text itself is
 never edited (the FSF allows verbatim copies only). `LICENSE.md` is the name the header points at
 (GitHub also accepts `LICENSE` and `COPYING`; one file, one name).
 

@@ -380,6 +380,20 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<!-- property forms -->
 	<!-- a group header in the Properties pane: the name over a rule across the width, so the groups read apart
 	     (2026-10-15, after the Field and Intensity groups of the Display view were taken for one list) -->
+	<!-- links (About): accent colour, underlined on hover and when focused by keyboard; the focus rectangle is WPF's own -->
+	<Style TargetType="{x:Type Hyperlink}">
+		<Setter Property="Foreground" Value="{DynamicResource Accent}" />
+		<Setter Property="TextDecorations" Value="{x:Null}" />
+		<Style.Triggers>
+			<Trigger Property="IsMouseOver" Value="True">
+				<Setter Property="TextDecorations" Value="Underline" />
+			</Trigger>
+			<Trigger Property="IsKeyboardFocused" Value="True">
+				<Setter Property="TextDecorations" Value="Underline" />
+			</Trigger>
+		</Style.Triggers>
+	</Style>
+
 	<Style x:Key="FormSection" TargetType="{x:Type Label}">
 		<Setter Property="FontWeight" Value="SemiBold" />
 		<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />

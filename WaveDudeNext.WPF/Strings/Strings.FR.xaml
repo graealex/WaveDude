@@ -76,6 +76,35 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Aide</s:String>
 	<s:String x:Key="MenuHelpAbout">À _propos de WaveDude Next</s:String>
+	<!-- Help > About -->
+	<s:String x:Key="AboutTitle">À propos de WaveDude Next</s:String>
+	<s:String x:Key="AboutVersionFormat">Version {0}</s:String>
+	<s:String x:Key="AboutTagline">Un simulateur d'ondes 2D</s:String>
+	<s:String x:Key="AboutCredits">Fondé sur le travail de</s:String>
+	<s:String x:Key="AboutLicense">Licence</s:String>
+	<s:String x:Key="AboutLicenseNotice">WaveDude Next est un logiciel libre : vous pouvez le redistribuer et/ou le modifier selon les termes de la GNU General Public License telle que publiée par la Free Software Foundation, soit la version 3 de la licence, soit (à votre choix) toute version ultérieure. Il est distribué SANS AUCUNE GARANTIE.</s:String>
+	<s:String x:Key="AboutShowLicense">Afficher le _texte de la licence</s:String>
+	<s:String x:Key="AboutHideLicense">Masquer le _texte de la licence</s:String>
+	<s:String x:Key="AboutSystem">Système</s:String>
+	<s:String x:Key="AboutProductLine">Programme</s:String>
+	<s:String x:Key="AboutRuntime">Environnement d'exécution</s:String>
+	<s:String x:Key="AboutOperatingSystem">Système d'exploitation</s:String>
+	<s:String x:Key="AboutProcessor">Processeur</s:String>
+	<s:String x:Key="AboutCores">cœurs logiques</s:String>
+	<s:String x:Key="AboutMemory">Mémoire</s:String>
+	<s:String x:Key="AboutMemoryFree">libres sur</s:String>
+	<s:String x:Key="AboutGpuSetting">Réglage GPU (OpenCL)</s:String>
+	<s:String x:Key="AboutOn">activé</s:String>
+	<s:String x:Key="AboutOff">désactivé</s:String>
+	<s:String x:Key="AboutOpenClDevices">Périphériques OpenCL</s:String>
+	<s:String x:Key="AboutOpenClMissing">OpenCL n'est pas installé</s:String>
+	<s:String x:Key="AboutH264Encoders">Encodeurs H.264</s:String>
+	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation n'est pas disponible</s:String>
+	<s:String x:Key="AboutNone">aucun</s:String>
+	<s:String x:Key="AboutCopy">_Copier les infos système</s:String>
+	<s:String x:Key="TipAboutCopy">Copier les lignes système dans le presse-papiers, pour un rapport de bogue</s:String>
+	<s:String x:Key="AboutCopied">Informations système copiées dans le presse-papiers</s:String>
+	<s:String x:Key="AboutClose">Fermer</s:String>
 
 	<s:String x:Key="MenuProjectAddSource">Ajouter une _source</s:String>
 	<s:String x:Key="MenuProjectAddProbe">Ajouter une s_onde</s:String>

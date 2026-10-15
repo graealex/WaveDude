@@ -76,6 +76,35 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Help</s:String>
 	<s:String x:Key="MenuHelpAbout">_Over WaveDude Next</s:String>
+	<!-- Help > About -->
+	<s:String x:Key="AboutTitle">Over WaveDude Next</s:String>
+	<s:String x:Key="AboutVersionFormat">Versie {0}</s:String>
+	<s:String x:Key="AboutTagline">Een 2D-golfsimulator</s:String>
+	<s:String x:Key="AboutCredits">Gebaseerd op het werk van</s:String>
+	<s:String x:Key="AboutLicense">Licentie</s:String>
+	<s:String x:Key="AboutLicenseNotice">WaveDude Next is vrije software: u mag het herdistribueren en/of wijzigen onder de voorwaarden van de GNU General Public License zoals gepubliceerd door de Free Software Foundation, versie 3 van de licentie of (naar uw keuze) een latere versie. Het wordt verspreid ZONDER ENIGE GARANTIE.</s:String>
+	<s:String x:Key="AboutShowLicense">Licentie_tekst tonen</s:String>
+	<s:String x:Key="AboutHideLicense">Licentie_tekst verbergen</s:String>
+	<s:String x:Key="AboutSystem">Systeem</s:String>
+	<s:String x:Key="AboutProductLine">Programma</s:String>
+	<s:String x:Key="AboutRuntime">Runtime</s:String>
+	<s:String x:Key="AboutOperatingSystem">Besturingssysteem</s:String>
+	<s:String x:Key="AboutProcessor">Processor</s:String>
+	<s:String x:Key="AboutCores">logische kernen</s:String>
+	<s:String x:Key="AboutMemory">Geheugen</s:String>
+	<s:String x:Key="AboutMemoryFree">vrij van</s:String>
+	<s:String x:Key="AboutGpuSetting">Instelling GPU (OpenCL)</s:String>
+	<s:String x:Key="AboutOn">aan</s:String>
+	<s:String x:Key="AboutOff">uit</s:String>
+	<s:String x:Key="AboutOpenClDevices">OpenCL-apparaten</s:String>
+	<s:String x:Key="AboutOpenClMissing">OpenCL is niet geïnstalleerd</s:String>
+	<s:String x:Key="AboutH264Encoders">H.264-encoders</s:String>
+	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation is niet beschikbaar</s:String>
+	<s:String x:Key="AboutNone">geen</s:String>
+	<s:String x:Key="AboutCopy">Systeeminfo _kopiëren</s:String>
+	<s:String x:Key="TipAboutCopy">De systeemregels naar het klembord kopiëren, voor een foutmelding</s:String>
+	<s:String x:Key="AboutCopied">Systeeminformatie naar het klembord gekopieerd</s:String>
+	<s:String x:Key="AboutClose">Sluiten</s:String>
 
 	<s:String x:Key="MenuProjectAddSource">_Bron toevoegen</s:String>
 	<s:String x:Key="MenuProjectAddProbe">_Sonde toevoegen</s:String>

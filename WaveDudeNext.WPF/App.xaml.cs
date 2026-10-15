@@ -203,7 +203,7 @@ public partial class App : Application
 		};
 
 		Logger.Info("Application: '{Path}'", Environment.ProcessPath);
-		Logger.Info("Application Version: {Version}", Assembly.GetExecutingAssembly().GetName().Version);
+		Logger.Info("Application Version: {Version}", Help.AboutInfo.Version);
 		Logger.Info("OS: '{OS}'", Environment.OSVersion.VersionString);
 		Logger.Info("Runtime: '{Runtime}'", RuntimeInformation.FrameworkDescription);
 		Logger.Info("Log file: '{Path}'", LogFile);

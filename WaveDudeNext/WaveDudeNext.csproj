@@ -11,11 +11,11 @@
     <Optimize>true</Optimize>
     <!-- the MP4 writer copies a frame into a Media Foundation buffer through its raw pointer -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- read by About and the file properties; the licence text is LICENSE.md, the header of every source file names it -->
+    <!-- read by About and the file properties; the license text is LICENSE.md, the header of every source file names it -->
     <Authors>Alexander Graef</Authors>
     <Copyright>Copyright (C) 2026 Alexander Graef</Copyright>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
-    <!-- the .editorconfig code-style rules are build warnings too: a file without the licence header (IDE0073) -->
+    <!-- the .editorconfig code-style rules are build warnings too: a file without the license header (IDE0073) -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 

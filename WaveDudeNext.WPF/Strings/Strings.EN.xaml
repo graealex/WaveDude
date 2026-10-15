@@ -78,6 +78,35 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Help</s:String>
 	<s:String x:Key="MenuHelpAbout">_About WaveDude Next</s:String>
+	<!-- Help > About -->
+	<s:String x:Key="AboutTitle">About WaveDude Next</s:String>
+	<s:String x:Key="AboutVersionFormat">Version {0}</s:String>
+	<s:String x:Key="AboutTagline">A 2D wave simulator</s:String>
+	<s:String x:Key="AboutCredits">Based on the work of</s:String>
+	<s:String x:Key="AboutLicense">License</s:String>
+	<s:String x:Key="AboutLicenseNotice">WaveDude Next is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY.</s:String>
+	<s:String x:Key="AboutShowLicense">Show the license _text</s:String>
+	<s:String x:Key="AboutHideLicense">Hide the license _text</s:String>
+	<s:String x:Key="AboutSystem">System</s:String>
+	<s:String x:Key="AboutProductLine">Program</s:String>
+	<s:String x:Key="AboutRuntime">Runtime</s:String>
+	<s:String x:Key="AboutOperatingSystem">Operating system</s:String>
+	<s:String x:Key="AboutProcessor">Processor</s:String>
+	<s:String x:Key="AboutCores">logical cores</s:String>
+	<s:String x:Key="AboutMemory">Memory</s:String>
+	<s:String x:Key="AboutMemoryFree">free of</s:String>
+	<s:String x:Key="AboutGpuSetting">GPU (OpenCL) setting</s:String>
+	<s:String x:Key="AboutOn">on</s:String>
+	<s:String x:Key="AboutOff">off</s:String>
+	<s:String x:Key="AboutOpenClDevices">OpenCL devices</s:String>
+	<s:String x:Key="AboutOpenClMissing">OpenCL is not installed</s:String>
+	<s:String x:Key="AboutH264Encoders">H.264 encoders</s:String>
+	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation is not available</s:String>
+	<s:String x:Key="AboutNone">none</s:String>
+	<s:String x:Key="AboutCopy">_Copy system info</s:String>
+	<s:String x:Key="TipAboutCopy">Copy the system lines to the clipboard, for a bug report</s:String>
+	<s:String x:Key="AboutCopied">System information copied to the clipboard</s:String>
+	<s:String x:Key="AboutClose">Close</s:String>
 
 	<s:String x:Key="MenuProjectAddSource">Add _source</s:String>
 	<s:String x:Key="MenuProjectAddProbe">Add _probe</s:String>

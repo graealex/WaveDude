@@ -76,6 +76,35 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Hilfe</s:String>
 	<s:String x:Key="MenuHelpAbout">_Über WaveDude Next</s:String>
+	<!-- Help > About -->
+	<s:String x:Key="AboutTitle">Über WaveDude Next</s:String>
+	<s:String x:Key="AboutVersionFormat">Version {0}</s:String>
+	<s:String x:Key="AboutTagline">Ein 2D-Wellensimulator</s:String>
+	<s:String x:Key="AboutCredits">Aufbauend auf der Arbeit von</s:String>
+	<s:String x:Key="AboutLicense">Lizenz</s:String>
+	<s:String x:Key="AboutLicenseNotice">WaveDude Next ist freie Software: Sie können es unter den Bedingungen der GNU General Public License, wie von der Free Software Foundation veröffentlicht, weitergeben und/oder verändern, entweder gemäß Version 3 der Lizenz oder (nach Ihrer Wahl) jeder späteren Version. Es wird OHNE JEDE GEWÄHRLEISTUNG verbreitet.</s:String>
+	<s:String x:Key="AboutShowLicense">Lizenz_text anzeigen</s:String>
+	<s:String x:Key="AboutHideLicense">Lizenz_text ausblenden</s:String>
+	<s:String x:Key="AboutSystem">System</s:String>
+	<s:String x:Key="AboutProductLine">Programm</s:String>
+	<s:String x:Key="AboutRuntime">Laufzeit</s:String>
+	<s:String x:Key="AboutOperatingSystem">Betriebssystem</s:String>
+	<s:String x:Key="AboutProcessor">Prozessor</s:String>
+	<s:String x:Key="AboutCores">logische Kerne</s:String>
+	<s:String x:Key="AboutMemory">Arbeitsspeicher</s:String>
+	<s:String x:Key="AboutMemoryFree">frei von</s:String>
+	<s:String x:Key="AboutGpuSetting">Einstellung GPU (OpenCL)</s:String>
+	<s:String x:Key="AboutOn">ein</s:String>
+	<s:String x:Key="AboutOff">aus</s:String>
+	<s:String x:Key="AboutOpenClDevices">OpenCL-Geräte</s:String>
+	<s:String x:Key="AboutOpenClMissing">OpenCL ist nicht installiert</s:String>
+	<s:String x:Key="AboutH264Encoders">H.264-Encoder</s:String>
+	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation ist nicht verfügbar</s:String>
+	<s:String x:Key="AboutNone">keine</s:String>
+	<s:String x:Key="AboutCopy">Systeminfo _kopieren</s:String>
+	<s:String x:Key="TipAboutCopy">Die Systemzeilen in die Zwischenablage kopieren, für einen Fehlerbericht</s:String>
+	<s:String x:Key="AboutCopied">Systeminformationen in die Zwischenablage kopiert</s:String>
+	<s:String x:Key="AboutClose">Schließen</s:String>
 
 	<s:String x:Key="MenuProjectAddSource">_Quelle hinzufügen</s:String>
 	<s:String x:Key="MenuProjectAddProbe">_Sonde hinzufügen</s:String>

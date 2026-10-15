@@ -183,6 +183,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveDown}" CanExecute="CanMoveDown" Executed="OnMoveDown" />
 		<CommandBinding Command="{x:Static commands:ProjectCommands.ToggleEnabled}" CanExecute="CanToggleEnabled" Executed="OnToggleEnabled" />
 		<CommandBinding Command="{x:Static commands:ProjectCommands.BrowseSceneImage}" Executed="OnBrowseSceneImage" />
+		<CommandBinding Command="{x:Static commands:HelpCommands.About}" Executed="OnHelpAbout" />
 	</Window.CommandBindings>
 
 	<!-- SaveAs has no default gesture -->
@@ -294,7 +295,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 				          ItemContainerStyle="{StaticResource FrameMemoryMenuItemStyle}" />
 			</MenuItem>
 			<MenuItem Header="{DynamicResource MenuHelp}">
-				<MenuItem Header="{DynamicResource MenuHelpAbout}" />
+				<MenuItem Header="{DynamicResource MenuHelpAbout}" Command="{x:Static commands:HelpCommands.About}" AutomationProperties.AutomationId="MenuHelpAbout" />
 			</MenuItem>
 		</Menu>
 

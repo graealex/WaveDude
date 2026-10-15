@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>LibraryCheck</RootNamespace>
-    <!-- the .editorconfig code-style rules are build warnings too: a file without the licence header (IDE0073) -->
+    <!-- the .editorconfig code-style rules are build warnings too: a file without the license header (IDE0073) -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
