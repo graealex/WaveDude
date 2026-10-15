@@ -198,8 +198,11 @@ WPF shell as it stands:
   Both go through the model, so the project turns dirty (asterisk, save prompt), the run goes stale and the
   frame is recomputed; a path change alone is not a simulation change. No hash: the embedded bytes are the
   baseline and the file has to be read to re-embed it anyway. Open decisions: base64 vs BaseXML for the
-  bytes (base64 is what `XmlSerializer` does natively; BaseXML would need an in-house codec); renaming a project
-  scheme does not update the layers that refer to it. **The colour picker** (2026-10-15, the user's choice of an
+  bytes (base64 is what `XmlSerializer` does natively; BaseXML would need an in-house codec). **A renamed project
+  scheme takes its layers along** (2026-10-15): `Project` watches its scheme list and each scheme's `Name`, keeps
+  the last known name per scheme, and on a rename sets every display layer that named the old name
+  (case-insensitively) to the new one; in the model, so every editor and the importer get it, and a removed scheme
+  is let go. The preview keeps its colours through a rename (the harness proves it by the field picture's hash). **The colour picker** (2026-10-15, the user's choice of an
   in-house picker over the Windows dialog, which is not themed, has no live preview and cannot be driven by posted
   keys): each stop row's swatch is a `Controls/ColorPickerButton` (a `ToggleButton`; Space, Enter or Down open a
   popup below it, id `StopSwatch:<position>`, the hex box beside it `StopColor:<position>`, both in the locale's
@@ -714,12 +717,15 @@ passing harnesses for comfort, never all of them after an edit.
   file and turns the project dirty, the status bar says so, the scene view shows the path; then the file is
   overwritten on disk and the picture follows within a moment; a second project without a path finds its
   image by name in `scene_images` and stores the relative path (8 checks, about 40 s).
-  `_tools/ui_check/ColorPickerCheck.ps1` (2026-10-15, 11 checks, about 12 s) drives the stop swatch's picker on
+  `_tools/ui_check/ColorPickerCheck.ps1` (2026-10-15, 13 checks, about 14 s) drives the stop swatch's picker on
   `tiny_scheme.wdproj` (tiny plus a project scheme with a middle stop #4080C0): End in the tree selects the scheme
   (the tree is one tab stop, End goes to its last visible item), Tab reaches the swatch, Space opens the popup with
   the focus on the square, ten Left arrows make the stop #538AC0 at once (hue 210, saturation 2/3 - 1/10, value
   0.753, the number the library check also asserts), Escape puts #4080C0 back, Tab walks strip and red box, five
-  Up arrows make #4580C0, Enter keeps it; the popup's own window is captured as `%TEMP%\wavedude_color_picker.popup.png`.
+  Up arrows make #4580C0, Enter keeps it, and typing a new name into the scheme's Name box (id `SchemeName`) renames
+  the tree row while the field picture's hash stays, the layer having followed (the row's `Tree:<name>` id is bound to
+  the item once and keeps the old name after a rename, so the row is found by the old id and read by its text); the
+  popup's own window is captured as `%TEMP%\wavedude_color_picker.popup.png`.
   A `Rectangle` has no automation peer (the gradient's id `SchemeGradient` is invisible to UIA; the "Add stop"
   button marks the editor instead).
   `_tools/ui_check/AboutCheck.ps1` (2026-10-15, 18 checks, about 10 s) opens Help > About by keyboard (F10, Left wraps
@@ -987,8 +993,7 @@ progress and cancel are in, and the still of the shown frame; `library_check -- 
 cover them. Left: probe data as CSV (series per step, profiles per frame), an integer upscale for small
 canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 
-**Also open, smaller.** Offer `ColorScheme.Simplify` in the editor; renaming a project scheme does not update the layers that
-refer to it; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
+**Also open, smaller.** Offer `ColorScheme.Simplify` in the editor; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
 dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
 pan (roadmap); dock pane titles are not exposed to UI Automation.
 

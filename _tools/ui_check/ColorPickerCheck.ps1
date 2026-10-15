@@ -20,7 +20,8 @@
 # scheme in the tree, Tabs to the stop's swatch, Space opens the popup with the focus on the saturation/value
 # square, ten Left arrows lower the saturation by a tenth (the hex box beside the swatch shows #538AC0 at once),
 # Escape puts #4080C0 back and closes, a second opening Tabs to the red channel box, five Up arrows make it #4580C0
-# and Enter keeps it; the project is dirty afterwards. See Common.ps1 for the rules (no mouse, no activation, no
+# and Enter keeps it; renaming the scheme in its Name box keeps the field picture's colours, since the layer follows
+# the rename; the project is dirty afterwards. See Common.ps1 for the rules (no mouse, no activation, no
 # UIA patterns). Prints PASS/FAIL per check and exits with the failure count.
 #
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\ColorPickerCheck.ps1 [-Exe <path>] [-Shot <png>] [-Trace]
@@ -77,6 +78,17 @@ try {
 	Step "End" $VK_END 300
 	$null = WaitFor { try { (Find "SchemeAddStop") -ne $null } catch { $false } } 5000 100
 	Check "End in the tree selects the scheme, whose editor appears" ((FocusedId) -eq "Tree:Harness scheme" -and (Find "SchemeAddStop") -ne $null) (FocusedId)
+	# a rename of the scheme takes the field layer along: the picture keeps its colours (the default scheme would recolour it)
+	$before = FieldHash
+	FocusOn "SchemeName"   # the first stop after the tree
+	Key $VK_END 100
+	for ($i = 0; $i -lt 14; $i++) { Key $VK_BACK 30 }   # "Harness scheme"
+	foreach ($ch in "Renamed".ToCharArray()) { [Native]::Char($hwnd, $ch) }
+	Start-Sleep -Milliseconds 600
+	# the tree row's id is bound once (the item, not its name), so the row is found by the old id and read by its text
+	$row = (Find "Tree:Harness scheme").Current.Name
+	Check "typing a new scheme name renames the tree row" ($row -eq "Renamed") $row
+	Check "and the field picture keeps its colours: the layer followed the rename" ((FieldHash) -eq $before) ("hash {0} -> {1}" -f $before, (FieldHash))
 	FocusOn $swatch
 	Check "Tab reaches the middle stop's swatch, whose hex box says #4080C0" ((Hex $hexBox) -eq "#4080C0") (Hex $hexBox)
 

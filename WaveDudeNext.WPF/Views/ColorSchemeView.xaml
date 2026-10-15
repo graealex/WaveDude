@@ -77,7 +77,8 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGeneral}" />
 			<controls:FormPanel>
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label rendering:ColorScheme.Name}" />
-				<TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint rendering:ColorScheme.Name}" />
+				<TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint rendering:ColorScheme.Name}"
+				         AutomationProperties.AutomationId="SchemeName" />
 
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label rendering:ColorScheme.Kind}" />
 				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues rendering:ColorSchemeKind}"

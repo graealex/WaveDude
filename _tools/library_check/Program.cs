@@ -1040,6 +1040,20 @@ internal static class Program
 			stream.Position = 0;
 			Project loaded = Project.Load(stream);
 			Check(loaded.ColorSchemes.Count == 1 && loaded.ColorSchemes[0].Name == "Mine" && loaded.ColorSchemes[0].Colors.SequenceEqual(field.Colors), "a project file embeds its own schemes");
+			// a renamed project scheme takes the layers that refer to it along (2026-10-15), in a fresh and in a loaded project
+			project.Display.Field.ColorScheme = "mine";
+			project.Display.Intensity.ColorScheme = "Other";
+			project.ColorSchemes[0].Name = "Yours";
+			loaded.Display.Field.ColorScheme = "Mine";
+			loaded.ColorSchemes[0].Name = "Theirs";
+			ColorScheme later = project.AddColorScheme();
+			project.Display.Intensity.ColorScheme = later.Name;
+			later.Name = "Later";
+			ColorScheme gone = project.AddColorScheme();
+			project.Remove(gone);
+			gone.Name = "Yours";
+			Check(project.Display.Field.ColorScheme == "Yours" && project.Display.Intensity.ColorScheme == "Later" && loaded.Display.Field.ColorScheme == "Theirs" && loaded.Display.Intensity.ColorScheme == Display.DefaultIntensityColorScheme,
+				"a renamed project scheme takes the layers naming it along (case-insensitively; a scheme added later too, a removed one no more; a loaded project as well)");
 			Check(loaded.Scene.ImageData != null && loaded.Scene.ImageData.SequenceEqual(project.Scene.ImageData) && loaded.Scene.Image == "scene.png", "a project file embeds the scene image bytes (base64)");
 			// the image's source path (2026-10-15): relative inside the project folder, absolute elsewhere, resolved back, not a simulation change
 			string projectFolder = Path.Combine(Path.GetTempPath(), "wd-project");

@@ -46,6 +46,14 @@ public sealed class Project : ObservableObject
 	private ObservableCollection<Source> _sources = new();
 	private ObservableCollection<Probe> _probes = new();
 	private ObservableCollection<ColorScheme> _colorSchemes = new();
+	/// <summary>Each project scheme's last known name, so a rename can repoint the layers that referred to the old one.</summary>
+	private readonly Dictionary<ColorScheme, string> _schemeNames = new();
+
+	/// <summary>A new project with the designer defaults; its scheme list is watched from the start.</summary>
+	public Project()
+	{
+		HookSchemes(_colorSchemes);
+	}
 
 	private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 	private static readonly XmlSerializer Serializer = new(typeof(Project));
@@ -158,7 +166,115 @@ public sealed class Project : ObservableObject
 	public ObservableCollection<ColorScheme> ColorSchemes
 	{
 		get => _colorSchemes;
-		set => SetProperty(ref _colorSchemes, value);
+		set
+		{
+			ObservableCollection<ColorScheme> old = _colorSchemes;
+			if (SetProperty(ref _colorSchemes, value))
+			{
+				UnhookSchemes(old);
+				HookSchemes(value);
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------- a renamed scheme takes its layers along (2026-10-15)
+
+	private void HookSchemes(ObservableCollection<ColorScheme>? schemes)
+	{
+		if (schemes == null)
+		{
+			return;
+		}
+		schemes.CollectionChanged += OnSchemesChanged;
+		foreach (ColorScheme scheme in schemes)
+		{
+			TrackScheme(scheme);
+		}
+	}
+
+	private void UnhookSchemes(ObservableCollection<ColorScheme>? schemes)
+	{
+		if (schemes == null)
+		{
+			return;
+		}
+		schemes.CollectionChanged -= OnSchemesChanged;
+		foreach (ColorScheme scheme in schemes)
+		{
+			UntrackScheme(scheme);
+		}
+	}
+
+	private void TrackScheme(ColorScheme scheme)
+	{
+		if (_schemeNames.TryAdd(scheme, scheme.Name))
+		{
+			scheme.PropertyChanged += OnSchemeChanged;
+		}
+	}
+
+	private void UntrackScheme(ColorScheme scheme)
+	{
+		if (_schemeNames.Remove(scheme))
+		{
+			scheme.PropertyChanged -= OnSchemeChanged;
+		}
+	}
+
+	private void OnSchemesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+	{
+		if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+		{
+			foreach (ColorScheme scheme in _schemeNames.Keys.ToList())
+			{
+				UntrackScheme(scheme);
+			}
+			foreach (ColorScheme scheme in _colorSchemes)
+			{
+				TrackScheme(scheme);
+			}
+			return;
+		}
+		if (e.OldItems != null)
+		{
+			foreach (ColorScheme scheme in e.OldItems)
+			{
+				UntrackScheme(scheme);
+			}
+		}
+		if (e.NewItems != null)
+		{
+			foreach (ColorScheme scheme in e.NewItems)
+			{
+				TrackScheme(scheme);
+			}
+		}
+	}
+
+	/// <summary>
+	/// A project scheme was renamed: every display layer that named it (case-insensitively) names it by its new name,
+	/// so the preview keeps its colours and the file stays consistent. Done here, in the model, so every editor and
+	/// the importer get it, not just the scheme view.
+	/// </summary>
+	private void OnSchemeChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		if (e.PropertyName != nameof(ColorScheme.Name) || sender is not ColorScheme scheme || !_schemeNames.TryGetValue(scheme, out string? oldName))
+		{
+			return;
+		}
+		string newName = scheme.Name;
+		_schemeNames[scheme] = newName;
+		if (string.Equals(oldName, newName, StringComparison.Ordinal))
+		{
+			return;
+		}
+		foreach (DisplayLayer layer in new[] { Display.Field, Display.Intensity })
+		{
+			if (string.Equals(layer.ColorScheme, oldName, StringComparison.OrdinalIgnoreCase))
+			{
+				layer.ColorScheme = newName;
+			}
+		}
 	}
 
 	/// <summary>Tells <see cref="XmlSerializer"/> to leave an all-default scene out of the file.</summary>
