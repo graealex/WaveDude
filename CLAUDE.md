@@ -773,10 +773,17 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   frames in the run's `FrameShape` (halves, or palette index bytes; the canvas shrunk by the divisor, see
   "Reduced preview" in the WPF shell list), planes in `FrameLayer` order, only those
   present (`RunSpec.Layers`: field always; intensity when the intensity preview or export is on or a
-  probe needs it). The budget is `FrameMemory.Budget(percent)`: the user's share of the physical RAM
-  (Simulation > Frames kept in memory: a quarter, half, three quarters; setting `FrameMemoryPercent`,
-  default 50) capped by what `GlobalMemoryStatusEx` says is free now minus a 2 GB margin, so a run never
-  pushes the machine into its page file; the window logs frames in memory and on disk with the run start,
+  probe needs it). The budget is `FrameMemory.Budget(percent)`: what `GlobalMemoryStatusEx` says is free now
+  minus a 2 GB margin (the application's own buffers and headroom for other programs, a sum that does not
+  scale with the machine's RAM), so a run never pushes the machine into its page file; Simulation > Frames
+  kept in memory (2026-10-15, the user's design after the three-step share read as crude) offers "Auto" (the
+  same word in every language) and 10 % to 100 % of the physical RAM as an upper bound on top of that, the
+  setting `FrameMemoryPercent` with 0 = Auto, the default (a `user.config` from before keeps its 50 until
+  the user picks Auto); the submenu is generated from `MainWindow.FrameMemoryOptions` with the
+  `FrameMemoryMenuItemStyle` (header through `FrameMemoryOptionConverter`, which re-reads "Auto" on a
+  language switch; ids `MenuFrameMemory0`, `MenuFrameMemory10`, …). Not built, discussed 2026-10-15: lowering
+  the preview quality automatically until a run fits the budget instead of spilling to disk, which would
+  spare a laptop's small SSD. The window logs frames in memory and on disk with the run start,
   and `FrameCache.CheckSpace` is only asked for the spilled part. An allocation that fails after all (the
   commit limit) sends that frame and the rest to the file, noted once. The worker writes in order and
   publishes `Count`; readers use `CopyLayer` (a memory copy, or `RandomAccess.Read`; safe against a

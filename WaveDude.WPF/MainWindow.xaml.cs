@@ -83,7 +83,9 @@ public partial class MainWindow : Window
 			}
 			else if (args.PropertyName == nameof(Settings.FrameMemoryPercent))
 			{
-				Logger.Info("Frames kept in memory: {Percent} % of the RAM, {Budget} right now (Simulation menu)", Settings.Default.FrameMemoryPercent, FrameMemory.Gigabytes(FrameMemory.Budget(Settings.Default.FrameMemoryPercent)));
+				Logger.Info("Frames kept in memory: {Bound}, {Budget} right now (Simulation menu)",
+					Settings.Default.FrameMemoryPercent <= FrameMemory.Automatic ? "automatic (what is free minus " + FrameMemory.Gigabytes(FrameMemory.Margin) + ")" : "at most " + Settings.Default.FrameMemoryPercent + " % of the RAM",
+					FrameMemory.Gigabytes(FrameMemory.Budget(Settings.Default.FrameMemoryPercent)));
 			}
 			else if (args.PropertyName is nameof(Settings.PreviewResolution) or nameof(Settings.PreviewFrames) or nameof(Settings.PreviewSampleBytes))
 			{
@@ -345,14 +347,20 @@ public partial class MainWindow : Window
 	/// <summary>View > Preview samples: the bytes per sample (2 halves, 1 palette indices).</summary>
 	private void OnSetPreviewSamples(object sender, ExecutedRoutedEventArgs e) => SetIntSetting(e, bytes => Settings.Default.PreviewSampleBytes = bytes);
 
-	/// <summary>A menu choice carried as a number in the command parameter: stores it and saves the settings.</summary>
+	/// <summary>A menu choice carried as a number in the command parameter (an int, or digits as text): stores it and saves the settings.</summary>
 	private static void SetIntSetting(ExecutedRoutedEventArgs e, Action<int> apply)
 	{
-		if (e.Parameter is string text && int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int value))
+		int value;
+		if (e.Parameter is int number)
 		{
-			apply(value);
-			SaveSettings();
+			value = number;
 		}
+		else if (e.Parameter is not string text || !int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value))
+		{
+			return;
+		}
+		apply(value);
+		SaveSettings();
 	}
 
 	private void OnFileNew(object sender, ExecutedRoutedEventArgs e)

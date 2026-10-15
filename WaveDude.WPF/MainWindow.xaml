@@ -1,6 +1,7 @@
 <Window x:Class="WaveDude.WPF.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:WaveDude.WPF"
         xmlns:docking="clr-namespace:WaveDude.WPF.Docking"
         xmlns:theming="clr-namespace:WaveDude.WPF.Theming"
         xmlns:localization="clr-namespace:WaveDude.WPF.Localization"
@@ -23,6 +24,7 @@
 
 	<Window.Resources>
 		<converters:EqualityConverter x:Key="Equality" />
+		<converters:FrameMemoryOptionConverter x:Key="FrameMemoryOption" />
 		<converters:IntEqualsConverter x:Key="IntEquals" />
 		<converters:TitleConverter x:Key="TitleConverter" />
 		<converters:RunStatusConverter x:Key="RunStatus" />
@@ -72,6 +74,29 @@
 			</Setter>
 		</Style>
 		<!-- one entry per theme: check mark follows the current theme, click selects -->
+		<!-- Simulation > Frames kept in memory: "Auto" and 10 % to 100 % of the RAM as an upper bound (2026-10-15); the
+		     header re-reads its word on a language switch through the second binding -->
+		<Style x:Key="FrameMemoryMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource FrameMemoryOption}" Mode="OneWay">
+						<Binding />
+						<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+			<Setter Property="Command" Value="{x:Static commands:SimulationCommands.SetFrameMemory}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+			<Setter Property="IsChecked">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource Equality}" Mode="OneWay">
+						<Binding Path="FrameMemoryPercent" Source="{x:Static p:Settings.Default}" />
+						<Binding />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+			<Setter Property="AutomationProperties.AutomationId" Value="{Binding StringFormat=MenuFrameMemory{0}}" />
+		</Style>
 		<Style x:Key="ThemeMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
 			<Setter Property="Header" Value="{Binding Converter={StaticResource EnumName}}" />
 			<Setter Property="Command" Value="{Binding SelectCommand, Source={x:Static theming:ThemeController.Instance}}" />
@@ -243,18 +268,11 @@
 				<MenuItem Header="{DynamicResource MenuSimulationAutoRerun}" IsCheckable="True"
 				          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=AutoRerun, Mode=TwoWay}"
 				          AutomationProperties.AutomationId="MenuAutoRerun" />
-				<!-- the share of the RAM a run's frames may take before the rest goes to disk (2026-10-14); a run never takes more than what is free -->
-				<MenuItem Header="{DynamicResource MenuSimulationFrameMemory}" AutomationProperties.AutomationId="MenuFrameMemory">
-					<MenuItem Header="{DynamicResource MenuSimulationFrameMemory25}" Command="{x:Static commands:SimulationCommands.SetFrameMemory}" CommandParameter="25"
-					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=FrameMemoryPercent, Converter={StaticResource IntEquals}, ConverterParameter=25, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuFrameMemory25" />
-					<MenuItem Header="{DynamicResource MenuSimulationFrameMemory50}" Command="{x:Static commands:SimulationCommands.SetFrameMemory}" CommandParameter="50"
-					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=FrameMemoryPercent, Converter={StaticResource IntEquals}, ConverterParameter=50, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuFrameMemory50" />
-					<MenuItem Header="{DynamicResource MenuSimulationFrameMemory75}" Command="{x:Static commands:SimulationCommands.SetFrameMemory}" CommandParameter="75"
-					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=FrameMemoryPercent, Converter={StaticResource IntEquals}, ConverterParameter=75, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuFrameMemory75" />
-				</MenuItem>
+				<!-- the memory a run's frames may take before the rest goes to disk: the application decides from what is free
+				     ("Auto", 2026-10-15), a percentage of the RAM is only an upper bound on that -->
+				<MenuItem Header="{DynamicResource MenuSimulationFrameMemory}" AutomationProperties.AutomationId="MenuFrameMemory"
+				          ItemsSource="{x:Static local:MainWindow.FrameMemoryOptions}"
+				          ItemContainerStyle="{StaticResource FrameMemoryMenuItemStyle}" />
 			</MenuItem>
 			<MenuItem Header="{DynamicResource MenuHelp}">
 				<MenuItem Header="{DynamicResource MenuHelpAbout}" />

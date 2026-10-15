@@ -45,9 +45,7 @@
 	<s:String x:Key="MenuSimulationUseGpu">Use the _GPU (OpenCL)</s:String>
 	<s:String x:Key="MenuSimulationAutoRerun">Re-run _automatically after edits</s:String>
 	<s:String x:Key="MenuSimulationFrameMemory">Frames kept in _memory</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory25">A _quarter of the RAM</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory50">_Half of the RAM</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory75">_Three quarters of the RAM</s:String>
+	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Help</s:String>
 	<s:String x:Key="MenuHelpAbout">_About Wave Dude</s:String>
 

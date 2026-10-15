@@ -45,6 +45,12 @@ public partial class MainWindow
 	}
 
 	/// <summary>
+	/// The choices of Simulation > Frames kept in memory: <see cref="FrameMemory.Automatic"/> (the application
+	/// decides from what is free) and 10 % to 100 % of the RAM as an upper bound (2026-10-15, the user's design).
+	/// </summary>
+	public static int[] FrameMemoryOptions { get; } = [FrameMemory.Automatic, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
+	/// <summary>
 	/// The preview quality chosen in the View menu (persisted user settings, 2026-10-15): how much of a run is
 	/// captured and kept, for weaker machines. Applied to the preview's runs and scratch frames; an export's run
 	/// is always <see cref="PreviewQuality.Full"/>.

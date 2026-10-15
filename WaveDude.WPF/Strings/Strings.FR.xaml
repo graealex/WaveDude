@@ -45,9 +45,7 @@
 	<s:String x:Key="MenuSimulationUseGpu">Utiliser le _GPU (OpenCL)</s:String>
 	<s:String x:Key="MenuSimulationAutoRerun">Relancer a_utomatiquement après une modification</s:String>
 	<s:String x:Key="MenuSimulationFrameMemory">Images gardées en _mémoire</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory25">Un _quart de la RAM</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory50">La _moitié de la RAM</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory75">_Trois quarts de la RAM</s:String>
+	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Aide</s:String>
 	<s:String x:Key="MenuHelpAbout">À _propos de Wave Dude</s:String>
 

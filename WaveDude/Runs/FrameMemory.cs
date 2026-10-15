@@ -12,8 +12,11 @@ namespace WaveDude.Runs;
 /// </summary>
 public static class FrameMemory
 {
-	/// <summary>Share of the physical memory a run may take when the user has not chosen one.</summary>
-	public const int DefaultPercent = 50;
+	/// <summary>The share value meaning "no cap: whatever is free now minus the margin" (2026-10-15, the user's choice: the application decides, a percentage is only an upper bound).</summary>
+	public const int Automatic = 0;
+
+	/// <summary>Share of the physical memory a run may take when the user has not chosen one: <see cref="Automatic"/>.</summary>
+	public const int DefaultPercent = Automatic;
 
 	/// <summary>Memory left untouched below what is available: the application, the engines' own buffers and the system need room too.</summary>
 	public const long Margin = 2L << 30;
@@ -39,15 +42,19 @@ public static class FrameMemory
 	}
 
 	/// <summary>
-	/// The frame budget for a run started now: <paramref name="percentOfPhysical"/> of the physical memory, capped
-	/// at what is available minus <see cref="Margin"/>; never negative.
+	/// The frame budget for a run started now: what is available minus <see cref="Margin"/>, and no more than
+	/// <paramref name="percentOfPhysical"/> of the physical memory when that is not <see cref="Automatic"/>; never negative.
 	/// </summary>
-	/// <param name="percentOfPhysical">The user's share, 0 to 100 (clamped).</param>
+	/// <param name="percentOfPhysical">The user's upper bound, 1 to 100 (clamped), or <see cref="Automatic"/> for none.</param>
 	public static long Budget(int percentOfPhysical)
 	{
-		double share = Math.Clamp(percentOfPhysical, 0, 100) / 100.0;
-		long byShare = (long)(PhysicalBytes() * share);
 		long byAvailable = AvailableBytes() - Margin;
+		if (percentOfPhysical <= Automatic)
+		{
+			return Math.Max(0, byAvailable);
+		}
+		double share = Math.Clamp(percentOfPhysical, 1, 100) / 100.0;
+		long byShare = (long)(PhysicalBytes() * share);
 		return Math.Max(0, Math.Min(byShare, byAvailable));
 	}
 
