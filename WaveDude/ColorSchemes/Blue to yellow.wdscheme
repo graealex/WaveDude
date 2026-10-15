@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Blue_to_yellow_GNU" Kind="Intensity" Category="sequential" Description="matplotlib colormap gnuplot2, sampled at 255 points">
+<ColorScheme Name="Blue to yellow" Kind="Intensity" Description="matplotlib colormap gnuplot2, sampled at 255 points">
 	<Stop At="0" Color="#000000" />
 	<Stop At="0.25196850393700787" Color="#0000FF" />
 	<Stop At="0.421259842519685" Color="#8700FF" />

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Flare_inv" Kind="Intensity" Category="sequential" Description="matplotlib colormap flare, sampled at 255 points">
+<ColorScheme Name="Flare inverted" Kind="Intensity" Description="matplotlib colormap flare, sampled at 255 points">
 	<Stop At="0" Color="#ECAF80" />
 	<Stop At="0.22440944881889763" Color="#E67760" />
 	<Stop At="0.2992125984251969" Color="#E1655B" />

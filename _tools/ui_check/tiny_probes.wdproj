@@ -4,8 +4,8 @@
 	<Scene Width="320" Height="240" DampingEdge="8" />
 	<Simulation Steps="100" VisualizeEvery="2" />
 	<Display>
-		<Field ColorScheme="Default_Field" BlackLevel="-0.05" />
-		<Intensity ColorScheme="Default_intensity" />
+		<Field ColorScheme="Default field" BlackLevel="-0.05" />
+		<Intensity ColorScheme="Default intensity" />
 	</Display>
 	<Source Name="Source 1" X="160" Y="120" Frequency="120" />
 	<Source Name="Source 2" X="80" Y="60" Frequency="150" Amplitude="60">

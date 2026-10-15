@@ -154,11 +154,16 @@ WPF shell as it stands:
   interpolation, so his `colors` list was redundant there; his program reads only the table), the 12
   sampled colormaps were 255 stops at i/254 at first and are now **slimmed to their bends**
   (`ColorScheme.Simplify`, Ramer–Douglas–Peucker with a largest-channel tolerance of 3/255, applied
-  once with `library_check -- simplify-schemes ColorSchemeList 3`, 2026-10-14): 3 to 21 stops each
-  (Copper 3, Orange_hot 4, Hot_orange 5, Blue_to_yellow 7, Simply_red 7, Flare_inv 8, Greens 9,
-  rainbow 12, magma 13, inferno 16, Ice_and_fire 21, Orange_symmetry 21). The stop arithmetic
-  reproduces the author's resampling bit for bit for evenly spaced stops. **The shipped schemes are now `ColorSchemeList/*.wdscheme`** (converted 2026-10-13
-  with `library_check -- convert-schemes <folder>`, a one-off kept in the harness), embedded as
+  once with `library_check -- simplify-schemes <folder> 3`, 2026-10-14): 3 to 21 stops each
+  (Copper 3, Orange hot 4, Hot orange 5, Blue to yellow 7, Simply red 7, Flare inverted 8, Greens 9,
+  Rainbow 12, Magma 13, Inferno 16, Ice and fire 21, Orange symmetry 21). The stop arithmetic
+  reproduces the author's resampling bit for bit for evenly spaced stops. **The shipped schemes are
+  `WaveDude/ColorSchemes/*.wdscheme`** (converted 2026-10-13 with `library_check -- convert-schemes <folder>`,
+  a one-off kept in the harness; moved out of the repo root into the library project and **renamed
+  2026-10-15**, the user's rule: plain names with spaces and a capital first letter, no underscores, no
+  "_GNU", "inv" spelt out, "Turky" corrected to "Turkey", each file named like its scheme; the old
+  underscore names of the author's files and of projects saved before still resolve through
+  `ColorSchemeStore.Find`, which turns underscores into spaces and maps the four irregular ones), embedded as
   before; JSON is still read for files from the author's program, and the JSON export keeps his
   layout. `.wdscheme` is registered like `.wdproj` (`FileAssociation.Register` takes the ProgId and
   description); a double-clicked scheme file is added to the open project and selected.
@@ -169,7 +174,9 @@ WPF shell as it stands:
   tagged "project", then the shared ones of the layer's `Kind`, each with a gradient strip, plus
   "Load from file…" (JSON or `.wdscheme` into the project) and "Edit a copy in the project…" (clone,
   reduced to 9 stops, selected in the tree). The tree has a "Colour schemes" folder (add, duplicate,
-  remove, move, drag like sources); `Views/ColorSchemeView` edits name, kind, category and one row
+  remove, move, drag like sources); `Views/ColorSchemeView` edits name, kind (the author's "category", a
+  free text his program stored but never read, was dropped 2026-10-15 from the model, the editor, the tables
+  and the files; an old file's attribute is ignored on load, the JSON export no longer writes it) and one row
   per stop (position as a number box, swatch, hex), with "Add stop" (into the widest gap) and a
   remove button per row, plus "Reduce to 9 stops" for a 255-stop table, and a "Based on" combo that
   copies any shared or project scheme's stops into the one being edited (a new scheme starts grey).
@@ -523,11 +530,12 @@ since been made to compile, cleaned to idiomatic C#, documented, and partly refa
 below). Baseline commit `1266f10` is the first compiling, cleaned, documented state; everything
 after it (AVI fix, style pass, engine refactor, WPF shell) is uncommitted at the time of writing.
 
-Repo root also holds runtime data that is tracked on purpose: `ColorSchemeList/` (the shipped colour
-schemes, `*.wdscheme` XML since 2026-10-13; **embedded into `WaveDude.dll`** as resources
-`ColorSchemes/<file>` by the library's csproj, loaded by `ColorSchemeStore.LoadBuiltIn`; the user's own schemes come from
+The shipped colour schemes live in `WaveDude/ColorSchemes/` (`*.wdscheme` XML since 2026-10-13, in the
+library project since 2026-10-15; **embedded into `WaveDude.dll`** as resources `ColorSchemes/<file>` by the
+library's csproj, loaded by `ColorSchemeStore.LoadBuiltIn`; the user's own schemes come from
 `%LOCALAPPDATA%\WaveDude\ColorSchemes` and shadow built-ins of the same name; agreed 2026-10-10, no
-external files) and `Project/` (a sample project root). `.vs/`, `bin/`, `obj/` are ignored.
+external files). The repo root also holds `Project/` (a sample project root), tracked on purpose. `.vs/`,
+`bin/`, `obj/` are ignored.
 
 No automated tests in the solution; standalone harnesses exist under `_tools/` (see Verification).
 

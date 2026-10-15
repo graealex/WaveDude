@@ -64,9 +64,6 @@
 				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues rendering:ColorSchemeKind}"
 				          SelectedItem="{Binding Kind}" ToolTip="{meta:Hint rendering:ColorScheme.Kind}" />
 
-				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label rendering:ColorScheme.Category}" />
-				<TextBox Text="{Binding Category, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint rendering:ColorScheme.Category}" />
-
 				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label rendering:ColorScheme.Description}" />
 				<TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" AcceptsReturn="False"
 				         ToolTip="{meta:Hint rendering:ColorScheme.Description}" />

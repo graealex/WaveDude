@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Orange_symmetry" Kind="Field" Description="embedded table in wave_visualizer.py">
+<ColorScheme Name="Orange symmetry" Kind="Field" Description="embedded table in wave_visualizer.py">
 	<Stop At="0" Color="#FDCBA0" />
 	<Stop At="0.027559055118110236" Color="#FABE91" />
 	<Stop At="0.09448818897637795" Color="#F29358" />

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Ice_and_fire" Kind="Field" Description="embedded table in wave_visualizer.py">
+<ColorScheme Name="Ice and fire" Kind="Field" Description="embedded table in wave_visualizer.py">
 	<Stop At="0" Color="#B3E0D8" />
 	<Stop At="0.031496062992125984" Color="#A5D6D5" />
 	<Stop At="0.15354330708661418" Color="#4F9DCD" />

@@ -96,7 +96,6 @@ public sealed class ColorScheme : ObservableObject
 
 	private string _name = "";
 	private string _description = "";
-	private string _category = "";
 	private ColorSchemeKind _kind;
 	private Rgb[]? _table;
 	private bool _replacing;
@@ -138,17 +137,6 @@ public sealed class ColorScheme : ObservableObject
 	{
 		get => _kind;
 		set => SetProperty(ref _kind, value);
-	}
-
-	/// <summary>Free text: "custom", "sequential", "other" in the shipped files.</summary>
-	[XmlAttribute]
-	[DefaultValue("")]
-	[Category("General")]
-	[Description("Free-text grouping, such as 'sequential' or 'custom'.")]
-	public string Category
-	{
-		get => _category;
-		set => SetProperty(ref _category, value ?? "");
 	}
 
 	/// <summary>Free text about the scheme, where it comes from ("matplotlib colormap viridis", "9-stop copy of …"); the author's "origin".</summary>
@@ -324,7 +312,6 @@ public sealed class ColorScheme : ObservableObject
 			stops[i] = SampleAt((i * (EntryCount - 1)) / (double)(StopCount - 1));
 		}
 		Description = StopCount.ToString(CultureInfo.InvariantCulture) + "-stop copy of scheme '" + Name + "'";
-		Category = "custom";
 		SetColors(stops);
 	}
 
@@ -414,7 +401,7 @@ public sealed class ColorScheme : ObservableObject
 	/// <summary>An independent copy under a new name (stops, kind, category and description; not the file path or the built-in flag).</summary>
 	public ColorScheme Clone(string newName)
 	{
-		var copy = new ColorScheme { Name = newName, Kind = Kind, Category = Category, Description = Description };
+		var copy = new ColorScheme { Name = newName, Kind = Kind, Description = Description };
 		copy.SetStops(Stops);
 		return copy;
 	}
@@ -430,7 +417,6 @@ public sealed class ColorScheme : ObservableObject
 		return new ColorScheme(schemeName, stops)
 		{
 			Description = StopCount.ToString(CultureInfo.InvariantCulture) + "-stop gradient made in the color scheme editor",
-			Category = "custom",
 		};
 	}
 

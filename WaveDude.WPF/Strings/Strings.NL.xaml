@@ -387,8 +387,6 @@
 	<s:String x:Key="Hint.ColorScheme.Name">Naam waarnaar de weergave-instellingen verwijzen.</s:String>
 	<s:String x:Key="Label.ColorScheme.Kind">Soort</s:String>
 	<s:String x:Key="Hint.ColorScheme.Kind">Uitvoer waarvoor het schema bedoeld is; de keuzelijsten tonen het alleen daar.</s:String>
-	<s:String x:Key="Label.ColorScheme.Category">Categorie</s:String>
-	<s:String x:Key="Hint.ColorScheme.Category">Vrije groepering, zoals 'sequential' of 'custom'.</s:String>
 	<s:String x:Key="Label.ColorScheme.Description">Beschrijving</s:String>
 	<s:String x:Key="Hint.ColorScheme.Description">Vrije tekst: wat het schema is, waar het vandaan komt.</s:String>
 	<s:String x:Key="Enum.ProbeLayer.Field">Veld</s:String>

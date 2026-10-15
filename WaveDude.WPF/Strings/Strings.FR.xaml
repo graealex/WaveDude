@@ -387,8 +387,6 @@
 	<s:String x:Key="Hint.ColorScheme.Name">Nom auquel les réglages d'affichage se réfèrent.</s:String>
 	<s:String x:Key="Label.ColorScheme.Kind">Type</s:String>
 	<s:String x:Key="Hint.ColorScheme.Kind">Sortie à laquelle la palette est destinée ; les sélecteurs ne la listent que pour celle-ci.</s:String>
-	<s:String x:Key="Label.ColorScheme.Category">Catégorie</s:String>
-	<s:String x:Key="Hint.ColorScheme.Category">Regroupement libre, par exemple 'sequential' ou 'custom'.</s:String>
 	<s:String x:Key="Label.ColorScheme.Description">Description</s:String>
 	<s:String x:Key="Hint.ColorScheme.Description">Texte libre : ce qu'est la palette, d'où elle vient.</s:String>
 	<s:String x:Key="Enum.ProbeLayer.Field">Champ</s:String>

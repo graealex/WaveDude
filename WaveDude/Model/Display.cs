@@ -7,10 +7,10 @@ namespace WaveDude.Model;
 [TypeConverter(typeof(ExpandableObjectConverter))]
 public sealed class Display : ObservableObject
 {
-	/// <summary>Colour scheme name used for the field when none is given.</summary>
-	public const string DefaultFieldColorScheme = "Default_Field";
-	/// <summary>Colour scheme name used for the intensity when none is given.</summary>
-	public const string DefaultIntensityColorScheme = "Default_intensity";
+	/// <summary>Colour scheme name used for the field when none is given (an old file's "Default_Field" resolves to it through <see cref="Rendering.ColorSchemeStore.Find"/>).</summary>
+	public const string DefaultFieldColorScheme = "Default field";
+	/// <summary>Colour scheme name used for the intensity when none is given (an old file's "Default_intensity" resolves to it).</summary>
+	public const string DefaultIntensityColorScheme = "Default intensity";
 	/// <summary>Black level of the field layer in a new project.</summary>
 	public const double DefaultFieldBlackLevel = -0.05;
 

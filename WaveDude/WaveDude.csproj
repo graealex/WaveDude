@@ -13,9 +13,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- the shipped colour schemes are part of the binary; the repo's ColorSchemeList folder is their source -->
+  <!-- the shipped colour schemes are part of the binary; the ColorSchemes folder of this project is their source (2026-10-15: one file per scheme, named like the scheme, with spaces) -->
   <ItemGroup>
-    <EmbeddedResource Include="..\ColorSchemeList\*.wdscheme;..\ColorSchemeList\*.json" LogicalName="ColorSchemes/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="ColorSchemes\*.wdscheme" LogicalName="ColorSchemes/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

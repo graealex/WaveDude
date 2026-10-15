@@ -71,7 +71,6 @@ public partial class ColorSchemeView : UserControl
 		}
 		scheme.SetStops(chosen.Stops);
 		scheme.Kind = chosen.Kind;
-		scheme.Category = chosen.Category;
 		scheme.Description = "copy of scheme '" + chosen.Name + "'";
 	}
 

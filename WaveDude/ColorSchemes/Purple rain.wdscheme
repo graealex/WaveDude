@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Purple_rain" Kind="Intensity" Category="custom" Description="9-stop copy of scheme 'Gray scales'">
+<ColorScheme Name="Purple rain" Kind="Intensity" Description="9-stop copy of scheme 'Gray scales'">
 	<Stop At="0" Color="#000000" />
 	<Stop At="0.125" Color="#1D012F" />
 	<Stop At="0.25" Color="#320151" />

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="magma" Kind="Intensity" Category="sequential" Description="matplotlib colormap magma, sampled at 255 points">
+<ColorScheme Name="Magma" Kind="Intensity" Description="matplotlib colormap magma, sampled at 255 points">
 	<Stop At="0" Color="#000003" />
 	<Stop At="0.027559055118110236" Color="#02020F" />
 	<Stop At="0.1141732283464567" Color="#180F3F" />

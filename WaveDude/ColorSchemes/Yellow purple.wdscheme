@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Yellow_purple" Kind="Field" Category="custom" Description="9-stop copy of scheme 'gist_earth'">
+<ColorScheme Name="Yellow purple" Kind="Field" Description="9-stop copy of scheme 'gist_earth'">
 	<Stop At="0" Color="#F76EFC" />
 	<Stop At="0.125" Color="#BE02BE" />
 	<Stop At="0.25" Color="#800286" />

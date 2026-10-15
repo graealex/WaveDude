@@ -21,8 +21,9 @@ namespace WaveDude.Rendering;
 /// holds for every shipped file, the scheme keeps the 9 stops only; otherwise the table. Writing JSON
 /// (<see cref="Save"/>) emits the author's layout, so a stop scheme round-trips byte for byte; the "colors"
 /// table there is redundant for a stop scheme (his program reads only the table). The shipped schemes are
-/// embedded in this assembly as XML (<see cref="LoadBuiltIn"/>; the repository's <c>ColorSchemeList</c>
-/// folder is their source, converted from his JSON on 2026-10-13); the user's own schemes live in
+/// embedded in this assembly as XML (<see cref="LoadBuiltIn"/>; the library's <c>ColorSchemes</c> folder is
+/// their source, converted from his JSON on 2026-10-13 and renamed to plain names with spaces on 2026-10-15,
+/// the old underscore names still found by <see cref="Find"/>); the user's own schemes live in
 /// <see cref="UserFolder"/>. UI thread.
 /// </remarks>
 public static class ColorSchemeStore
@@ -137,7 +138,6 @@ public static class ColorSchemeStore
 		}
 		var scheme = new ColorScheme(schemeName, kept);
 		scheme.Description = GetString(root, "origin", scheme.Description);
-		scheme.Category = GetString(root, "category", scheme.Category);
 		scheme.Kind = KindOf(GetString(root, "scheme_type", ""));
 		return scheme;
 	}
@@ -212,9 +212,34 @@ public static class ColorSchemeStore
 		return schemes;
 	}
 
-	/// <summary>The scheme called <paramref name="name"/>, compared case-insensitively ("Default_intensity" finds "Default_Intensity"); null when absent.</summary>
-	public static ColorScheme? Find(IEnumerable<ColorScheme> schemes, string name) =>
-		schemes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+	/// <summary>
+	/// The old names of the shipped schemes (the author's files and projects saved before 2026-10-15) whose new name is
+	/// not just the underscores turned into spaces; the rest is covered by that rule in <see cref="Find"/>.
+	/// </summary>
+	private static readonly Dictionary<string, string> LegacyNames = new(StringComparer.OrdinalIgnoreCase)
+	{
+		["Blue_to_yellow_GNU"] = "Blue to yellow",
+		["Flare_inv"] = "Flare inverted",
+		["Gray_scales_inv"] = "Gray scales inverted",
+		["Turky_brown"] = "Turkey brown",
+	};
+
+	/// <summary>
+	/// The scheme called <paramref name="name"/>, compared case-insensitively; an old underscore name finds the
+	/// renamed shipped scheme ("Default_intensity" finds "Default intensity", "Flare_inv" "Flare inverted", 2026-10-15).
+	/// Null when absent.
+	/// </summary>
+	public static ColorScheme? Find(IEnumerable<ColorScheme> schemes, string name)
+	{
+		List<ColorScheme> list = schemes as List<ColorScheme> ?? [.. schemes];
+		ColorScheme? found = list.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+		if (found != null || name.IndexOf('_') < 0)
+		{
+			return found;
+		}
+		string renamed = LegacyNames.TryGetValue(name, out string? mapped) ? mapped : name.Replace('_', ' ');
+		return list.FirstOrDefault(s => string.Equals(s.Name, renamed, StringComparison.OrdinalIgnoreCase));
+	}
 
 	/// <summary>
 	/// Writes the author's JSON layout: "stops" for a scheme of 9 evenly spaced stops, then the interpolated
@@ -227,10 +252,6 @@ public static class ColorSchemeStore
 		json.AppendLine("{");
 		json.AppendLine("  \"name\": " + Quote(scheme.Name) + ",");
 		json.AppendLine("  \"origin\": " + Quote(scheme.Description) + ",");
-		if (!string.IsNullOrEmpty(scheme.Category))
-		{
-			json.AppendLine("  \"category\": " + Quote(scheme.Category) + ",");
-		}
 		if (scheme.Kind != ColorSchemeKind.Unspecified)
 		{
 			json.AppendLine("  \"scheme_type\": " + Quote(scheme.Kind.ToString().ToLowerInvariant()) + ",");

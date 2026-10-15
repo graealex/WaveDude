@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="rainbow" Kind="Intensity" Category="other" Description="matplotlib colormap rainbow, sampled at 255 points">
+<ColorScheme Name="Rainbow" Kind="Intensity" Description="matplotlib colormap rainbow, sampled at 255 points">
 	<Stop At="0" Color="#7F00FF" />
 	<Stop At="0.11811023622047244" Color="#435CFA" />
 	<Stop At="0.25196850393700787" Color="#00B4EB" />

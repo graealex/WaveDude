@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="inferno" Kind="Intensity" Category="sequential" Description="matplotlib colormap inferno, sampled at 255 points">
+<ColorScheme Name="Inferno" Kind="Intensity" Description="matplotlib colormap inferno, sampled at 255 points">
 	<Stop At="0" Color="#000003" />
 	<Stop At="0.05905511811023622" Color="#090621" />
 	<Stop At="0.09448818897637795" Color="#140B36" />

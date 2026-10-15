@@ -604,8 +604,11 @@ internal static class Program
 			store.Write(0, cpu.FieldData, null, cpu.Stride);
 			Check(store.RamFrames == 3 && !store.HasFile && !File.Exists(path) && store.FileBytes == 0 && store.FirstSpilledFrame == 3, "a run within the budget creates no file");
 		}
-		Check(FrameMemory.PhysicalBytes() > 1L << 30 && FrameMemory.AvailableBytes() <= FrameMemory.PhysicalBytes() && FrameMemory.Budget(50) <= FrameMemory.PhysicalBytes() / 2 && FrameMemory.Budget(0) == 0,
-			"memory: " + FrameMemory.Gigabytes(FrameMemory.PhysicalBytes()) + " physical, " + FrameMemory.Gigabytes(FrameMemory.AvailableBytes()) + " available, budget at 50 % " + FrameMemory.Gigabytes(FrameMemory.Budget(50)));
+		// Auto (0) is what is free minus the margin; a percentage caps that
+		long automatic = FrameMemory.Budget(FrameMemory.Automatic);
+		Check(FrameMemory.PhysicalBytes() > 1L << 30 && FrameMemory.AvailableBytes() <= FrameMemory.PhysicalBytes() && FrameMemory.Budget(50) <= FrameMemory.PhysicalBytes() / 2
+			&& Math.Abs(automatic - Math.Max(0, FrameMemory.AvailableBytes() - FrameMemory.Margin)) < 512L << 20 && FrameMemory.Budget(50) <= automatic + (512L << 20) && FrameMemory.Budget(1) <= FrameMemory.PhysicalBytes() / 100,
+			"memory: " + FrameMemory.Gigabytes(FrameMemory.PhysicalBytes()) + " physical, " + FrameMemory.Gigabytes(FrameMemory.AvailableBytes()) + " available, automatic " + FrameMemory.Gigabytes(automatic) + ", at most 50 % " + FrameMemory.Gigabytes(FrameMemory.Budget(50)));
 
 		// a full-HD store of 1 GB: the writes must run at memory speed and the dispose must not flush the
 		// dirty pages to disk (the file is deleted anyway; this used to take a minute for a 10 GB run)
@@ -939,7 +942,7 @@ internal static class Program
 	private static void CheckColorSchemes()
 	{
 		Console.WriteLine("--- colour schemes");
-		string folder = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "ColorSchemeList"));
+		string folder = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "WaveDude", "ColorSchemes"));
 		var errors = new List<string>();
 		List<ColorScheme> schemes = ColorSchemeStore.LoadBuiltIn(errors);
 		foreach (string error in errors)
@@ -949,13 +952,20 @@ internal static class Program
 		Check(errors.Count == 0, "all built-in schemes load from the assembly (" + schemes.Count + ")");
 		Check(schemes.Count >= 20 && schemes.All(s => s.IsBuiltIn && s.FilePath == ""), "at least 20 schemes embedded, marked built-in");
 		List<ColorScheme> fromFiles = ColorSchemeStore.LoadFolder(folder, null);
-		Check(fromFiles.Count == schemes.Count && fromFiles.Select(s => s.Name).SequenceEqual(schemes.Select(s => s.Name)), "the embedded set equals the repo's ColorSchemeList folder");
+		Check(fromFiles.Count == schemes.Count && fromFiles.Select(s => s.Name).SequenceEqual(schemes.Select(s => s.Name)), "the embedded set equals the library's ColorSchemes folder");
 		Check(fromFiles.Count > 0 && fromFiles.All(s => s.FilePath.EndsWith(ColorSchemeStore.XmlExtension, StringComparison.OrdinalIgnoreCase)), "the shipped schemes are XML (.wdscheme)");
 		ColorScheme? field = ColorSchemeStore.Find(schemes, Display.DefaultFieldColorScheme);
 		ColorScheme? intensity = ColorSchemeStore.Find(schemes, Display.DefaultIntensityColorScheme);
 		Check(field != null && intensity != null, "default field and intensity schemes found (case-insensitive)");
-		Check(field != null && field.IsStopScheme, "Default_Field is a 9-stop scheme (its table consolidated into the stops)");
-		Check(intensity != null && intensity.Kind == ColorSchemeKind.Intensity, "Default_Intensity is typed intensity");
+		Check(field != null && field.IsStopScheme, "'Default field' is a 9-stop scheme (its table consolidated into the stops)");
+		Check(intensity != null && intensity.Kind == ColorSchemeKind.Intensity, "'Default intensity' is typed intensity");
+		Check(schemes.All(s => !s.Name.Contains('_') && char.IsUpper(s.Name[0])) && schemes.Select(s => s.Name).SequenceEqual(fromFiles.Select(s => Path.GetFileNameWithoutExtension(s.FilePath))),
+			"the shipped names have no underscores, start with a capital, and name their files");
+		Check(ReferenceEquals(ColorSchemeStore.Find(schemes, "Default_intensity"), intensity) && ReferenceEquals(ColorSchemeStore.Find(schemes, "Default_Field"), field)
+			&& ColorSchemeStore.Find(schemes, "Flare_inv")?.Name == "Flare inverted" && ColorSchemeStore.Find(schemes, "Blue_to_yellow_GNU")?.Name == "Blue to yellow"
+			&& ColorSchemeStore.Find(schemes, "Gray_scales_inv")?.Name == "Gray scales inverted" && ColorSchemeStore.Find(schemes, "Turky_brown")?.Name == "Turkey brown"
+			&& ColorSchemeStore.Find(schemes, "inferno")?.Name == "Inferno" && ColorSchemeStore.Find(schemes, "No_such_scheme") == null,
+			"the old underscore names (the author's files, projects from before) still find the renamed schemes");
 		Check(schemes.Count(s => s.IsStopScheme && s.IsEvenlySpaced) == 11 && schemes.All(s => s.Stops.Count <= 24), "11 shipped schemes have the author's 9 evenly spaced stops, the 12 sampled colormaps are slimmed to at most 24");
 		// simplification: a ramp with one bend, sampled at 255 points, keeps its two ends and the bend only
 		var ramp = new ColorScheme("ramp", Enumerable.Range(0, 255).Select(i => i <= 127 ? new Rgb((byte)(i * 2), 0, 0) : new Rgb(254, (byte)((i - 127) * 2), 0)));
@@ -978,7 +988,7 @@ internal static class Program
 			string xml = File.ReadAllText(xmlPath);
 			ColorScheme back = ColorSchemeStore.LoadXml(xmlPath);
 			File.Delete(xmlPath);
-			string shipped = File.ReadAllText(Path.Combine(folder, "Default_Field" + ColorSchemeStore.XmlExtension));
+			string shipped = File.ReadAllText(Path.Combine(folder, Display.DefaultFieldColorScheme + ColorSchemeStore.XmlExtension));
 			Check(xml.ReplaceLineEndings() == shipped.ReplaceLineEndings(), "SaveXml reproduces the shipped .wdscheme file");
 			Check(xml.Contains("<Stop At=\"0.125\" Color=\"#") && !xml.Contains("xmlns"), "XML writes one Stop element per stop with its position and #RRGGBB, no namespaces");
 			Check(back.Name == field.Name && back.Kind == field.Kind && back.Stops.Select(s => (s.Position, s.Color)).SequenceEqual(field.Stops.Select(s => (s.Position, s.Color))), "XML round trip keeps name, kind and the 9 stops with positions");

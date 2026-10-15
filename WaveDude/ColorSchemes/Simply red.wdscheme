@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Simply_red" Kind="Intensity" Category="custom" Description="7-stop copy of scheme 'afmhot'">
+<ColorScheme Name="Simply red" Kind="Intensity" Description="7-stop copy of scheme 'afmhot'">
 	<Stop At="0" Color="#000000" />
 	<Stop At="0.16535433070866143" Color="#7D0101" />
 	<Stop At="0.3228346456692913" Color="#A60000" />

@@ -387,8 +387,6 @@
 	<s:String x:Key="Hint.ColorScheme.Name">Name, auf den sich die Darstellungseinstellungen beziehen.</s:String>
 	<s:String x:Key="Label.ColorScheme.Kind">Art</s:String>
 	<s:String x:Key="Hint.ColorScheme.Kind">Ausgabe, für die das Schema gedacht ist; die Auswahllisten führen es nur dort auf.</s:String>
-	<s:String x:Key="Label.ColorScheme.Category">Kategorie</s:String>
-	<s:String x:Key="Hint.ColorScheme.Category">Freie Gruppierung, etwa 'sequential' oder 'custom'.</s:String>
 	<s:String x:Key="Label.ColorScheme.Description">Beschreibung</s:String>
 	<s:String x:Key="Hint.ColorScheme.Description">Freier Text: was das Schema ist, woher es stammt.</s:String>
 	<s:String x:Key="Enum.ProbeLayer.Field">Feld</s:String>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="plasma" Kind="Intensity" Category="custom" Description="9-stop copy of scheme 'plasma'">
+<ColorScheme Name="Plasma" Kind="Intensity" Description="9-stop copy of scheme 'plasma'">
 	<Stop At="0" Color="#0C0786" />
 	<Stop At="0.125" Color="#4C02A1" />
 	<Stop At="0.25" Color="#7D03A7" />

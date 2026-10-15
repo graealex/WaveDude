@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ColorScheme Name="Greens" Kind="Field" Category="sequential" Description="matplotlib colormap Greens, sampled at 255 points">
+<ColorScheme Name="Greens" Kind="Field" Description="matplotlib colormap Greens, sampled at 255 points">
 	<Stop At="0" Color="#F7FCF5" />
 	<Stop At="0.11811023622047244" Color="#E6F5E1" />
 	<Stop At="0.24015748031496062" Color="#C9EAC2" />
