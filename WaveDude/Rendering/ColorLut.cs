@@ -99,6 +99,22 @@ public sealed class ColorLut
 	}
 
 	/// <summary>
+	/// The square-root case of <see cref="IntensityIndex(float, float, float)"/>, the arithmetic
+	/// <see cref="FrameRenderer.RenderIntensity"/> uses per pixel: <c>min(sqrt(intensity) · brightness, 1) · 254</c>,
+	/// 0 for NaN or a non-positive intensity. Also the mapping baked into a <see cref="Engine.FrameFormat.Index"/> frame.
+	/// </summary>
+	/// <param name="intensity">Accumulated intensity from the engine.</param>
+	/// <param name="brightness">Gain applied after the square root.</param>
+	public static int IntensityIndex(float intensity, float brightness)
+	{
+		if (!(intensity > 0f))
+		{
+			return 0;
+		}
+		return (int)(Math.Min(Math.Sqrt(intensity) * brightness, 1.0) * 254.0);
+	}
+
+	/// <summary>
 	/// Maps a non-negative intensity to a palette index 0..254, like <c>render_intensity</c>:
 	/// <c>clip(intensity ^ exponent * brightness, 0, 1) * 254</c>. NaN or non-positive
 	/// intensity gives 0. <see cref="FrameRenderer.RenderIntensity"/> inlines the square-root case.

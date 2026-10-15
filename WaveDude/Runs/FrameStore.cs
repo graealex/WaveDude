@@ -1,14 +1,16 @@
 using System.Collections.Concurrent;
-using System.Numerics.Tensors;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using NLog;
+using WaveDude.Engine;
 
 namespace WaveDude.Runs;
 
 /// <summary>
-/// The frames of one run: per frame one <see cref="Half"/> plane per layer (<see cref="Layers"/>),
-/// <see cref="Width"/> × <see cref="Height"/> values row-major with the engine's padding stripped. Two tiers
+/// The frames of one run: per frame one plane per layer (<see cref="Layers"/>) in the run's <see cref="Shape"/>:
+/// <see cref="Width"/> × <see cref="Height"/> samples row-major with the engine's padding stripped, the canvas
+/// shrunk by the shape's divisor, each sample a <see cref="Half"/> or a palette index byte (<see cref="Format"/>,
+/// 2026-10-15; the reduced preview). Two tiers
 /// (2026-10-14): the first frames of the run, as many as the memory budget given at creation holds
 /// (<see cref="RamFrames"/>), live in native memory; the rest go to a temporary file that is created only when
 /// a run does not fit. A run that fits never touches the disk, so it is bound by the engine and not by the
@@ -30,8 +32,9 @@ namespace WaveDude.Runs;
 /// them (<see cref="PrepareBlocks"/>): a fresh block costs a page fault per 4 KB on first touch, 8 to 14 ms
 /// for a full-HD frame, which would make the writer slower than the engine; prepared, a frame is a plain copy.
 /// File layout: a <see cref="HeaderSize"/>-byte header ("WDFS", version, width, height, layers,
-/// visualize-every, capacity, first frame in the file), then one <see cref="FrameBytes"/> record per spilled
-/// frame; within a frame the planes follow the order of <see cref="FrameLayer"/>, only those present.
+/// visualize-every, capacity, first frame in the file, format, divisor, canvas width, canvas height), then one
+/// <see cref="FrameBytes"/> record per spilled frame; within a frame the planes follow the order of
+/// <see cref="FrameLayer"/>, only those present.
 /// </remarks>
 public sealed unsafe class FrameStore : IFrameSource, IDisposable
 {
@@ -41,7 +44,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	public const int HeaderSize = 64;
 
 	private const uint Magic = 0x53464457; // "WDFS" as little-endian bytes
-	private const int Version = 2;
+	private const int Version = 3;
 
 	/// <summary>Value of <see cref="_firstSpilled"/> while no frame goes to the file.</summary>
 	private const int NoSpill = int.MaxValue;
@@ -57,18 +60,17 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	private readonly BlockingCollection<IntPtr> _prepared = new(PrepareDepth);
 	private readonly CancellationTokenSource _prepareCancel = new();
 	private readonly Task _preparer;
-	private readonly Half[] _staging;
-	private Half[]? _staging2;
+	private readonly byte[] _staging;
+	private byte[]? _staging2;
 	private FileStream? _file;
 	private SafeFileHandle? _handle;
 	private volatile int _firstSpilled = NoSpill;
 	private int _count;
 	private bool _disposed;
 
-	private FrameStore(string path, int width, int height, FrameLayers layers, int capacity, int visualizeEvery, long ramBudget)
+	private FrameStore(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long ramBudget)
 	{
-		ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
-		ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
+		shape.Validate();
 		ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
 		ArgumentOutOfRangeException.ThrowIfLessThan(visualizeEvery, 1);
 		if (layers == FrameLayers.None)
@@ -76,15 +78,14 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 			throw new ArgumentException("A store needs at least one layer.", nameof(layers));
 		}
 		Path = path;
-		Width = width;
-		Height = height;
+		Shape = shape;
 		Layers = layers;
 		Capacity = capacity;
 		VisualizeEvery = visualizeEvery;
 		LayerCount = (Has(FrameLayer.Field) ? 1 : 0) + (Has(FrameLayer.Intensity) ? 1 : 0);
-		RamFrames = Math.Min(capacity, FramesInBudget(width, height, layers, ramBudget));
+		RamFrames = Math.Min(capacity, FramesInBudget(shape, layers, ramBudget));
 		_ram = new IntPtr[RamFrames];
-		_staging = new Half[width * height];
+		_staging = new byte[shape.PlaneBytes];
 		if (RamFrames < capacity)
 		{
 			// the run will not fit: the file for the rest is made now, so a lack of disk space shows at the start
@@ -155,37 +156,52 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	/// bytes, the rest in the file at <paramref name="path"/> (which must not exist; it is only created when needed).
 	/// </summary>
 	/// <param name="path">File path for the spilled frames, normally from <see cref="FrameCache.NewPath"/>.</param>
-	/// <param name="width">Frame width in pixels.</param>
-	/// <param name="height">Frame height in pixels.</param>
+	/// <param name="shape">The frames' geometry and format (<see cref="RunSpec.Shape"/>).</param>
 	/// <param name="layers">The planes every frame holds; at least one.</param>
 	/// <param name="capacity">Number of frames the run produces (<see cref="RunSpec.FrameCount"/>).</param>
 	/// <param name="visualizeEvery">Steps per frame, kept for <see cref="StepOf"/>.</param>
 	/// <param name="ramBudget">Bytes of memory the frames may take; null takes <see cref="FrameMemory.Budget"/> at the default share.</param>
 	/// <exception cref="IOException">The file cannot be created or sized (for instance no disk space).</exception>
+	public static FrameStore Create(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null) =>
+		new(path, shape, layers, capacity, visualizeEvery, ramBudget ?? FrameMemory.Budget(FrameMemory.DefaultPercent));
+
+	/// <summary>Creates a full-quality store (every cell as a <see cref="Half"/>) for a canvas of <paramref name="width"/> × <paramref name="height"/>; see <see cref="Create(string, FrameShape, FrameLayers, int, int, long?)"/>.</summary>
 	public static FrameStore Create(string path, int width, int height, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null) =>
-		new(path, width, height, layers, capacity, visualizeEvery, ramBudget ?? FrameMemory.Budget(FrameMemory.DefaultPercent));
+		Create(path, FrameShape.Full(width, height), layers, capacity, visualizeEvery, ramBudget);
 
-	/// <summary>Bytes a file holding <paramref name="capacity"/> frames of these dimensions takes, for <see cref="FrameCache.CheckSpace"/> (the spilled part of a run).</summary>
-	public static long SizeOf(int width, int height, FrameLayers layers, int capacity) => HeaderSize + (long)capacity * FrameBytesOf(width, height, layers);
+	/// <summary>Bytes a file holding <paramref name="capacity"/> frames of this shape takes, for <see cref="FrameCache.CheckSpace"/> (the spilled part of a run).</summary>
+	public static long SizeOf(FrameShape shape, FrameLayers layers, int capacity) => HeaderSize + capacity * FrameBytesOf(shape, layers);
 
-	/// <summary>How many frames of these dimensions fit into <paramref name="budget"/> bytes of memory.</summary>
-	public static int FramesInBudget(int width, int height, FrameLayers layers, long budget) =>
-		(int)Math.Clamp(Math.Max(0, budget) / FrameBytesOf(width, height, layers), 0, int.MaxValue);
+	/// <summary>How many frames of this shape fit into <paramref name="budget"/> bytes of memory.</summary>
+	public static int FramesInBudget(FrameShape shape, FrameLayers layers, long budget) =>
+		(int)Math.Clamp(Math.Max(0, budget) / FrameBytesOf(shape, layers), 0, int.MaxValue);
 
-	private static long FrameBytesOf(int width, int height, FrameLayers layers)
+	private static long FrameBytesOf(FrameShape shape, FrameLayers layers)
 	{
 		int layerCount = ((layers & FrameLayers.Field) != 0 ? 1 : 0) + ((layers & FrameLayers.Intensity) != 0 ? 1 : 0);
-		return (long)layerCount * width * height * 2;
+		return layerCount * shape.PlaneBytes;
 	}
 
 	/// <summary>Full path of the file for the spilled frames; it exists only once a frame went there (<see cref="HasFile"/>).</summary>
 	public string Path { get; }
 
-	/// <summary>Frame width in pixels.</summary>
-	public int Width { get; }
+	/// <summary>The frames' geometry and format.</summary>
+	public FrameShape Shape { get; }
 
-	/// <summary>Frame height in pixels.</summary>
-	public int Height { get; }
+	/// <summary>Frame width in samples.</summary>
+	public int Width => Shape.Width;
+
+	/// <summary>Frame height in samples.</summary>
+	public int Height => Shape.Height;
+
+	/// <inheritdoc/>
+	public int CanvasWidth => Shape.CanvasWidth;
+
+	/// <inheritdoc/>
+	public int CanvasHeight => Shape.CanvasHeight;
+
+	/// <inheritdoc/>
+	public FrameFormat Format => Shape.Format;
 
 	/// <summary>The planes every frame holds.</summary>
 	public FrameLayers Layers { get; }
@@ -217,8 +233,8 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	/// <summary>Whether the file for spilled frames exists.</summary>
 	public bool HasFile => _file != null;
 
-	/// <summary>Bytes of one plane: <see cref="Width"/> × <see cref="Height"/> × 2.</summary>
-	public long PlaneBytes => (long)Width * Height * 2;
+	/// <summary>Bytes of one plane: <see cref="Width"/> × <see cref="Height"/> × the sample size (<see cref="FrameShape.PlaneBytes"/>).</summary>
+	public long PlaneBytes => Shape.PlaneBytes;
 
 	/// <summary>Bytes of one frame: <see cref="PlaneBytes"/> × <see cref="LayerCount"/>.</summary>
 	public long FrameBytes => PlaneBytes * LayerCount;
@@ -243,47 +259,54 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 
 	/// <summary>
 	/// Stores the next frame from the engine's padded buffers (row y starts at <c>(y + 1) × stride + 1</c>),
-	/// converting to <see cref="Half"/> in parallel over the rows first. Writer thread only; frames must arrive
-	/// in order. The run itself uses the <see cref="Half"/> overload with the engine's own captures.
+	/// converting them to the store's shape first (<see cref="FrameConversion"/>, rows in parallel). Writer thread
+	/// only; frames must arrive in order. The run itself uses the snapshot overload with the engine's own captures.
 	/// </summary>
 	/// <param name="frame">Index of the frame; must equal <see cref="Count"/>.</param>
-	/// <param name="field">Padded field buffer, <c>stride × (Height + 2)</c> floats.</param>
+	/// <param name="field">Padded field buffer, <c>stride × (canvas height + 2)</c> floats.</param>
 	/// <param name="intensity">Padded intensity buffer, or null when the store has no intensity plane.</param>
-	/// <param name="stride">Row pitch of the padded buffers (<see cref="Width"/> + 2).</param>
+	/// <param name="stride">Row pitch of the padded buffers (<see cref="CanvasWidth"/> + 2).</param>
 	/// <exception cref="ArgumentOutOfRangeException"><paramref name="frame"/> is not the next frame or beyond <see cref="Capacity"/>.</exception>
 	/// <exception cref="ArgumentNullException">The store has an intensity plane but <paramref name="intensity"/> is null.</exception>
 	/// <exception cref="ObjectDisposedException">The store is disposed.</exception>
 	public void Write(int frame, float[] field, float[]? intensity, int stride)
 	{
-		int width = Width;
-		Half[] fieldPlane = _staging;
-		Parallel.For(0, Height, y => TensorPrimitives.ConvertToHalf(field.AsSpan((y + 1) * stride + 1, width), fieldPlane.AsSpan(y * width, width)));
-		Half[]? intensityPlane = null;
+		byte[] fieldPlane = _staging;
+		FrameConversion.Convert(field, stride + 1, stride, Shape, false, fieldPlane);
+		byte[]? intensityPlane = null;
 		if (Has(FrameLayer.Intensity))
 		{
 			ArgumentNullException.ThrowIfNull(intensity);
-			intensityPlane = _staging2 ??= new Half[Width * Height];
-			Parallel.For(0, Height, y => TensorPrimitives.ConvertToHalf(intensity.AsSpan((y + 1) * stride + 1, width), intensityPlane.AsSpan(y * width, width)));
+			intensityPlane = _staging2 ??= new byte[Shape.PlaneBytes];
+			FrameConversion.Convert(intensity, stride + 1, stride, Shape, true, intensityPlane);
 		}
 		Write(frame, fieldPlane, intensityPlane);
 	}
 
-	/// <summary>
-	/// Stores the next frame from <see cref="Half"/> planes in the store's own layout (what
-	/// <see cref="Engine.IWaveEngine.CaptureFrame"/> produces): a copy into memory while the budget lasts, one
-	/// positional write per plane into the file beyond it. Any thread, but only one writer at a time; frames
-	/// must arrive in order. When the memory for a frame within the budget cannot be had after all (the
-	/// commit limit of the machine), that frame and every later one go to the file instead, noted once.
-	/// </summary>
-	/// <param name="frame">Index of the frame; must equal <see cref="Count"/>.</param>
-	/// <param name="field">Field plane, <see cref="Width"/> × <see cref="Height"/> values.</param>
-	/// <param name="intensity">Intensity plane, or null when the store has no intensity plane.</param>
-	/// <exception cref="ArgumentOutOfRangeException"><paramref name="frame"/> is not the next frame or beyond <see cref="Capacity"/>, or a plane is too short.</exception>
-	/// <exception cref="ArgumentNullException">The store has an intensity plane but <paramref name="intensity"/> is null.</exception>
-	/// <exception cref="ObjectDisposedException">The store is disposed.</exception>
+	/// <summary>Stores the next frame from <see cref="Half"/> planes; the store's samples must be halves (<see cref="Format"/>). See <see cref="Write(int, ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>.</summary>
+	/// <exception cref="InvalidOperationException">The store's samples are palette indices.</exception>
 	public void Write(int frame, ReadOnlySpan<Half> field, ReadOnlySpan<Half> intensity)
 	{
-		int length = Width * Height;
+		RequireHalves();
+		Write(frame, MemoryMarshal.AsBytes(field), MemoryMarshal.AsBytes(intensity));
+	}
+
+	/// <summary>
+	/// Stores the next frame from planes in the store's own layout (what <see cref="Engine.IWaveEngine.CaptureFrame"/>
+	/// produces for the store's <see cref="Shape"/>): a copy into memory while the budget lasts, one positional
+	/// write per plane into the file beyond it. Any thread, but only one writer at a time; frames must arrive in
+	/// order. When the memory for a frame within the budget cannot be had after all (the commit limit of the
+	/// machine), that frame and every later one go to the file instead, noted once.
+	/// </summary>
+	/// <param name="frame">Index of the frame; must equal <see cref="Count"/>.</param>
+	/// <param name="field">Field plane, <see cref="PlaneBytes"/> bytes.</param>
+	/// <param name="intensity">Intensity plane, or empty when the store has no intensity plane.</param>
+	/// <exception cref="ArgumentOutOfRangeException"><paramref name="frame"/> is not the next frame or beyond <see cref="Capacity"/>, or a plane is too short.</exception>
+	/// <exception cref="ArgumentNullException">The store has an intensity plane but <paramref name="intensity"/> is missing.</exception>
+	/// <exception cref="ObjectDisposedException">The store is disposed.</exception>
+	public void Write(int frame, ReadOnlySpan<byte> field, ReadOnlySpan<byte> intensity)
+	{
+		int length = (int)PlaneBytes;
 		_lifetime.EnterReadLock();
 		try
 		{
@@ -323,11 +346,11 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 			{
 				if (Has(FrameLayer.Field))
 				{
-					RandomAccess.Write(_handle!, MemoryMarshal.AsBytes(field[..length]), PlaneOffset(frame, FrameLayer.Field));
+					RandomAccess.Write(_handle!, field[..length], PlaneOffset(frame, FrameLayer.Field));
 				}
 				if (Has(FrameLayer.Intensity))
 				{
-					RandomAccess.Write(_handle!, MemoryMarshal.AsBytes(intensity[..length]), PlaneOffset(frame, FrameLayer.Intensity));
+					RandomAccess.Write(_handle!, intensity[..length], PlaneOffset(frame, FrameLayer.Intensity));
 				}
 			}
 			Volatile.Write(ref _count, frame + 1);
@@ -339,29 +362,37 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 		FrameWritten?.Invoke(frame + 1);
 	}
 
-	/// <summary>Stores a captured frame (<see cref="Engine.IWaveEngine.CaptureFrame"/>, awaited); the snapshot's size must match.</summary>
-	/// <exception cref="ArgumentException">The snapshot has another size.</exception>
-	public void Write(int frame, Engine.FrameSnapshot snapshot)
+	/// <summary>Stores a captured frame (<see cref="Engine.IWaveEngine.CaptureFrame"/>, awaited); the snapshot's size and format must match the store's.</summary>
+	/// <exception cref="ArgumentException">The snapshot has another layout.</exception>
+	public void Write(int frame, FrameSnapshot snapshot)
 	{
-		if (snapshot.Width != Width || snapshot.Height != Height)
+		if (!snapshot.Shape.SameLayoutAs(Shape))
 		{
-			throw new ArgumentException("The snapshot does not match the store's size.", nameof(snapshot));
+			throw new ArgumentException("The snapshot does not match the store's size or format.", nameof(snapshot));
 		}
-		Write(frame, snapshot.Field, snapshot.HasIntensity ? snapshot.Intensity : null);
+		Write(frame, snapshot.FieldBytes, snapshot.HasIntensity ? snapshot.IntensityBytes : null);
+	}
+
+	/// <summary>Reads one plane as <see cref="Half"/> values; the store's samples must be halves (<see cref="Format"/>). See <see cref="CopyLayer(int, FrameLayer, Span{byte})"/>.</summary>
+	/// <exception cref="InvalidOperationException">The store's samples are palette indices.</exception>
+	public bool CopyLayer(int frame, FrameLayer layer, Span<Half> destination)
+	{
+		RequireHalves();
+		return CopyLayer(frame, layer, MemoryMarshal.AsBytes(destination));
 	}
 
 	/// <summary>
-	/// Reads one plane of a stored frame into <paramref name="destination"/> (at least <see cref="Width"/> ×
-	/// <see cref="Height"/> values), from memory or from the file. Safe against a concurrent <see cref="Dispose"/>;
-	/// returns false instead of reading when the store is already disposed.
+	/// Reads one plane of a stored frame into <paramref name="destination"/> (at least <see cref="PlaneBytes"/>
+	/// bytes), from memory or from the file. Safe against a concurrent <see cref="Dispose"/>; returns false
+	/// instead of reading when the store is already disposed.
 	/// </summary>
 	/// <param name="frame">Frame index below <see cref="Count"/>.</param>
 	/// <param name="layer">A plane the store holds.</param>
-	/// <param name="destination">Receives the values row-major.</param>
+	/// <param name="destination">Receives the samples row-major.</param>
 	/// <exception cref="ArgumentOutOfRangeException">The frame is not written yet, the plane is not stored, or the destination is too small.</exception>
-	public bool CopyLayer(int frame, FrameLayer layer, Span<Half> destination)
+	public bool CopyLayer(int frame, FrameLayer layer, Span<byte> destination)
 	{
-		int length = Width * Height;
+		int length = (int)PlaneBytes;
 		if (destination.Length < length)
 		{
 			throw new ArgumentOutOfRangeException(nameof(destination), "The destination is smaller than a plane.");
@@ -386,7 +417,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 				Plane((void*)_ram[frame], layer).CopyTo(destination);
 				return true;
 			}
-			Span<byte> bytes = MemoryMarshal.AsBytes(destination[..length]);
+			Span<byte> bytes = destination[..length];
 			long offset = PlaneOffset(frame, layer);
 			while (bytes.Length > 0)
 			{
@@ -415,7 +446,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	/// Frees the memory tier and closes the file, which deletes it. Marks the store disposed and frees the frames
 	/// under the lock (so no read or write starts on freed memory) but closes the file outside it: deleting a
 	/// large file can take a second, and a reader must not wait for that. A file read or write in flight ends
-	/// with <see cref="ObjectDisposedException"/>, which <see cref="CopyLayer"/> turns into false.
+	/// with <see cref="ObjectDisposedException"/>, which <see cref="CopyLayer(int, FrameLayer, Span{byte})"/> turns into false.
 	/// </summary>
 	public void Dispose()
 	{
@@ -459,8 +490,18 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	}
 
 	/// <summary>A plane of a frame kept in memory, as a span over the native block.</summary>
-	private Span<Half> Plane(void* frameMemory, FrameLayer layer) =>
-		new((byte*)frameMemory + PlaneIndex(layer) * PlaneBytes, Width * Height);
+	private Span<byte> Plane(void* frameMemory, FrameLayer layer) =>
+		new((byte*)frameMemory + PlaneIndex(layer) * PlaneBytes, (int)PlaneBytes);
+
+	/// <summary>The <see cref="Half"/> overloads only apply to a store of halves.</summary>
+	/// <exception cref="InvalidOperationException">The store's samples are palette indices.</exception>
+	private void RequireHalves()
+	{
+		if (Format != FrameFormat.Half)
+		{
+			throw new InvalidOperationException("The store's samples are palette indices, not halves.");
+		}
+	}
 
 	/// <summary>Byte offset of a plane in the file; the file holds the frames from <see cref="_firstSpilled"/> on.</summary>
 	private long PlaneOffset(int frame, FrameLayer layer) =>
@@ -533,6 +574,10 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 		BitConverter.TryWriteBytes(header[20..], VisualizeEvery);
 		BitConverter.TryWriteBytes(header[24..], Capacity);
 		BitConverter.TryWriteBytes(header[28..], firstFrame);
+		BitConverter.TryWriteBytes(header[32..], (int)Format);
+		BitConverter.TryWriteBytes(header[36..], Shape.Divisor);
+		BitConverter.TryWriteBytes(header[40..], CanvasWidth);
+		BitConverter.TryWriteBytes(header[44..], CanvasHeight);
 		RandomAccess.Write(_handle!, header, 0);
 	}
 }

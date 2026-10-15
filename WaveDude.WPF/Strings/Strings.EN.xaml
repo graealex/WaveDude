@@ -25,6 +25,17 @@
 	<s:String x:Key="MenuViewPanes">_Panes</s:String>
 	<s:String x:Key="MenuViewTheme">_Theme</s:String>
 	<s:String x:Key="MenuViewLanguage">_Language</s:String>
+	<s:String x:Key="MenuViewResolution">Preview _resolution</s:String>
+	<s:String x:Key="MenuViewResolutionFull">_Full</s:String>
+	<s:String x:Key="MenuViewResolutionHalf">_Half</s:String>
+	<s:String x:Key="MenuViewResolutionQuarter">_Quarter</s:String>
+	<s:String x:Key="MenuViewFrames">Preview _frames</s:String>
+	<s:String x:Key="MenuViewFramesFull">_Full</s:String>
+	<s:String x:Key="MenuViewFramesHalf">_Half (every second frame)</s:String>
+	<s:String x:Key="MenuViewFramesQuarter">_Quarter (every fourth frame)</s:String>
+	<s:String x:Key="MenuViewSamples">Preview _samples</s:String>
+	<s:String x:Key="MenuViewSamples16">_16-bit float</s:String>
+	<s:String x:Key="MenuViewSamples8">_8-bit palette index (brightness fixed when the run starts)</s:String>
 	<s:String x:Key="LanguageSystem">System</s:String>
 	<s:String x:Key="MenuSimulation">_Simulation</s:String>
 	<s:String x:Key="MenuSimulationRun">_Run</s:String>

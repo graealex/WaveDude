@@ -214,14 +214,14 @@ public sealed class WaveSimulator : IWaveEngine, IDisposable
 	/// </summary>
 	public void CaptureFrame(FrameSnapshot snapshot, bool needIntensity)
 	{
-		if (snapshot.Width != _width || snapshot.Height != _height)
+		if (snapshot.Shape.CanvasWidth != _width || snapshot.Shape.CanvasHeight != _height)
 		{
-			throw new ArgumentException("The snapshot does not match the engine's size.", nameof(snapshot));
+			throw new ArgumentException("The snapshot's canvas does not match the engine's size.", nameof(snapshot));
 		}
 		int cells = _width * _height;
 		snapshot.FieldFloats ??= new float[cells];
 		CopyInterior(_u, snapshot.FieldFloats);
-		snapshot.HasIntensity = needIntensity && _intensityOut != null && snapshot.Intensity != null;
+		snapshot.HasIntensity = needIntensity && _intensityOut != null && snapshot.IntensityBytes != null;
 		if (snapshot.HasIntensity)
 		{
 			snapshot.IntensityFloats ??= new float[cells];
@@ -238,10 +238,11 @@ public sealed class WaveSimulator : IWaveEngine, IDisposable
 			return;
 		}
 		snapshot.PendingConversion = false;
-		Convert(snapshot.FieldFloats!, snapshot.Field);
+		// the shape's shrinking and format (FrameConversion), on the awaiting thread
+		FrameConversion.Convert(snapshot.FieldFloats!, 0, _width, snapshot.Shape, false, snapshot.FieldBytes);
 		if (snapshot.HasIntensity)
 		{
-			Convert(snapshot.IntensityFloats!, snapshot.Intensity!);
+			FrameConversion.Convert(snapshot.IntensityFloats!, 0, _width, snapshot.Shape, true, snapshot.IntensityBytes!);
 		}
 	}
 
@@ -251,13 +252,6 @@ public sealed class WaveSimulator : IWaveEngine, IDisposable
 		int width = _width;
 		int stride = _stride;
 		Parallel.For(0, _height, y => source.AsSpan((y + 1) * stride + 1, width).CopyTo(target.AsSpan(y * width, width)));
-	}
-
-	/// <summary>A packed float plane to <see cref="Half"/>, rows in parallel.</summary>
-	private void Convert(float[] source, Half[] target)
-	{
-		int width = _width;
-		Parallel.For(0, _height, y => TensorPrimitives.ConvertToHalf(source.AsSpan(y * width, width), target.AsSpan(y * width, width)));
 	}
 
 	/// <summary>Scene width in cells (canvas pixels), excluding the padding.</summary>

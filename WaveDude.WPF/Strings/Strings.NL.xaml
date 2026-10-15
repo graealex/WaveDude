@@ -25,6 +25,17 @@
 	<s:String x:Key="MenuViewPanes">_Panelen</s:String>
 	<s:String x:Key="MenuViewTheme">_Thema</s:String>
 	<s:String x:Key="MenuViewLanguage">Taa_l</s:String>
+	<s:String x:Key="MenuViewResolution">Voorbeeld_resolutie</s:String>
+	<s:String x:Key="MenuViewResolutionFull">_Volledig</s:String>
+	<s:String x:Key="MenuViewResolutionHalf">_Half</s:String>
+	<s:String x:Key="MenuViewResolutionQuarter">_Kwart</s:String>
+	<s:String x:Key="MenuViewFrames">Voorbeeld_frames</s:String>
+	<s:String x:Key="MenuViewFramesFull">_Alle</s:String>
+	<s:String x:Key="MenuViewFramesHalf">_Half (elk tweede frame)</s:String>
+	<s:String x:Key="MenuViewFramesQuarter">_Kwart (elk vierde frame)</s:String>
+	<s:String x:Key="MenuViewSamples">Voorbeeld_samples</s:String>
+	<s:String x:Key="MenuViewSamples16">_16-bits zwevende komma</s:String>
+	<s:String x:Key="MenuViewSamples8">_8-bits paletindex (helderheid vastgelegd bij de start van de run)</s:String>
 	<s:String x:Key="LanguageSystem">Systeem</s:String>
 	<s:String x:Key="MenuSimulation">_Simulatie</s:String>
 	<s:String x:Key="MenuSimulationRun">_Starten</s:String>

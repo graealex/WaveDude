@@ -55,16 +55,33 @@ public static class FrameRenderer
 			Span<int> target = pixels.Span.Slice(y * width, width);
 			for (int x = 0; x < width; x++)
 			{
-				float value = row[x];
-				int index = 0;
-				if (value > 0f)
-				{
-					index = (int)(Math.Min(Math.Sqrt(value) * brightness, 1.0) * 254.0);
-				}
-				target[x] = Colorize(index, lut);
+				target[x] = Colorize(ColorLut.IntensityIndex(row[x], brightness), lut);
 			}
 			return row;
 		}, _ => { });
+	}
+
+	/// <summary>
+	/// Renders a plane of palette indices (an <see cref="Engine.FrameFormat.Index"/> frame, the brightness already
+	/// applied when it was captured): every byte is looked up in the palette, nothing else. The cheapest picture there
+	/// is, a table lookup per pixel.
+	/// </summary>
+	/// <param name="indices">Palette indices 0..254, row-major, <paramref name="width"/> × <paramref name="height"/>.</param>
+	/// <param name="width">Frame width in pixels.</param>
+	/// <param name="height">Frame height in pixels.</param>
+	/// <param name="lut">ARGB palette indexed 0..254, or null for greyscale.</param>
+	/// <param name="pixels">Destination, at least <paramref name="width"/> × <paramref name="height"/> packed BGRA32 pixels, row-major.</param>
+	public static void RenderIndexed(ReadOnlyMemory<byte> indices, int width, int height, int[]? lut, Memory<int> pixels)
+	{
+		Parallel.For(0, height, y =>
+		{
+			ReadOnlySpan<byte> row = indices.Span.Slice(y * width, width);
+			Span<int> target = pixels.Span.Slice(y * width, width);
+			for (int x = 0; x < width; x++)
+			{
+				target[x] = Colorize(Math.Min((int)row[x], ColorLut.Size - 1), lut);
+			}
+		});
 	}
 
 	/// <summary>Looks up a palette index in <paramref name="lut"/>, or builds an opaque grey of that level when there is no LUT.</summary>

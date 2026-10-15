@@ -191,6 +191,42 @@ namespace WaveDude.WPF.Properties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
+        public int PreviewResolution {
+            get {
+                return ((int)(this["PreviewResolution"]));
+            }
+            set {
+                this["PreviewResolution"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
+        public int PreviewFrames {
+            get {
+                return ((int)(this["PreviewFrames"]));
+            }
+            set {
+                this["PreviewFrames"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("2")]
+        public int PreviewSampleBytes {
+            get {
+                return ((int)(this["PreviewSampleBytes"]));
+            }
+            set {
+                this["PreviewSampleBytes"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("")]
         public string LastExportFolder {
             get {

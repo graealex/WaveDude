@@ -85,6 +85,11 @@ public partial class MainWindow : Window
 			{
 				Logger.Info("Frames kept in memory: {Percent} % of the RAM, {Budget} right now (Simulation menu)", Settings.Default.FrameMemoryPercent, FrameMemory.Gigabytes(FrameMemory.Budget(Settings.Default.FrameMemoryPercent)));
 			}
+			else if (args.PropertyName is nameof(Settings.PreviewResolution) or nameof(Settings.PreviewFrames) or nameof(Settings.PreviewSampleBytes))
+			{
+				Logger.Info("Preview quality: {Quality} (View menu)", PreviewQualitySetting);
+				OnPreviewQualityChanged();
+			}
 		};
 		Closing += (_, e) =>
 		{
@@ -329,11 +334,23 @@ public partial class MainWindow : Window
 	}
 
 	/// <summary>Simulation > Frames kept in memory: the chosen share of the RAM, applied to the next run.</summary>
-	private void OnSetFrameMemory(object sender, ExecutedRoutedEventArgs e)
+	private void OnSetFrameMemory(object sender, ExecutedRoutedEventArgs e) => SetIntSetting(e, percent => Settings.Default.FrameMemoryPercent = percent);
+
+	/// <summary>View > Preview resolution: the canvas divisor (1, 2, 4), applied to the next scratch frame and run.</summary>
+	private void OnSetPreviewResolution(object sender, ExecutedRoutedEventArgs e) => SetIntSetting(e, divisor => Settings.Default.PreviewResolution = divisor);
+
+	/// <summary>View > Preview frames: the multiplier of the project's visualisation interval (1, 2, 4).</summary>
+	private void OnSetPreviewFrames(object sender, ExecutedRoutedEventArgs e) => SetIntSetting(e, divisor => Settings.Default.PreviewFrames = divisor);
+
+	/// <summary>View > Preview samples: the bytes per sample (2 halves, 1 palette indices).</summary>
+	private void OnSetPreviewSamples(object sender, ExecutedRoutedEventArgs e) => SetIntSetting(e, bytes => Settings.Default.PreviewSampleBytes = bytes);
+
+	/// <summary>A menu choice carried as a number in the command parameter: stores it and saves the settings.</summary>
+	private static void SetIntSetting(ExecutedRoutedEventArgs e, Action<int> apply)
 	{
-		if (e.Parameter is string text && int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int percent))
+		if (e.Parameter is string text && int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int value))
 		{
-			Settings.Default.FrameMemoryPercent = percent;
+			apply(value);
 			SaveSettings();
 		}
 	}

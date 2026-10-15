@@ -154,7 +154,7 @@ public partial class MainWindow
 			ScheduleScratch();
 			return;
 		}
-		if (!change.AffectsSimulation)
+		if (!change.AffectsSimulation && !IsBrightnessBaked(change))
 		{
 			return;
 		}
@@ -175,6 +175,34 @@ public partial class MainWindow
 			// its snapshot is already obsolete: stop it now, the quiet period starts a fresh one
 			Logger.Debug("The automatic run is stopped: its snapshot is obsolete");
 			Run.Stop();
+		}
+		ScheduleScratch();
+		ScheduleRerun();
+	}
+
+	/// <summary>
+	/// Whether a display edit changes the stored frames after all: a layer's brightness while the preview's
+	/// samples are 8-bit palette indices (View > Preview samples), which bake the brightness in at capture time.
+	/// Such an edit then counts as a simulation edit: stale run, scratch frame, automatic re-run.
+	/// </summary>
+	private static bool IsBrightnessBaked(ProjectChange change) =>
+		change.Item is DisplayLayer && change.Property == nameof(DisplayLayer.Brightness) && Settings.Default.PreviewSampleBytes == 1;
+
+	/// <summary>
+	/// View > Preview resolution / frames / samples changed: the run and the scratch frame on screen were made
+	/// with the old shape, so both are redone as after an edit (the run marked stale, an automatic one stopped,
+	/// the position's frame requested, the re-run scheduled).
+	/// </summary>
+	private void OnPreviewQualityChanged()
+	{
+		if (Run != null)
+		{
+			IsRunStale = true;
+			if (Run is { IsAutomatic: true, IsActive: true })
+			{
+				Logger.Debug("The automatic run is stopped: the preview quality changed");
+				Run.Stop();
+			}
 		}
 		ScheduleScratch();
 		ScheduleRerun();
@@ -317,7 +345,7 @@ public partial class MainWindow
 	{
 		try
 		{
-			return RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu);
+			return RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu, quality: PreviewQualitySetting);
 		}
 		catch (Exception ex) when (ex is RunSpecException or IOException or UnauthorizedAccessException or NotSupportedException)
 		{

@@ -124,6 +124,10 @@
 		<CommandBinding Command="{x:Static commands:ExportCommands.IntensityFrame}" CanExecute="CanExport" Executed="OnExportIntensityFrame" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.EnsureRun}" Executed="OnEnsureRun" />
 		<CommandBinding Command="{x:Static commands:SimulationCommands.SetFrameMemory}" Executed="OnSetFrameMemory" />
+		<!-- the preview quality (View menu); handlers in MainWindow.xaml.cs -->
+		<CommandBinding Command="{x:Static commands:ViewCommands.SetPreviewResolution}" Executed="OnSetPreviewResolution" />
+		<CommandBinding Command="{x:Static commands:ViewCommands.SetPreviewFrames}" Executed="OnSetPreviewFrames" />
+		<CommandBinding Command="{x:Static commands:ViewCommands.SetPreviewSamples}" Executed="OnSetPreviewSamples" />
 
 		<!-- project structure; handlers in MainWindow.Project.cs -->
 		<CommandBinding Command="{x:Static commands:ProjectCommands.AddSource}" Executed="OnAddSource" />
@@ -181,6 +185,39 @@
 				<MenuItem Header="{DynamicResource MenuViewLanguage}"
 				          ItemsSource="{Binding Options, Source={x:Static localization:LanguageController.Instance}}"
 				          ItemContainerStyle="{StaticResource LanguageMenuItemStyle}" />
+				<Separator />
+				<!-- the reduced preview (2026-10-15): how much of a run is captured and kept, for weaker machines; user
+				     settings, never the project's, and an export always uses a full run -->
+				<MenuItem Header="{DynamicResource MenuViewResolution}" AutomationProperties.AutomationId="MenuPreviewResolution">
+					<MenuItem Header="{DynamicResource MenuViewResolutionFull}" Command="{x:Static commands:ViewCommands.SetPreviewResolution}" CommandParameter="1"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewResolution, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewResolution1" />
+					<MenuItem Header="{DynamicResource MenuViewResolutionHalf}" Command="{x:Static commands:ViewCommands.SetPreviewResolution}" CommandParameter="2"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewResolution, Converter={StaticResource IntEquals}, ConverterParameter=2, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewResolution2" />
+					<MenuItem Header="{DynamicResource MenuViewResolutionQuarter}" Command="{x:Static commands:ViewCommands.SetPreviewResolution}" CommandParameter="4"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewResolution, Converter={StaticResource IntEquals}, ConverterParameter=4, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewResolution4" />
+				</MenuItem>
+				<MenuItem Header="{DynamicResource MenuViewFrames}" AutomationProperties.AutomationId="MenuPreviewFrames">
+					<MenuItem Header="{DynamicResource MenuViewFramesFull}" Command="{x:Static commands:ViewCommands.SetPreviewFrames}" CommandParameter="1"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewFrames, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewFrames1" />
+					<MenuItem Header="{DynamicResource MenuViewFramesHalf}" Command="{x:Static commands:ViewCommands.SetPreviewFrames}" CommandParameter="2"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewFrames, Converter={StaticResource IntEquals}, ConverterParameter=2, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewFrames2" />
+					<MenuItem Header="{DynamicResource MenuViewFramesQuarter}" Command="{x:Static commands:ViewCommands.SetPreviewFrames}" CommandParameter="4"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewFrames, Converter={StaticResource IntEquals}, ConverterParameter=4, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewFrames4" />
+				</MenuItem>
+				<MenuItem Header="{DynamicResource MenuViewSamples}" AutomationProperties.AutomationId="MenuPreviewSamples">
+					<MenuItem Header="{DynamicResource MenuViewSamples16}" Command="{x:Static commands:ViewCommands.SetPreviewSamples}" CommandParameter="2"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewSampleBytes, Converter={StaticResource IntEquals}, ConverterParameter=2, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewSamples2" />
+					<MenuItem Header="{DynamicResource MenuViewSamples8}" Command="{x:Static commands:ViewCommands.SetPreviewSamples}" CommandParameter="1"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewSampleBytes, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewSamples1" />
+				</MenuItem>
 			</MenuItem>
 			<MenuItem Header="{DynamicResource MenuSimulation}">
 				<MenuItem Command="{x:Static commands:SimulationCommands.Run}" Header="{DynamicResource MenuSimulationRun}" InputGestureText="F5" />

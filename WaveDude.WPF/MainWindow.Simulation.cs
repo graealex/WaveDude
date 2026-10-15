@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using WaveDude.Engine;
 using WaveDude.Model;
 using WaveDude.Runs;
 using WaveDude.WPF.Properties;
@@ -43,26 +44,38 @@ public partial class MainWindow
 		}
 	}
 
+	/// <summary>
+	/// The preview quality chosen in the View menu (persisted user settings, 2026-10-15): how much of a run is
+	/// captured and kept, for weaker machines. Applied to the preview's runs and scratch frames; an export's run
+	/// is always <see cref="PreviewQuality.Full"/>.
+	/// </summary>
+	private static PreviewQuality PreviewQualitySetting => new(
+		Math.Max(1, Settings.Default.PreviewResolution),
+		Math.Max(1, Settings.Default.PreviewFrames),
+		Settings.Default.PreviewSampleBytes == 1 ? FrameFormat.Index : FrameFormat.Half);
+
 	/// <summary>Decodes the scene image, snapshots the project, checks the disk, creates the store and starts the worker.</summary>
 	/// <param name="automatic">Started after an edit rather than by the user: the preview keeps its position.</param>
 	/// <param name="trackIntensity">Store the intensity plane whatever the project needs (an export of the intensity asks for it).</param>
-	private void StartRun(bool automatic = false, bool trackIntensity = false)
+	/// <param name="fullQuality">Capture every cell of every frame as a half whatever the View menu says (an export needs that).</param>
+	private void StartRun(bool automatic = false, bool trackIntensity = false, bool fullQuality = false)
 	{
 		if (!Settings.Default.UseGpu)
 		{
 			Logger.Info("Running on the CPU: 'Use the GPU' is off in the Simulation menu");
 		}
-		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu, trackIntensity);
+		PreviewQuality quality = fullQuality ? PreviewQuality.Full : PreviewQualitySetting;
+		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu, trackIntensity, quality);
 		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
 		// the rest needs room on the cache drive (2026-10-14)
 		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent);
-		int ramFrames = Math.Min(spec.FrameCount, FrameStore.FramesInBudget(spec.Width, spec.Height, spec.Layers, budget));
-		if (ramFrames < spec.FrameCount)
+		int ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
+		if (ramFrames < spec.StoredFrameCount)
 		{
-			FrameCache.CheckSpace(FrameStore.SizeOf(spec.Width, spec.Height, spec.Layers, spec.FrameCount - ramFrames));
+			FrameCache.CheckSpace(FrameStore.SizeOf(spec.Shape, spec.Layers, spec.StoredFrameCount - ramFrames));
 		}
 		DiscardRun();
-		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Width, spec.Height, spec.Layers, spec.FrameCount, spec.VisualizeEvery, budget);
+		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery, budget);
 		var run = new SimulationRun(spec, store, SynchronizationContext.Current, automatic);
 		run.PropertyChanged += (_, args) =>
 		{
@@ -72,8 +85,8 @@ public partial class MainWindow
 			}
 		};
 		run.Finished += (_, _) => OnRunFinished();
-		Logger.Info("{Kind} started: {Steps} steps, {Frames} frames of {Width}×{Height}, {RamFrames} in memory ({RamBytes}) and {DiskFrames} on disk; edits made from now on do not affect it",
-			automatic ? "Re-run" : "Run", spec.Steps, spec.FrameCount, spec.Width, spec.Height, store.RamFrames, FrameMemory.Gigabytes(store.RamBytes), spec.FrameCount - store.RamFrames);
+		Logger.Info("{Kind} started: {Steps} steps, {Stored} of {Frames} frames stored as {Width}×{Height} ({Quality}), {RamFrames} in memory ({RamBytes}) and {DiskFrames} on disk; edits made from now on do not affect it",
+			automatic ? "Re-run" : "Run", spec.Steps, spec.StoredFrameCount, spec.FrameCount, spec.Shape.Width, spec.Shape.Height, spec.Quality, store.RamFrames, FrameMemory.Gigabytes(store.RamBytes), spec.StoredFrameCount - store.RamFrames);
 		IsRunStale = false;
 		IsProbesStale = false;
 		Run = run;

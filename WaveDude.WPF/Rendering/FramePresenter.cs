@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using NLog;
+using WaveDude.Engine;
 using WaveDude.Rendering;
 using WaveDude.Runs;
 
@@ -52,7 +53,10 @@ public sealed class FramePresenter
 		public IFrameSource Source { get; } = source;
 		public WriteableBitmap?[] Bitmaps { get; } = [field, intensity];
 		public LayerSettings[] Settings { get; } = settings;
-		public Half[] Values { get; } = new Half[source.Width * source.Height];
+		/// <summary>The plane read from the source as halves (a <see cref="FrameFormat.Half"/> source), else null.</summary>
+		public Half[]? Halves { get; } = source.Format == FrameFormat.Half ? new Half[source.Width * source.Height] : null;
+		/// <summary>The plane read from the source as palette indices (a <see cref="FrameFormat.Index"/> source), else null.</summary>
+		public byte[]? Indices { get; } = source.Format == FrameFormat.Index ? new byte[source.Width * source.Height] : null;
 		public int[] Pixels { get; } = new int[source.Width * source.Height];
 	}
 
@@ -71,7 +75,7 @@ public sealed class FramePresenter
 				return;
 			}
 			bool sameShape = _source != null && value != null && _source.Width == value.Width && _source.Height == value.Height
-				&& _source.Has(FrameLayer.Intensity) == value.Has(FrameLayer.Intensity);
+				&& _source.Format == value.Format && _source.Has(FrameLayer.Intensity) == value.Has(FrameLayer.Intensity);
 			Logger.Trace("Presenter source: {Source} (same shape {Same})", value?.GetType().Name ?? "none", sameShape);
 			_source = value;
 			if (!sameShape)
@@ -177,17 +181,27 @@ public sealed class FramePresenter
 		{
 			LayerSettings settings = job.Settings[(int)layer];
 			WriteableBitmap? bitmap = job.Bitmaps[(int)layer];
-			if (!settings.Enabled || bitmap == null || !job.Source.Has(layer) || !job.Source.CopyLayer(frame, layer, job.Values))
+			if (!settings.Enabled || bitmap == null || !job.Source.Has(layer))
 			{
 				continue;
 			}
-			if (layer == FrameLayer.Field)
+			bool copied = job.Indices != null ? job.Source.CopyLayer(frame, layer, job.Indices.AsSpan()) : job.Source.CopyLayer(frame, layer, job.Halves.AsSpan());
+			if (!copied)
 			{
-				FrameRenderer.RenderField(job.Values, width, height, settings.Lut, settings.Brightness, job.Pixels);
+				continue;
+			}
+			if (job.Indices != null)
+			{
+				// palette indices: the brightness was applied when the frame was captured, only the palette is looked up
+				FrameRenderer.RenderIndexed(job.Indices, width, height, settings.Lut, job.Pixels);
+			}
+			else if (layer == FrameLayer.Field)
+			{
+				FrameRenderer.RenderField(job.Halves, width, height, settings.Lut, settings.Brightness, job.Pixels);
 			}
 			else
 			{
-				FrameRenderer.RenderIntensity(job.Values, width, height, settings.Lut, settings.Brightness, job.Pixels);
+				FrameRenderer.RenderIntensity(job.Halves, width, height, settings.Lut, settings.Brightness, job.Pixels);
 			}
 			// the bitmap belongs to the UI thread; wait for the copy so the pixel buffer can be reused
 			_dispatcher.Invoke(() => bitmap.WritePixels(new Int32Rect(0, 0, width, height), job.Pixels, width * 4, 0), DispatcherPriority.Render);

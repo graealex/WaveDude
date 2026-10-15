@@ -200,9 +200,10 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 	/// <inheritdoc/>
 	public void CaptureFrame(FrameSnapshot snapshot, bool needIntensity)
 	{
-		if (snapshot.Width != _width || snapshot.Height != _height)
+		FrameShape shape = snapshot.Shape;
+		if (shape.CanvasWidth != _width || shape.CanvasHeight != _height)
 		{
-			throw new ArgumentException("The snapshot does not match the engine's size.", nameof(snapshot));
+			throw new ArgumentException("The snapshot's canvas does not match the engine's size.", nameof(snapshot));
 		}
 		if (snapshot.EventCount > 0)
 		{
@@ -210,32 +211,56 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		}
 		if (_stagingField == IntPtr.Zero)
 		{
-			// lazily: most engines never capture (the harness, the probes-only paths)
+			// lazily: most engines never capture (the harness, the probes-only paths). The staging planes have room
+			// for any shape: a plane is at most the whole canvas as halves
 			_stagingField = CreateBuffer((long)_width * _height * 2, _scene);
 			_stagingIntensity = _track ? CreateBuffer((long)_width * _height * 2, _scene) : IntPtr.Zero;
-			_toHalfKernel = CreateKernel(_scene, _scene.Program, "to_half");
-			SetInt(_toHalfKernel, 2U, _width);
-			SetInt(_toHalfKernel, 3U, _height);
-			SetInt(_toHalfKernel, 4U, _stride);
+			_captureHalfKernel = CreateKernel(_scene, _scene.Program, "capture_half");
+			_captureIndexKernel = CreateKernel(_scene, _scene.Program, "capture_index");
+			foreach (IntPtr kernel in new[] { _captureHalfKernel, _captureIndexKernel })
+			{
+				SetInt(kernel, 2U, _width);
+				SetInt(kernel, 3U, _height);
+				SetInt(kernel, 4U, _stride);
+			}
+		}
+		if (_captureShape == null || _captureShape.Divisor != shape.Divisor || !_captureShape.SameLayoutAs(shape))
+		{
+			// the shape's geometry, set once per shape (every capture of a run shares one)
+			_captureShape = shape;
+			_captureGrid = [new IntPtr(shape.Width), new IntPtr(shape.Height)];
+			foreach (IntPtr kernel in new[] { _captureHalfKernel, _captureIndexKernel })
+			{
+				SetInt(kernel, 5U, shape.Divisor);
+				SetInt(kernel, 6U, shape.Width);
+				SetInt(kernel, 7U, shape.Height);
+			}
 		}
 		snapshot.EventCount = 0;
-		EnqueueCapture(_field[_current], _stagingField, snapshot.Field, snapshot);
-		snapshot.HasIntensity = needIntensity && _track && snapshot.Intensity != null;
+		EnqueueCapture(_field[_current], _stagingField, snapshot.FieldBytes, snapshot, false);
+		snapshot.HasIntensity = needIntensity && _track && snapshot.IntensityBytes != null;
 		if (snapshot.HasIntensity)
 		{
-			EnqueueCapture(_intensityOutBuffer, _stagingIntensity, snapshot.Intensity!, snapshot);
+			EnqueueCapture(_intensityOutBuffer, _stagingIntensity, snapshot.IntensityBytes!, snapshot, true);
 		}
 		// the reads flush the queue once they run; nothing piles up behind them
 		_sinceFinish = 0;
 	}
 
-	/// <summary>Converts a padded float buffer to a half plane on the card and enqueues its non-blocking read into the pinned plane.</summary>
-	private void EnqueueCapture(IntPtr source, IntPtr staging, Half[] plane, FrameSnapshot snapshot)
+	/// <summary>Shrinks and converts a padded float buffer to a plane of the snapshot's shape on the card and enqueues its non-blocking read into the pinned plane.</summary>
+	private void EnqueueCapture(IntPtr source, IntPtr staging, byte[] plane, FrameSnapshot snapshot, bool intensity)
 	{
-		SetMem(_toHalfKernel, 0U, source);
-		SetMem(_toHalfKernel, 1U, staging);
-		Enqueue(_toHalfKernel, _grid2D, "to_half");
-		OpenClApi.Check(OpenClApi.clEnqueueReadBufferPtr(_queue, staging, 0U, IntPtr.Zero, new IntPtr((long)plane.Length * 2), FrameSnapshot.AddressOf(plane), 0U, IntPtr.Zero, out IntPtr evt), "clEnqueueReadBuffer (capture)");
+		FrameShape shape = snapshot.Shape;
+		IntPtr kernel = shape.Format == FrameFormat.Half ? _captureHalfKernel : _captureIndexKernel;
+		SetMem(kernel, 0U, source);
+		SetMem(kernel, 1U, staging);
+		if (shape.Format == FrameFormat.Index)
+		{
+			SetFloat(kernel, 8U, shape.BrightnessOf(intensity));
+			SetInt(kernel, 9U, intensity ? 1 : 0);
+		}
+		Enqueue(kernel, _captureGrid!, "capture");
+		OpenClApi.Check(OpenClApi.clEnqueueReadBufferPtr(_queue, staging, 0U, IntPtr.Zero, new IntPtr(plane.Length), FrameSnapshot.AddressOf(plane), 0U, IntPtr.Zero, out IntPtr evt), "clEnqueueReadBuffer (capture)");
 		snapshot.Events[snapshot.EventCount++] = evt;
 	}
 
@@ -678,15 +703,48 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		source.AppendLine("    u[p] = u[p] * 0.9f + v * 0.1f;");
 		source.AppendLine("}");
 		source.AppendLine();
-		// to_half: the interior of a padded float buffer as a tightly packed half plane (the frame store's
-		// format), so a frame crosses the bus at half the size and the host converts nothing. vstore_half is
-		// core OpenCL C; only half arithmetic would need cl_khr_fp16.
-		source.AppendLine("__kernel void to_half(__global const float* src, __global half* dst, const int w, const int h, const int stride)");
+		// capture_half / capture_index: the interior of a padded float buffer as a tightly packed plane of the
+		// frame store's shape (FrameConversion is the reference): every div × div block of cells, clipped at the
+		// right and bottom edges, averaged into one sample, stored as a half or as the palette index the renderer
+		// would compute at the given brightness; so a frame crosses the bus at half the size or less and the host
+		// converts nothing. vstore_half is core OpenCL C; only half arithmetic would need cl_khr_fp16.
+		source.AppendLine("float capture_sample(__global const float* src, const int w, const int h, const int stride, const int div, const int x, const int y)");
+		source.AppendLine("{");
+		source.AppendLine("    if (div == 1) return src[(y + 1) * stride + x + 1];");
+		source.AppendLine("    int x0 = x * div, y0 = y * div;");
+		source.AppendLine("    int x1 = min(w, x0 + div), y1 = min(h, y0 + div);");
+		source.AppendLine("    float sum = 0.0f;");
+		source.AppendLine("    for (int cy = y0; cy < y1; cy++)");
+		source.AppendLine("        for (int cx = x0; cx < x1; cx++)");
+		source.AppendLine("            sum += src[(cy + 1) * stride + cx + 1];");
+		source.AppendLine("    return sum / (float)((y1 - y0) * (x1 - x0));");
+		source.AppendLine("}");
+		source.AppendLine();
+		source.AppendLine("__kernel void capture_half(__global const float* src, __global half* dst, const int w, const int h, const int stride, const int div, const int fw, const int fh)");
 		source.AppendLine("{");
 		source.AppendLine("    int x = get_global_id(0);");
 		source.AppendLine("    int y = get_global_id(1);");
-		source.AppendLine("    if (x >= w || y >= h) return;");
-		source.AppendLine("    vstore_half(src[(y + 1) * stride + x + 1], y * w + x, dst);");
+		source.AppendLine("    if (x >= fw || y >= fh) return;");
+		source.AppendLine("    vstore_half(capture_sample(src, w, h, stride, div, x, y), y * fw + x, dst);");
+		source.AppendLine("}");
+		source.AppendLine();
+		// the index mapping of ColorLut.FieldIndex / IntensityIndex: a NaN field gives the centre, a NaN or
+		// non-positive intensity 0; the sqrt is the card's single-precision one, so an index may differ by one
+		// from the host's double at a boundary
+		source.AppendLine("__kernel void capture_index(__global const float* src, __global uchar* dst, const int w, const int h, const int stride, const int div, const int fw, const int fh, const float brightness, const int intensity)");
+		source.AppendLine("{");
+		source.AppendLine("    int x = get_global_id(0);");
+		source.AppendLine("    int y = get_global_id(1);");
+		source.AppendLine("    if (x >= fw || y >= fh) return;");
+		source.AppendLine("    float v = capture_sample(src, w, h, stride, div, x, y);");
+		source.AppendLine("    int index;");
+		source.AppendLine("    if (intensity)");
+		source.AppendLine("        index = v > 0.0f ? (int)(fmin(sqrt(v) * brightness, 1.0f) * 254.0f) : 0;");
+		source.AppendLine("    else {");
+		source.AppendLine("        float s = v * brightness;");
+		source.AppendLine("        index = isnan(s) ? 127 : (int)(clamp(s, -1.0f, 1.0f) * 127.0f + 127.0f);");
+		source.AppendLine("    }");
+		source.AppendLine("    dst[y * fw + x] = (uchar)index;");
 		source.AppendLine("}");
 		return source.ToString();
 	}
@@ -1372,10 +1430,15 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 	private IntPtr _intensityBuffer;
 	private IntPtr _intensityStage1Buffer;
 
-	/// <summary>Half planes the <c>to_half</c> kernel writes for <see cref="CaptureFrame"/>; created on first use.</summary>
+	/// <summary>Planes the capture kernels write for <see cref="CaptureFrame"/>; created on first use, sized for any shape.</summary>
 	private IntPtr _stagingField;
 	private IntPtr _stagingIntensity;
-	private IntPtr _toHalfKernel;
+	private IntPtr _captureHalfKernel;
+	private IntPtr _captureIndexKernel;
+
+	/// <summary>The shape the capture kernels' geometry arguments are set for, and the matching global work size.</summary>
+	private FrameShape? _captureShape;
+	private IntPtr[]? _captureGrid;
 
 	/// <summary>
 	/// Leapfrog sub-steps per simulation step - see the class summary; 1 (no sub-stepping) unless the 4th-order

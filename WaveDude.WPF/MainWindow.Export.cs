@@ -269,11 +269,12 @@ public partial class MainWindow
 			{
 				SimulationRun? run = Run;
 				string? reason = run == null ? "no run" : IsRunStale ? "the run is stale" : IsProbesStale ? "the probes were edited since the run"
+					: !run.Spec.Quality.IsFull ? "the run is a reduced preview (View menu)"
 					: intensity && !run.Store.Has(FrameLayer.Intensity) ? "the run has no intensity plane" : !run.IsActive && run.State != RunState.Completed ? "the run did not complete" : null;
 				if (reason != null)
 				{
 					Logger.Debug("Export: a run is started first ({Reason})", reason);
-					StartRun(automatic: true, trackIntensity: intensity);
+					StartRun(automatic: true, trackIntensity: intensity, fullQuality: true);
 					run = Run;
 				}
 				else if (run!.IsActive)

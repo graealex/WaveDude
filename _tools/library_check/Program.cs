@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Diagnostics;
 using System.Numerics.Tensors;
+using System.Runtime.InteropServices;
 using NLog;
 using WaveDude.Engine;
+using WaveDude.Export;
 using WaveDude.Model;
 using WaveDude.Probes;
 using WaveDude.Rendering;
@@ -47,6 +49,16 @@ internal static class Program
 		foreach (float v in a)
 		{
 			m = Math.Max(m, Math.Abs(v));
+		}
+		return m;
+	}
+
+	private static float MaxAbs(ReadOnlySpan<Half> a)
+	{
+		float m = 0f;
+		foreach (Half v in a)
+		{
+			m = Math.Max(m, Math.Abs((float)v));
 		}
 		return m;
 	}
@@ -179,6 +191,7 @@ internal static class Program
 		CheckDeterminism(scene);
 		CheckEmitterMapping();
 		CheckFrameStore(scene);
+		CheckPreviewQuality(scene, W, H);
 		CheckRenderer();
 		CheckColorSchemes();
 		CheckProbeGraph();
@@ -331,7 +344,7 @@ internal static class Program
 		(fallback as IDisposable)?.Dispose();
 	}
 
-	private static float MaxDiff(ReadOnlySpan<float> padded, int stride, int w, int h, Half[] plane)
+	private static float MaxDiff(ReadOnlySpan<float> padded, int stride, int w, int h, ReadOnlySpan<Half> plane)
 	{
 		float m = 0f;
 		for (int y = 0; y < h; y++)
@@ -389,7 +402,7 @@ internal static class Program
 			engine.Reset();
 			engine.CaptureFrame(a, true);
 			engine.AwaitFrame(a);
-			Check(MaxAbs(a.Field.Select(h => (float)h).ToArray()) == 0f && MaxAbs(a.Intensity!.Select(h => (float)h).ToArray()) == 0f, name + ": reset clears field and intensity");
+			Check(MaxAbs(a.Field) == 0f && MaxAbs(a.Intensity) == 0f, name + ": reset clears field and intensity");
 			Run(engine, 100);
 			engine.CaptureFrame(a, false);
 			engine.AwaitFrame(a);
@@ -546,8 +559,10 @@ internal static class Program
 			Check(threw, "write beyond the capacity is rejected");
 		}
 		Check(!File.Exists(path), "file deleted on dispose");
-		Check(FrameStore.SizeOf(1920, 1080, FrameLayers.Field | FrameLayers.Intensity, 1250) == 64 + 1250L * 2 * 1920 * 1080 * 2, "SizeOf matches the layout");
-		Check(FrameStore.FramesInBudget(1920, 1080, FrameLayers.Field | FrameLayers.Intensity, 1L << 30) == 129 && FrameStore.FramesInBudget(64, 48, FrameLayers.Field, 0) == 0, "FramesInBudget: 129 full-HD frames of both planes per GB");
+		FrameShape fullHd = FrameShape.Full(1920, 1080);
+		Check(FrameStore.SizeOf(fullHd, FrameLayers.Field | FrameLayers.Intensity, 1250) == 64 + 1250L * 2 * 1920 * 1080 * 2, "SizeOf matches the layout");
+		Check(FrameStore.FramesInBudget(fullHd, FrameLayers.Field | FrameLayers.Intensity, 1L << 30) == 129 && FrameStore.FramesInBudget(FrameShape.Full(64, 48), FrameLayers.Field, 0) == 0, "FramesInBudget: 129 full-HD frames of both planes per GB");
+		Check(FrameStore.FramesInBudget(fullHd with { Divisor = 2, Format = FrameFormat.Index }, FrameLayers.Field | FrameLayers.Intensity, 1L << 30) == 1035, "FramesInBudget: eight times as many half-size index frames (1035 per GB)");
 
 		// the two tiers: a budget for two of five frames; the first two stay in memory, the other three go to the file
 		path = Path.Combine(Path.GetTempPath(), "library_check-tiers-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
@@ -633,6 +648,264 @@ internal static class Program
 		Console.WriteLine($"  1 GB store in memory ({big.FramesInMemory} of {bigFrames} frames): {writeMs:0} ms writing ({big.TotalBytes / writeMs / 1000:0} MB/s, {writeMs / bigFrames:0.0} ms/frame), {readMs:0} ms reading ({readMs / bigFrames:0.0} ms/frame), {disposeMs:0} ms dispose");
 		Check(!File.Exists(path), "big store deleted on dispose");
 		Check(disposeMs < 1500, "disposing a 1 GB store does not flush it to disk (" + disposeMs.ToString("0") + " ms)");
+	}
+
+	/// <summary>
+	/// The reduced preview (2026-10-15): FrameConversion against the renderer's index mapping and the block means,
+	/// the CPU captures of every shape equal to it and the GPU's within the card's arithmetic, a store of index
+	/// bytes, the export's refusal of it, a spec with a quality, and a headless run plus a scratch frame in that shape.
+	/// </summary>
+	private static void CheckPreviewQuality(SceneData scene, int W, int H)
+	{
+		Console.WriteLine("--- preview quality (shrunk and 8-bit frames)");
+		var options = new EngineOptions(1.0, 1.0, true, false, 10.0, 1.0);
+		var cpu = new WaveSimulator(scene, options, Sources());
+		Run(cpu, 100);
+		float[] field = (float[])cpu.FieldData.Clone();
+		float[] inten = (float[])cpu.IntensityData!.Clone();
+		int stride = cpu.Stride;
+		FrameShape full = FrameShape.Full(W, H);
+		FrameShape half = full with { Divisor = 2 };
+		FrameShape third = full with { Divisor = 3 };
+		FrameShape index = full with { Format = FrameFormat.Index, FieldBrightness = 30f, IntensityBrightness = 5f };
+		FrameShape halfIndex = half with { Format = FrameFormat.Index, FieldBrightness = 30f, IntensityBrightness = 5f };
+		Check(half.Width == 32 && half.Height == 24 && third.Width == 22 && third.Height == 16 && index.SampleBytes == 1 && halfIndex.PlaneBytes == 32 * 24 && full.IsFull && !half.IsFull,
+			"shapes: 64x48 halves to 32x24, thirds to 22x16, an index sample is one byte");
+		float tolerance = 2e-3f * Math.Max(1f, MaxAbs(field));
+
+		// the reference conversion: the full shape is the plain float-to-half conversion
+		var fullBytes = new byte[full.PlaneBytes];
+		FrameConversion.Convert(field, stride + 1, stride, full, false, fullBytes);
+		Check(MaxDiff(field, stride, W, H, MemoryMarshal.Cast<byte, Half>(fullBytes)) < tolerance, "full shape: the plain half conversion");
+		// a half-size frame holds the 2 x 2 block means
+		var halfBytes = new byte[half.PlaneBytes];
+		FrameConversion.Convert(field, stride + 1, stride, half, false, halfBytes);
+		ReadOnlySpan<Half> halves = MemoryMarshal.Cast<byte, Half>(halfBytes);
+		float worst = 0f;
+		for (int y = 0; y < 24; y++)
+		{
+			for (int x = 0; x < 32; x++)
+			{
+				float mean = (field[(2 * y + 1) * stride + 2 * x + 1] + field[(2 * y + 1) * stride + 2 * x + 2] + field[(2 * y + 2) * stride + 2 * x + 1] + field[(2 * y + 2) * stride + 2 * x + 2]) / 4f;
+				worst = Math.Max(worst, Math.Abs(mean - (float)halves[y * 32 + x]));
+			}
+		}
+		Check(worst < tolerance, "half shape: every sample is the mean of its 2 x 2 block (worst " + worst + ")");
+		// a divisor that does not divide the canvas: the last column is one cell wide and averaged over the cells it has
+		var thirdBytes = new byte[third.PlaneBytes];
+		FrameConversion.Convert(field, stride + 1, stride, third, false, thirdBytes);
+		ReadOnlySpan<Half> thirds = MemoryMarshal.Cast<byte, Half>(thirdBytes);
+		worst = 0f;
+		for (int y = 0; y < 16; y++)
+		{
+			float mean = (field[(3 * y + 1) * stride + 64] + field[(3 * y + 2) * stride + 64] + field[(3 * y + 3) * stride + 64]) / 3f;
+			worst = Math.Max(worst, Math.Abs(mean - (float)thirds[y * 22 + 21]));
+		}
+		Check(worst < tolerance, "third shape: the clipped last column is the mean of its 1 x 3 block (worst " + worst + ")");
+		// an index frame is the renderer's palette index of every cell, bit for bit
+		var indexField = new byte[index.PlaneBytes];
+		var indexInten = new byte[index.PlaneBytes];
+		FrameConversion.Convert(field, stride + 1, stride, index, false, indexField);
+		FrameConversion.Convert(inten, stride + 1, stride, index, true, indexInten);
+		bool same = true;
+		for (int y = 0; y < H && same; y++)
+		{
+			for (int x = 0; x < W; x++)
+			{
+				int at = (y + 1) * stride + x + 1;
+				if (indexField[y * W + x] != ColorLut.FieldIndex(field[at], 30f) || indexInten[y * W + x] != ColorLut.IntensityIndex(inten[at], 5f))
+				{
+					same = false;
+					break;
+				}
+			}
+		}
+		Check(same && indexField.Max() > 127 && indexField.Min() < 127 && indexInten.Max() > 0, "index shape: the renderer's palette index of every cell at brightness 30 and 5, both sides of the centre used");
+
+		// the CPU engine's captures of every shape equal the reference conversion of its own floats
+		foreach (FrameShape shape in new[] { half, third, index, halfIndex })
+		{
+			var expectedField = new byte[shape.PlaneBytes];
+			var expectedInten = new byte[shape.PlaneBytes];
+			FrameConversion.Convert(field, stride + 1, stride, shape, false, expectedField);
+			FrameConversion.Convert(inten, stride + 1, stride, shape, true, expectedInten);
+			var snapshot = new FrameSnapshot(shape, true);
+			cpu.CaptureFrame(snapshot, true);
+			cpu.AwaitFrame(snapshot);
+			Check(snapshot.HasIntensity && snapshot.FieldBytes.AsSpan().SequenceEqual(expectedField) && snapshot.IntensityBytes!.AsSpan().SequenceEqual(expectedInten),
+				$"CPU capture of 1/{shape.Divisor} {shape.Format} equals the reference conversion");
+		}
+		// the GPU's within the card's arithmetic: halves within the tolerance, indices within one
+		GpuWaveSimulator? gpu = GpuWaveSimulator.TryCreate(scene, options, Sources(), out string problems);
+		if (gpu == null)
+		{
+			Console.WriteLine("  skip GPU: " + problems);
+		}
+		else
+		{
+			using (gpu)
+			{
+				Run(gpu, 100);
+				gpu.PrepareFrame(true, true);
+				float[] gpuField = (float[])gpu.FieldData.Clone();
+				float[] gpuInten = (float[])gpu.IntensityData!.Clone();
+				foreach (FrameShape shape in new[] { half, third, index, halfIndex })
+				{
+					var expectedField = new byte[shape.PlaneBytes];
+					var expectedInten = new byte[shape.PlaneBytes];
+					FrameConversion.Convert(gpuField, stride + 1, stride, shape, false, expectedField);
+					FrameConversion.Convert(gpuInten, stride + 1, stride, shape, true, expectedInten);
+					var snapshot = new FrameSnapshot(shape, true);
+					gpu.CaptureFrame(snapshot, true);
+					gpu.AwaitFrame(snapshot);
+					int worstIndex = 0;
+					float worstHalf = 0f;
+					if (shape.Format == FrameFormat.Index)
+					{
+						for (int i = 0; i < expectedField.Length; i++)
+						{
+							worstIndex = Math.Max(worstIndex, Math.Max(Math.Abs(snapshot.FieldBytes[i] - expectedField[i]), Math.Abs(snapshot.IntensityBytes![i] - expectedInten[i])));
+						}
+					}
+					else
+					{
+						ReadOnlySpan<Half> gotField = snapshot.Field;
+						ReadOnlySpan<Half> wantField = MemoryMarshal.Cast<byte, Half>(expectedField);
+						ReadOnlySpan<Half> gotInten = snapshot.Intensity;
+						ReadOnlySpan<Half> wantInten = MemoryMarshal.Cast<byte, Half>(expectedInten);
+						for (int i = 0; i < gotField.Length; i++)
+						{
+							worstHalf = Math.Max(worstHalf, Math.Max(Math.Abs((float)gotField[i] - (float)wantField[i]), Math.Abs((float)gotInten[i] - (float)wantInten[i])));
+						}
+					}
+					Check(snapshot.HasIntensity && worstIndex <= 1 && worstHalf < tolerance,
+						$"GPU capture of 1/{shape.Divisor} {shape.Format} matches the reference conversion (index off by at most {worstIndex}, halves by {worstHalf})");
+				}
+			}
+		}
+
+		// a store of half-size index bytes: the float, snapshot and byte writes agree, the half overloads refuse it, the export refuses it
+		string path = Path.Combine(Path.GetTempPath(), "library_check-index-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		using (var store = FrameStore.Create(path, halfIndex, FrameLayers.Field | FrameLayers.Intensity, 3, 2, ramBudget: 0))
+		{
+			Check(store.Format == FrameFormat.Index && store.Width == 32 && store.Height == 24 && store.CanvasWidth == 64 && store.CanvasHeight == 48 && store.PlaneBytes == 768 && store.FileBytes == FrameStore.HeaderSize + 3 * 2 * 768,
+				"index store: 32x24 bytes per plane of a 64x48 canvas, the file sized for them");
+			var expectedField = new byte[halfIndex.PlaneBytes];
+			var expectedInten = new byte[halfIndex.PlaneBytes];
+			FrameConversion.Convert(field, stride + 1, stride, halfIndex, false, expectedField);
+			FrameConversion.Convert(inten, stride + 1, stride, halfIndex, true, expectedInten);
+			store.Write(0, cpu.FieldData, cpu.IntensityData, stride);
+			var snapshot = new FrameSnapshot(halfIndex, true);
+			cpu.CaptureFrame(snapshot, true);
+			cpu.AwaitFrame(snapshot);
+			store.Write(1, snapshot);
+			store.Write(2, expectedField, expectedInten);
+			var read = new byte[halfIndex.PlaneBytes];
+			bool allSame = true;
+			for (int frame = 0; frame < 3; frame++)
+			{
+				allSame &= store.CopyLayer(frame, FrameLayer.Field, read.AsSpan()) && read.AsSpan().SequenceEqual(expectedField);
+				allSame &= store.CopyLayer(frame, FrameLayer.Intensity, read.AsSpan()) && read.AsSpan().SequenceEqual(expectedInten);
+			}
+			Check(store.Count == 3 && allSame, "index store: the float, snapshot and byte writes read back as the same bytes");
+			bool refused = false;
+			try
+			{
+				store.CopyLayer(0, FrameLayer.Field, new Half[32 * 24]);
+			}
+			catch (InvalidOperationException)
+			{
+				refused = true;
+			}
+			Check(refused, "index store: the Half read is refused");
+			refused = false;
+			try
+			{
+				_ = new ExportJob(store, 0, 0, [], null);
+			}
+			catch (ArgumentException)
+			{
+				refused = true;
+			}
+			Check(refused, "an export refuses a store of palette indices");
+			refused = false;
+			try
+			{
+				store.Write(3, new FrameSnapshot(half, true));
+			}
+			catch (ArgumentException)
+			{
+				refused = true;
+			}
+			Check(refused, "a snapshot of another format is refused");
+		}
+		Check(!File.Exists(path), "index store file deleted on dispose");
+
+		// a spec with a quality: the interval multiplied, the frames fewer, the shape from the display brightness; a run and a scratch frame in it
+		var project = new Project();
+		project.Scene.Width = W;
+		project.Scene.Height = H;
+		project.Scene.DampingEdge = 4;
+		project.Simulation.Steps = 200;
+		project.Simulation.VisualizeEvery = 2;
+		project.Display.Field.Brightness = 25;
+		project.Display.Intensity.Brightness = 4;
+		Source source = project.AddSource();
+		source.X = 20;
+		source.Y = 24;
+		source.Frequency = 120;
+		Probe lineProbe = project.AddProbe();
+		lineProbe.Kind = ProbeKind.Line;
+		lineProbe.AX = 5;
+		lineProbe.AY = 5;
+		lineProbe.BX = 40;
+		lineProbe.BY = 30;
+		var quality = new PreviewQuality(2, 2, FrameFormat.Index);
+		RunSpec spec = RunSpec.Create(project, null, preferGpu: false, quality: quality);
+		RunSpec fullSpec = RunSpec.Create(project, null, preferGpu: false);
+		Check(spec.VisualizeEvery == 2 && spec.FrameCount == 100 && spec.FrameStride == 2 && spec.CaptureEvery == 4 && spec.StoredFrameCount == 50 && spec.StoredIndexOf(99) == 49
+			&& spec.Quality == quality && !spec.Quality.IsFull && fullSpec.Quality.IsFull && fullSpec.FrameStride == 1 && fullSpec.StoredFrameCount == 100,
+			"spec with a quality of 1/2, every 2nd frame, index: the timeline keeps 100 frames every 2 steps, 50 of them stored every 4 steps; the full spec stores all 100");
+		Check(spec.Shape == new FrameShape(W, H, 2, FrameFormat.Index, 25f, 4f) && spec.Shape.Width == 32 && fullSpec.Shape.IsFull, "the spec's shape: half the canvas, index bytes, the display brightness of both layers");
+		Check(spec.SameSceneAs(fullSpec), "the quality does not change the scene, so an engine serves both");
+		path = Path.Combine(Path.GetTempPath(), "library_check-quality-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		using (var store = FrameStore.Create(path, spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery))
+		{
+			var run = new SimulationRun(spec, store, null);
+			run.Start();
+			Check(run.Completion.Wait(30000) && run.State == RunState.Completed && store.Count == 50 && store.StepOf(49) == 196 && run.FrameCount == 100 && run.Frames.Count == 100,
+				"a run in that quality completes with 50 stored frames of 32x24 index bytes covering all 100 timeline frames");
+			// stored frame 49 is timeline frame 98, step 196: an engine stepped 197 times and captured in the shape gives the same bytes,
+			// and timeline frame 99 (not stored) reads the same stored frame
+			IWaveEngine reference = WaveEngineFactory.Create(SceneData.Empty(W, H, spec.DampingEdge, spec.RefractiveIndex), spec.Engine, false, spec.Emitters, out _);
+			Run(reference, 197);
+			var expected = new FrameSnapshot(spec.Shape, spec.TrackIntensity);
+			reference.CaptureFrame(expected, spec.TrackIntensity);
+			reference.AwaitFrame(expected);
+			var stored = new byte[spec.Shape.PlaneBytes];
+			var shown = new byte[spec.Shape.PlaneBytes];
+			Check(store.CopyLayer(49, FrameLayer.Field, stored.AsSpan()) && stored.AsSpan().SequenceEqual(expected.FieldBytes) && stored.Max() > 127 && stored.Min() < 127,
+				"stored frame 49 equals a fresh engine's capture of step 196 in that shape");
+			Check(run.Frames is StridedFrameSource && run.Frames.CopyLayer(98, FrameLayer.Field, shown.AsSpan()) && shown.AsSpan().SequenceEqual(stored)
+				&& run.Frames.CopyLayer(99, FrameLayer.Field, shown.AsSpan()) && shown.AsSpan().SequenceEqual(stored),
+				"timeline frames 98 and 99 both show stored frame 49 (a stored frame stands in for the next one)");
+			Check(run.Traces.Length == 1 && run.Traces[0].Profiles.Count == 100,
+				$"the line probe's profiles are collected per timeline frame (100), not per stored one ({run.Traces.Length} traces, {(run.Traces.Length > 0 ? run.Traces[0].Profiles.Count : 0)} profiles)");
+			using (var scratch = new ScratchRunner(null))
+			using (var arrived = new ManualResetEventSlim())
+			{
+				ScratchResult? result = null;
+				scratch.Completed += (_, r) =>
+				{
+					result = r;
+					arrived.Set();
+				};
+				scratch.Request(spec, 98);
+				Check(arrived.Wait(30000) && result is { Snapshot: not null, Frame: 98 } && result.Snapshot.Shape == spec.Shape && result.Snapshot.FieldBytes.AsSpan().SequenceEqual(expected.FieldBytes),
+					"a scratch frame 98 in that quality has the spec's shape and the stored bytes (the scratch always computes the exact timeline frame)");
+			}
+			run.Dispose();
+		}
 	}
 
 	private static void CheckRenderer()

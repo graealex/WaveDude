@@ -117,6 +117,7 @@ public partial class PreviewPane : UserControl
 	public static readonly DependencyProperty FpsProperty = DependencyProperty.Register(
 		nameof(Fps), typeof(int), typeof(PreviewPane), new PropertyMetadata(Video.DefaultFps, null, (_, value) => Math.Max(1, (int)value)));
 
+
 	/// <summary>Identifies the <see cref="InPoint"/> property.</summary>
 	public static readonly DependencyProperty InPointProperty = DependencyProperty.Register(
 		nameof(InPoint), typeof(int), typeof(PreviewPane), new PropertyMetadata(0));
@@ -258,7 +259,9 @@ public partial class PreviewPane : UserControl
 		InitializeComponent();
 		_presenter = new FramePresenter(Dispatcher);
 
-		// frames = ceil(steps / visualize every); re-evaluated whenever the project or its settings change
+		// frames = ceil(steps / visualize every); re-evaluated whenever the project or its settings change. The
+		// timeline is always the project's: a reduced preview (View > Preview frames) stores fewer frames, but
+		// the run's Frames source stands a stored frame in for the ones left out (2026-10-15)
 		SetBinding(FrameCountProperty, new MultiBinding
 		{
 			Converter = new FrameCountConverter(),
@@ -637,10 +640,11 @@ public partial class PreviewPane : UserControl
 		}
 		else if (run != null && run.FrameCount > Position)
 		{
-			_presenter.Source = run.Store;
+			// the run's frames in timeline numbering (a reduced preview stands a stored frame in for the ones left out)
+			_presenter.Source = run.Frames;
 			// the stored frame is right even with the probes stale; the graphs then take the scratch recording for this position once it is there
 			GraphScratch = IsProbesStale && scratch is { Snapshot: not null } && scratch.Frame == Position ? scratch : null;
-			UpdateCanvas(run.Store);
+			UpdateCanvas(run.Frames);
 			_presenter.Show(Position);
 		}
 		else if (run == null && scratch == null && _presenter.Source != null)
@@ -661,9 +665,11 @@ public partial class PreviewPane : UserControl
 
 	private void UpdateCanvas(IFrameSource? source)
 	{
-		// the scene image's size wins over the project's numbers, which only apply to a blank canvas
-		int width = Math.Max(1, source?.Width ?? Run?.Spec.Width ?? ScenePixels?.Width ?? (int)GetValue(SceneWidthProperty));
-		int height = Math.Max(1, source?.Height ?? Run?.Spec.Height ?? ScenePixels?.Height ?? (int)GetValue(SceneHeightProperty));
+		// the scene image's size wins over the project's numbers, which only apply to a blank canvas; a frame
+		// source knows the canvas it was shrunk from (the handles and boxes live in canvas pixels, whatever the
+		// picture's own size is)
+		int width = Math.Max(1, source?.CanvasWidth ?? Run?.Spec.Width ?? ScenePixels?.Width ?? (int)GetValue(SceneWidthProperty));
+		int height = Math.Max(1, source?.CanvasHeight ?? Run?.Spec.Height ?? ScenePixels?.Height ?? (int)GetValue(SceneHeightProperty));
 		CanvasWidth = width;
 		CanvasHeight = height;
 		if (_blackFrame.PixelWidth != width || _blackFrame.PixelHeight != height)

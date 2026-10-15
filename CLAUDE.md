@@ -57,6 +57,42 @@ WPF shell as it stands:
 - **Taskbar progress** (2026-10-14, the user's rule): the status bar's busy bar (an export's frames, or the
   marquee while an export waits for its run or a scratch frame computes) is mirrored on the taskbar button
   through WPF's `TaskbarItemInfo` (`MainWindow.Taskbar.cs`, fed from `UpdateBusy`).
+- **Reduced preview** (2026-10-15, the user's design for weaker machines and a first step towards a browser
+  build; three View menu entries, persisted user settings, all default Full): View > Preview resolution
+  (Full/Half/Quarter, `PreviewResolution` 1/2/4: the canvas divisor), Preview frames (Full/Half/Quarter,
+  `PreviewFrames` 1/2/4: only every n-th frame is stored) and Preview samples (16-bit float /
+  8-bit palette index, `PreviewSampleBytes` 2/1); ids `MenuPreviewResolution<n>`, `MenuPreviewFrames<n>`,
+  `MenuPreviewSamples<n>`, `Commands/ViewCommands`. The **simulation always runs at the canvas size**: only
+  what is captured, stored and shown shrinks. **The timeline never changes** (the user's rule, 2026-10-15:
+  `VisualizeEvery` means "a frame every n steps" and the settings only leave frames out to save memory, nothing
+  else): `RunSpec.VisualizeEvery` and `FrameCount` stay the project's, `FrameStride` (the frame divisor) says
+  that only every stride-th frame is captured (`CaptureEvery` steps apart, `StoredFrameCount` of them, the
+  store's capacity) and `SimulationRun.Frames` (a `StridedFrameSource` over the store when the stride is above
+  1) hands the preview timeline frame k as stored frame ⌊k / stride⌋, so a stored frame stands in for the
+  frames up to the next one; `SimulationRun.FrameCount` counts covered timeline frames; probe profiles are
+  still collected per timeline frame; the scratch runner computes the exact frame asked for. The pane, the
+  in/out points, the step readout, playback and exports know nothing of the stride. `Runs/PreviewQuality`
+  (resolution divisor, frame divisor, `FrameFormat`) goes into `RunSpec.Create(…, quality)`; the spec's
+  `Engine/FrameShape` (canvas, divisor, format, the display brightness of both layers)
+  is what every `FrameSnapshot` and the `FrameStore` are made with (`FrameStore.Create(path, shape, …)`,
+  header version 3 with format, divisor and canvas; `IFrameSource` has `CanvasWidth/Height`, `Format` and a
+  byte `CopyLayer` primitive, the `Half` overloads refuse an index store). The capture averages every divisor ×
+  divisor block (clipped at the edges; `Engine/FrameConversion` is the reference, the CPU engine converts on
+  the awaiting thread, the GPU's `capture_half`/`capture_index` kernels replaced `to_half` and match it bit
+  for bit in the harness). **The 8-bit format is the renderer's palette index with the brightness baked in**
+  (`ColorLut.FieldIndex`/`IntensityIndex`), not a float8: the display is 8-bit linear already, and a float8
+  with 3 mantissa bits would band above 6 % of full scale. Palette and black level still recolour such a run
+  (`FrameRenderer.RenderIndexed`, a table lookup per pixel); a brightness edit in that mode counts as a
+  simulation edit (`MainWindow.Live.IsBrightnessBaked`: stale, scratch, re-run). A quality change stales the
+  run and redoes the scratch frame (`OnPreviewQualityChanged`); the scratch runner uses the same shape, so the
+  picture never jumps between shapes. The handles and boxes map canvas pixels onto the
+  smaller picture through `IFrameSource.CanvasWidth/Height`. **An export always uses a full run**
+  (`EnsureRunForExport`'s reason "the run is a reduced preview", `StartRun(fullQuality: true)`, `ExportJob`
+  refuses an index store). Sizes for the full-HD
+  run of 2500 steps every 2 with both planes: 10.4 GB full, 2.6 at half resolution, 1.3 with 8-bit samples,
+  0.33 with every fourth frame too. Not done, on purpose: simulating on a coarser grid (eight times cheaper but
+  other physics: half the cells per wavelength; the only lever for CPU stepping, which none of the three
+  touches) and an automatic mode.
 - **Simulation** (2026-10-09): menu Simulation > Run (F5), Pause/Resume (F6), Stop (Shift+F5, also
   Esc). `OnRun` decodes the scene image (`Rendering/SceneImageLoader`, WPF decoders → BGRA bytes),
   snapshots the project into a `RunSpec`, checks the cache drive, creates the `FrameStore` and
@@ -536,7 +572,12 @@ passing harnesses for comfort, never all of them after an edit.
   probe yielding one profile per frame, the box attached to the probe following it and a detached one staying put, and a
   scratch frame's traces matching the run's bit for bit (series up to the step, the frame's profile, a second
   request on the kept engine with an integrated line probe starting its sums afresh, and the same on the GPU
-  after the cancelled GPU run), and a rotated 3 × 1 array; the
+  after the cancelled GPU run), and a rotated 3 × 1 array; the **reduced preview** (2026-10-15: `FrameConversion`'s
+  block means for divisors 2 and 3 (the clipped last column) and its index mapping equal to the renderer's, the
+  CPU captures of every shape equal to it and the GPU's within one index / the half tolerance (actual: bit for
+  bit), a store of half-size index bytes written three ways and read back, its `Half` read and an `ExportJob`
+  on it refused, a spec with a quality (interval × 2, 50 frames, the shape with the display brightness), and a
+  headless run plus a scratch frame in that shape equal to a fresh engine's capture); the
   **export** (`ExportChecks.cs`, 2026-10-14, `-- export` runs just these in a few seconds): PNG decoded in-house
   (inflate + unfilter, CRCs) and by the ffmpeg found on the PATH (skipped without one; this machine has one in
   `C:\Windows` and under ImageMagick), JPEG at quality 90 above 30 dB, MPEG-1 (frame rate codes, quantiser
@@ -614,6 +655,18 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   **harness hooks** in the app, read from the environment: `WAVEDUDE_EXPORT_PATH` replaces the Save dialog
   (`{name}` = the suggested name) and `WAVEDUDE_DISCARD_EDITS=1` skips the save question on closing
   (`Start-App` sets it), because posted keys cannot drive a common dialog or a message box.
+  `_tools/ui_check/PreviewQualityCheck.ps1` (2026-10-15, 34 checks, about 90 s) drives View > Preview
+  resolution / frames / samples by keyboard on `tiny.wdproj`: a full run (the log line says "100 of 100 frames
+  stored as 64×48 (full)", frames 97, 98 and 99 all differ), then each choice marks the run stale and the
+  automatic re-run follows: with every second frame stored the timeline still ends at 99 / step 198 and frame 99
+  shows the same picture as 98 while 97 differs (the log's "50 of 100 frames stored"), at half resolution the
+  source marker stays at the source's canvas position on the half-size picture, then 8-bit; a restart keeps the
+  settings, and the menu puts everything back to Full (the three frames differ again). The log file next to the
+  exe is read with a shared `FileStream` (the app keeps it open); the script builds the "×" from its character
+  code, since a script file is read as ANSI. Focus is put on the Play button before F5 and before the frame
+  steps: a window that was never activated has no focused element, so a routed gesture or the pane's own key
+  bindings go nowhere (the menu's F10 works regardless), and the menu leaves the focus on the tree. The second
+  start got a pause and a `Park` retry after coming up active once.
   `_tools/ui_check/SceneImageCheck.ps1` (2026-10-15, 6 checks, about 25 s: the app ends dirty, so the close
   runs into the save prompt and `Stop-App` kills it after 8 s) builds a project in a temporary folder whose
   embedded image (the ball lens) differs from the file its path names (the race track): opening it takes the
@@ -654,7 +707,7 @@ MainWindow.OnRun: FrameCache.CheckSpace -> FrameStore.Create -> new SimulationRu
 SimulationRun (Task.Run worker; ManualResetEventSlim pause gate, CancellationTokenSource stop)
    |- SceneData.FromBgra / Empty -> WaveEngineFactory.Create -> IWaveEngine (WaveSimulator CPU | GpuWaveSimulator OpenCL)
    |- per step: AdvanceOneStep, SampleProbes; every VisualizeEvery steps: PrepareFrame -> FrameStore.Write (float -> Half)
-   |- per frame: engine.CaptureFrame(snapshot) (GPU: to_half kernel + non-blocking read into a pinned FrameSnapshot;
+   |- per frame: engine.CaptureFrame(snapshot) (GPU: capture_half / capture_index kernel in the spec's FrameShape + non-blocking read into a pinned FrameSnapshot;
    |             CPU: row copy) -> writer task: engine.AwaitFrame -> FrameStore.Write -> snapshot back to a pool of 3
    |- ProbeSampler/ProbeCollector -> ProbeUpdate batches (<= 20 Hz) applied to run.Traces on the UI context
    '- State/StepsDone/FrameCount/EngineDescription posted to the UI context (INotifyPropertyChanged, bindable)
@@ -693,10 +746,11 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
 - **Engine contract** (`IWaveEngine`): padded grid (`Stride = Width + 2`), one driver thread at a
   time, `PrepareFrame` before reading, CPU `FieldData` is a different array every sub-step, GPU
   `FieldData` a host copy. Added 2026-10-09: `CaptureFrame(FrameSnapshot, needIntensity)` /
-  `AwaitFrame` (the frame as `Half` planes without padding; the GPU converts on the card with the
-  `to_half` kernel and reads asynchronously with OpenCL events into pinned arrays, `AwaitFrame` may
-  run on another thread; the CPU copies rows at capture and converts at await, so the stepping
-  thread pays little), `Reset()` (step 0; probes removed) and `SetEmitters()` (new object sources on
+  `AwaitFrame` (the frame as planes of the snapshot's `FrameShape` without padding: halves or palette
+  index bytes, the canvas shrunk by the divisor, since 2026-10-15; the GPU converts on the card with the
+  `capture_half` / `capture_index` kernels and reads asynchronously with OpenCL events into pinned arrays,
+  `AwaitFrame` may run on another thread; the CPU copies rows at capture and converts at await
+  (`FrameConversion`), so the stepping thread pays little), `Reset()` (step 0; probes removed) and `SetEmitters()` (new object sources on
   the same scene; the GPU keeps them in their own `Resources` group and rebinds the intensity
   retention). Engines take `SceneData`, `EngineOptions` and
   `IReadOnlyList<Emitter>`; `Emitter.FromSource` resolves a model `Source` + `SourceElement`
@@ -714,8 +768,10 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
 - **FrameStore, two tiers** (2026-10-14): the first frames of a run, as many as the memory budget holds
   (`RamFrames`), live in native memory (`NativeMemory.Alloc` per frame, one block of all planes); the
   rest go to a temporary file created only when the run does not fit (`FirstSpilledFrame`, `HasFile`),
-  pre-sized for the spilled frames, 64-byte header (`WDFS`, version 2, width, height, layers, every,
-  capacity, first frame in the file) then fixed-size frames, planes in `FrameLayer` order, only those
+  pre-sized for the spilled frames, 64-byte header (`WDFS`, version 3 since 2026-10-15: width, height, layers,
+  every, capacity, first frame in the file, sample format, divisor, canvas width and height) then fixed-size
+  frames in the run's `FrameShape` (halves, or palette index bytes; the canvas shrunk by the divisor, see
+  "Reduced preview" in the WPF shell list), planes in `FrameLayer` order, only those
   present (`RunSpec.Layers`: field always; intensity when the intensity preview or export is on or a
   probe needs it). The budget is `FrameMemory.Budget(percent)`: the user's share of the physical RAM
   (Simulation > Frames kept in memory: a quarter, half, three quarters; setting `FrameMemoryPercent`,
@@ -994,6 +1050,63 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
      one pixel per frame do not fit.
    Deferred, possibly never: filmstrip thumbnails behind the bar (needs cached frames).
 6. Retire `Wave_Dude_2D` once the WPF app covers it.
+
+## Rebrand and licensing (designed 2026-10-15, **not applied yet**)
+
+The WPF app becomes **WaveDude Next** (agreed with Jeroen Vleggaar by mail 2026-10-15; he proposed
+"Pro", the user chose "Next" since Pro/Plus suggests a paid tier). Project, namespaces, the GitHub
+repo, About and installer take that name. The new icon is `Branding/Icons/05_rainbow_rings.svg`,
+installed as `WaveDude.WPF/App.svg|png|ico` (the candidates and `make_icons.py` stay in `Branding/Icons/`).
+
+**People**: Alexander Graef (author of WaveDude Next; "Gräf" in his mail signature, "Graef" in code);
+JJM (Jeroen) Vleggaar, Huygens Optics (author of Wave Dude 2D, GPL-3.0-or-later, Copyright (C) 2026);
+Manuel, GitHub `0x23`, YouTube "Diffraction Limited" (author of WaveSimulator2D, the Python/CuPy
+numerics Jeroen's engine took its design from; surname not public; the 0x23 = Manuel link comes from
+Jeroen's mail of 2026-10-08, which also says Manuel consented to publication and will add an MIT
+licence to his repo). Private addresses stay out of files.
+
+**Source header** (accepted 2026-10-15; the same text in every file, `'` in VB, `//` in C#,
+`<!-- -->` in XAML, `#` in PowerShell/Python; no per-file provenance, no "ported from / modified by"):
+
+```
+' SPDX-License-Identifier: GPL-3.0-or-later
+' Copyright (C) 2026 Alexander Graef <alex@graef.cc>
+'
+' This file is part of WaveDude Next, a 2D wave simulator.
+'
+' Based on the work of
+'   JJM Vleggaar (Huygens Optics), author of Wave Dude 2D, Copyright (C) 2026
+'     <https://www.youtube.com/@HuygensOptics>, <https://www.huygensoptics.com>
+'   Manuel (0x23, Diffraction Limited), author of WaveSimulator2D
+'     <https://www.youtube.com/@DiffractionLimited>, <https://github.com/0x23/WaveSimulator2D>
+'
+' WaveDude Next is free software: you can redistribute it and/or modify it under
+' the terms of the GNU General Public License as published by the Free Software
+' Foundation, either version 3 of the License, or (at your option) any later
+' version. It is distributed WITHOUT ANY WARRANTY; see the LICENSE.md file or
+' <https://www.gnu.org/licenses/>.
+```
+
+Jeroen's line carries his copyright so the GPL's notice-preservation rule (sections 4 and 5) is met
+on the files that descend from his code without a separate notice. The author's own VB tree
+(`2D_wave_sim_V01/`) keeps his header and is not touched.
+
+**LICENSE.md** (written 2026-10-15, the user's call): a short attribution block on top (the project
+name, the copyright line, the same "Based on the work of" list as the header, one GPL sentence, a
+rule), then the FSF's own Markdown of the licence, <https://www.gnu.org/licenses/gpl-3.0.md>,
+**verbatim** (34,893 bytes, md5 `ba29b1da0f9c28e2a9e072aba46cf040`; `tail -n +19 LICENSE.md | md5sum`
+must give that). The block is about 2 % of the file, which should stay inside the near-exact match
+GitHub's licence detection (licensee) needs to label the repo "GPL-3.0"; **check the sidebar after the
+first push** and move the block into the README if the label is missing. The licence text itself is
+never edited (the FSF allows verbatim copies only). `LICENSE.md` is the name the header points at
+(GitHub also accepts `LICENSE` and `COPYING`; one file, one name).
+
+**Companions when applied**: `<Authors>Alexander Graef</Authors>`, `<Copyright>Copyright (C) 2026
+Alexander Graef</Copyright>`, `<PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>`
+in both SDK projects (About and the file properties read them); a README with a Credits section
+naming the three people as in the header; `file_header_template` in `.editorconfig` so the IDE adds
+the header to new files. Applying all of this is a separate step, after the coding session that is
+running on the source today.
 
 ## Conventions
 

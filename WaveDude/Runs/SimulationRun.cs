@@ -60,12 +60,13 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	public SimulationRun(RunSpec spec, FrameStore store, SynchronizationContext? context, bool isAutomatic = false)
 	{
 		IsAutomatic = isAutomatic;
-		if (store.Width != spec.Width || store.Height != spec.Height || store.Layers != spec.Layers || store.Capacity < spec.FrameCount)
+		if (!store.Shape.SameLayoutAs(spec.Shape) || store.Layers != spec.Layers || store.Capacity < spec.StoredFrameCount)
 		{
 			throw new ArgumentException("The frame store does not fit the run.", nameof(store));
 		}
 		Spec = spec;
 		Store = store;
+		Frames = spec.FrameStride == 1 ? store : new StridedFrameSource(store, spec.FrameStride, spec.FrameCount);
 		_context = context;
 		Traces = new ProbeTrace[spec.Probes.Length];
 		for (int i = 0; i < Traces.Length; i++)
@@ -86,8 +87,14 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	/// <summary>What is being run.</summary>
 	public RunSpec Spec { get; }
 
-	/// <summary>Where the frames are; readable from any thread up to <see cref="FrameStore.Count"/>.</summary>
+	/// <summary>Where the stored frames are (every <see cref="RunSpec.FrameStride"/>-th one); readable from any thread up to <see cref="FrameStore.Count"/>.</summary>
 	public FrameStore Store { get; }
+
+	/// <summary>
+	/// The frames in timeline numbering, what the preview reads: the store itself when every frame is stored,
+	/// else a <see cref="StridedFrameSource"/> in which a stored frame stands in for the frames up to the next one.
+	/// </summary>
+	public IFrameSource Frames { get; }
 
 	/// <summary>Whether the application started the run on its own (re-run after an edit); the preview then keeps its position instead of following.</summary>
 	public bool IsAutomatic { get; }
@@ -115,7 +122,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	/// <summary>Steps the run will do.</summary>
 	public int TotalSteps => Spec.Steps;
 
-	/// <summary>Frames written to the store so far (equals <see cref="FrameStore.Count"/> once the post has arrived).</summary>
+	/// <summary>Timeline frames that can be shown so far: the stored frames × <see cref="RunSpec.FrameStride"/>, capped at <see cref="RunSpec.FrameCount"/> (equals <see cref="IFrameSource.Count"/> of <see cref="Frames"/> once the post has arrived).</summary>
 	public int FrameCount
 	{
 		get => _frameCount;
@@ -236,6 +243,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			Post(() => State = RunState.Running);
 
 			int every = Spec.VisualizeEvery;
+			int captureEvery = Spec.CaptureEvery;
 			bool trackIntensity = Spec.TrackIntensity;
 			int frame = 0;
 			long lastProgressMs = 0;
@@ -249,7 +257,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			var pool = new BlockingCollection<FrameSnapshot>();
 			for (int i = 0; i < SnapshotPoolSize; i++)
 			{
-				pool.Add(new FrameSnapshot(Store.Width, Store.Height, trackIntensity));
+				pool.Add(new FrameSnapshot(Spec.Shape, trackIntensity));
 			}
 			var pending = new BlockingCollection<FrameSnapshot>();
 			IWaveEngine captured = engine;
@@ -270,7 +278,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 					captured.AwaitFrame(snapshot);
 					long w1 = Stopwatch.GetTimestamp();
 					Store.Write(snapshot.Frame, snapshot);
-					PublishFrameCount(snapshot.Frame + 1);
+					PublishFrameCount(CoveredFrames(snapshot.Frame + 1));
 					Interlocked.Add(ref writerWaitTicks, w1 - w0);
 					Interlocked.Add(ref storeTicks, Stopwatch.GetTimestamp() - w1);
 					pool.Add(snapshot);
@@ -302,12 +310,15 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 				stepsDone = i + 1;
 				long t1 = Stopwatch.GetTimestamp();
 				computeTicks += t1 - t0;
-				if (i % every == 0 && frame < Store.Capacity)
+				if (i % every == 0)
 				{
-					// the series up to this step and the line profiles of this frame (kept per frame, so the
-					// preview shows the profile of the frame it scrubs to)
+					// the series up to this step and the line profiles of this timeline frame (kept per frame, stored
+					// or not, so the preview shows the profile of the frame it scrubs to)
 					collector?.Collect(engine, stepsDone);
 					collector?.CollectProfiles(engine, stepsDone);
+				}
+				if (i % captureEvery == 0 && frame < Store.Capacity)
+				{
 					// a free snapshot (waiting here is the back pressure when the writer lags), captured
 					// without waiting for the copy; the writer awaits and stores it
 					FrameSnapshot snapshot = pool.Take(token);
@@ -373,7 +384,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 		stopwatch.Stop();
 		TimeSpan elapsed = stopwatch.Elapsed;
 		int finalSteps = stepsDone;
-		int finalFrames = Store.Count;
+		int finalFrames = CoveredFrames(Store.Count);
 		Post(() =>
 		{
 			StepsDone = finalSteps;
@@ -416,6 +427,9 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			ProbesUpdated?.Invoke(this, update);
 		});
 	}
+
+	/// <summary>Timeline frames covered by the first <paramref name="stored"/> stored frames: each stands for <see cref="RunSpec.FrameStride"/> of them, never beyond the run.</summary>
+	private int CoveredFrames(int stored) => (int)Math.Min((long)stored * Spec.FrameStride, Spec.FrameCount);
 
 	/// <summary>Posts the frame count, coalescing: never more than one post in flight, the handler reads the newest value.</summary>
 	private void PublishFrameCount(int count)

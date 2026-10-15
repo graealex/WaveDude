@@ -50,12 +50,13 @@ public interface IWaveEngine
 
 	/// <summary>
 	/// Copies the newest field (and the intensity when asked and tracked) into <paramref name="snapshot"/> as
-	/// <see cref="Half"/> planes without padding. The CPU engine converts synchronously; the GPU engine converts on
-	/// the card and enqueues the reads without waiting, so the driver can keep stepping while they land. The
-	/// snapshot must not be touched until <see cref="AwaitFrame"/> returned, and a capture must be awaited before
-	/// the engine is disposed.
+	/// planes of its <see cref="FrameShape"/>: the padding stripped, the canvas shrunk by the shape's divisor,
+	/// the samples as halves or palette indices (<see cref="FrameConversion"/> is the reference). The CPU engine
+	/// copies the floats now and converts in <see cref="AwaitFrame"/>; the GPU engine converts on the card and
+	/// enqueues the reads without waiting, so the driver can keep stepping while they land. The snapshot must not
+	/// be touched until <see cref="AwaitFrame"/> returned, and a capture must be awaited before the engine is disposed.
 	/// </summary>
-	/// <param name="snapshot">A snapshot of this engine's size; its planes receive the data.</param>
+	/// <param name="snapshot">A snapshot whose shape has this engine's canvas; its planes receive the data.</param>
 	/// <param name="needIntensity">Also copy the intensity (needs tracking and a snapshot with an intensity plane).</param>
 	void CaptureFrame(FrameSnapshot snapshot, bool needIntensity);
 

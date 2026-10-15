@@ -25,6 +25,17 @@
 	<s:String x:Key="MenuViewPanes">_Panneaux</s:String>
 	<s:String x:Key="MenuViewTheme">_Thème</s:String>
 	<s:String x:Key="MenuViewLanguage">_Langue</s:String>
+	<s:String x:Key="MenuViewResolution">_Résolution de l'aperçu</s:String>
+	<s:String x:Key="MenuViewResolutionFull">_Complète</s:String>
+	<s:String x:Key="MenuViewResolutionHalf">_Moitié</s:String>
+	<s:String x:Key="MenuViewResolutionQuarter">_Quart</s:String>
+	<s:String x:Key="MenuViewFrames">_Images de l'aperçu</s:String>
+	<s:String x:Key="MenuViewFramesFull">_Toutes</s:String>
+	<s:String x:Key="MenuViewFramesHalf">_Moitié (une image sur deux)</s:String>
+	<s:String x:Key="MenuViewFramesQuarter">_Quart (une image sur quatre)</s:String>
+	<s:String x:Key="MenuViewSamples">Éc_hantillons de l'aperçu</s:String>
+	<s:String x:Key="MenuViewSamples16">Flottant _16 bits</s:String>
+	<s:String x:Key="MenuViewSamples8">Index de palette _8 bits (luminosité fixée au départ du calcul)</s:String>
 	<s:String x:Key="LanguageSystem">Système</s:String>
 	<s:String x:Key="MenuSimulation">_Simulation</s:String>
 	<s:String x:Key="MenuSimulationRun">_Lancer</s:String>

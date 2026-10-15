@@ -237,15 +237,15 @@ public sealed class ScratchRunner : IDisposable
 		return _engine;
 	}
 
-	/// <summary>A snapshot of the spec's size, alternating between two so the one handed out last stays valid while the next is computed.</summary>
+	/// <summary>A snapshot of the spec's shape, alternating between two so the one handed out last stays valid while the next is computed.</summary>
 	private FrameSnapshot NextSnapshot(RunSpec spec)
 	{
 		int index = _nextSnapshot;
 		_nextSnapshot = (index + 1) % _snapshots.Length;
 		FrameSnapshot? snapshot = _snapshots[index];
-		if (snapshot == null || snapshot.Width != spec.Width || snapshot.Height != spec.Height || (spec.TrackIntensity && snapshot.Intensity == null))
+		if (snapshot == null || snapshot.Shape != spec.Shape || (spec.TrackIntensity && snapshot.IntensityBytes == null))
 		{
-			snapshot = _snapshots[index] = new FrameSnapshot(spec.Width, spec.Height, spec.TrackIntensity);
+			snapshot = _snapshots[index] = new FrameSnapshot(spec.Shape, spec.TrackIntensity);
 		}
 		return snapshot;
 	}

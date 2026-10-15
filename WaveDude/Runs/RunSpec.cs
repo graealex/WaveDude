@@ -23,11 +23,13 @@ public sealed class RunSpec
 {
 	private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
-	private RunSpec(Project project, ScenePixels? image, int width, int height, bool trackIntensity, bool preferGpu)
+	private RunSpec(Project project, ScenePixels? image, int width, int height, bool trackIntensity, bool preferGpu, PreviewQuality quality)
 	{
 		Seed = project.Seed;
 		Steps = project.Simulation.Steps;
+		Quality = quality.Validate();
 		VisualizeEvery = Math.Max(1, project.Simulation.VisualizeEvery);
+		Shape = new FrameShape(width, height, quality.ResolutionDivisor, quality.Format, (float)project.Display.Field.Brightness, (float)project.Display.Intensity.Brightness);
 		PreferGpu = preferGpu;
 		Engine = EngineOptions.From(project.Simulation, project.Scene, trackIntensity);
 		Image = image;
@@ -46,11 +48,33 @@ public sealed class RunSpec
 	/// <summary>Number of simulation steps to run.</summary>
 	public int Steps { get; }
 
-	/// <summary>A frame is recorded every this many steps (at least 1).</summary>
+	/// <summary>A frame is due every this many steps (at least 1): the project's interval, the timeline's unit whatever the <see cref="Quality"/>.</summary>
 	public int VisualizeEvery { get; }
 
-	/// <summary>Number of frames the run produces: ⌈<see cref="Steps"/> / <see cref="VisualizeEvery"/>⌉.</summary>
+	/// <summary>Number of frames of the run on the timeline: ⌈<see cref="Steps"/> / <see cref="VisualizeEvery"/>⌉, the same for every quality.</summary>
 	public int FrameCount => (Steps + VisualizeEvery - 1) / VisualizeEvery;
+
+	/// <summary>How much of the run is kept: the application's preview quality, or <see cref="PreviewQuality.Full"/> for an export's run.</summary>
+	public PreviewQuality Quality { get; }
+
+	/// <summary>
+	/// Only every this many-th frame is captured and stored (the quality's frame divisor, 1 for all of them); a
+	/// stored frame stands in for the frames up to the next one, so the timeline does not change (the user's rule,
+	/// 2026-10-15: the setting silently leaves frames out to save memory and time, nothing else).
+	/// </summary>
+	public int FrameStride => Quality.FrameDivisor;
+
+	/// <summary>Steps between two stored frames: <see cref="VisualizeEvery"/> × <see cref="FrameStride"/>.</summary>
+	public int CaptureEvery => VisualizeEvery * FrameStride;
+
+	/// <summary>Number of frames actually stored: ⌈<see cref="FrameCount"/> / <see cref="FrameStride"/>⌉ (the store's capacity).</summary>
+	public int StoredFrameCount => (FrameCount + FrameStride - 1) / FrameStride;
+
+	/// <summary>Index in the store of the frame that shows timeline frame <paramref name="frame"/>: the last stored one at or before it.</summary>
+	public int StoredIndexOf(int frame) => frame / FrameStride;
+
+	/// <summary>The frames' geometry and format: the canvas shrunk by the quality's resolution divisor, in its sample format, with the display brightness of the moment for index frames.</summary>
+	public FrameShape Shape { get; }
 
 	/// <summary>Try the OpenCL engine first; an application setting, not part of the project.</summary>
 	public bool PreferGpu { get; }
@@ -96,8 +120,9 @@ public sealed class RunSpec
 	/// <param name="image">The decoded scene image when <see cref="Scene.Mode"/> is <see cref="SceneMode.Image"/>; ignored otherwise.</param>
 	/// <param name="preferGpu">Try the OpenCL engine first (the application's choice; the CPU is the fallback either way).</param>
 	/// <param name="trackIntensity">Store the intensity plane even when nothing in the project needs it (an export of the intensity asks for it).</param>
+	/// <param name="quality">How much of the run to keep (the application's preview setting); null is <see cref="PreviewQuality.Full"/>.</param>
 	/// <exception cref="RunSpecException">The project cannot run: no image for an image scene, or no steps.</exception>
-	public static RunSpec Create(Project project, ScenePixels? image, bool preferGpu = true, bool trackIntensity = false)
+	public static RunSpec Create(Project project, ScenePixels? image, bool preferGpu = true, bool trackIntensity = false, PreviewQuality? quality = null)
 	{
 		project.Normalize();
 		if (project.Simulation.Steps < 1)
@@ -127,7 +152,7 @@ public sealed class RunSpec
 		}
 		trackIntensity |= project.Display.Intensity.Preview
 			|| project.Probes.Any(probe => probe.Active && probe.Measurement != ProbeMeasurement.Amplitude);
-		return new RunSpec(project, image, width, height, trackIntensity, preferGpu);
+		return new RunSpec(project, image, width, height, trackIntensity, preferGpu, quality ?? PreviewQuality.Full);
 	}
 
 	/// <summary>

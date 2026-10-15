@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using NLog;
+using WaveDude.Engine;
 using WaveDude.Rendering;
 using WaveDude.Runs;
 
@@ -88,6 +89,11 @@ public sealed class ExportJob : INotifyPropertyChanged
 		if (firstFrame < 0 || lastFrame < firstFrame)
 		{
 			throw new ArgumentOutOfRangeException(nameof(lastFrame), "The range is empty.");
+		}
+		if (store.Format != FrameFormat.Half)
+		{
+			// a reduced preview run bakes the brightness into index bytes; an export renders from the raw samples (the window starts a full run first)
+			throw new ArgumentException("An export needs a full-quality run; this store holds palette indices.", nameof(store));
 		}
 		Store = store;
 		FirstFrame = firstFrame;
