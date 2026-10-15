@@ -188,6 +188,7 @@ public partial class MainWindow
 			ScenePixels pixels = SceneImageLoader.Load(bytes);
 			Project.Scene.ImageData = bytes;
 			Project.Scene.Image = Path.GetFileName(dialog.FileName);
+			Project.Scene.ImagePath = Scene.StoredImagePath(ProjectFolder, dialog.FileName);
 			Project.Scene.Mode = SceneMode.Image;
 			Logger.Info("Scene image '{Name}' embedded: {Width}×{Height}, {Size} KB", Project.Scene.Image, pixels.Width, pixels.Height, Math.Max(1, bytes.Length / 1024));
 		}

@@ -45,6 +45,7 @@ public sealed class Scene : ObservableObject
 
 	private SceneMode _mode = SceneMode.Canvas;
 	private string _image = "";
+	private string _imagePath = "";
 	private int _width = DefaultWidth;
 	private int _height = DefaultHeight;
 	private int _dampingEdge;
@@ -95,6 +96,59 @@ public sealed class Scene : ObservableObject
 
 	/// <summary>Only an embedded image is written.</summary>
 	public bool ShouldSerializeImageData() => _imageData != null;
+
+	/// <summary>
+	/// Where the embedded image came from (2026-10-15): the file's path, relative to the project file when it lies
+	/// in that folder (<see cref="StoredImagePath"/>), absolute otherwise, "" when unknown. The application
+	/// watches it while the project is open and re-embeds the file when it changes, and compares it with the
+	/// embedded bytes when the project is opened. Changing the path changes nothing in the simulation.
+	/// </summary>
+	[XmlAttribute]
+	[DefaultValue("")]
+	[Category("Canvas")]
+	[DisplayName("Image file")]
+	[Description("Where the embedded image came from. It is watched while the project is open and re-embedded when it changes; on opening the project a changed file replaces the embedded image too.")]
+	public string ImagePath
+	{
+		get => _imagePath;
+		set => SetProperty(ref _imagePath, value ?? "");
+	}
+
+	/// <summary>The form of <paramref name="fullPath"/> stored in a project: relative to <paramref name="projectFolder"/> when it lies inside it (case-insensitive), else as given.</summary>
+	/// <param name="projectFolder">The project file's folder; null or empty for an unsaved project.</param>
+	/// <param name="fullPath">The image file's absolute path.</param>
+	public static string StoredImagePath(string? projectFolder, string fullPath)
+	{
+		if (string.IsNullOrEmpty(projectFolder) || !Path.IsPathRooted(fullPath))
+		{
+			return fullPath;
+		}
+		string relative = Path.GetRelativePath(projectFolder, fullPath);
+		return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative) ? fullPath : relative;
+	}
+
+	/// <summary>The image file's full path: <see cref="ImagePath"/> as given when rooted, resolved against <paramref name="projectFolder"/> when relative; "" when there is no path or no folder to resolve against.</summary>
+	public string ResolveImagePath(string? projectFolder)
+	{
+		if (ImagePath.Length == 0)
+		{
+			return "";
+		}
+		if (Path.IsPathRooted(ImagePath))
+		{
+			return ImagePath;
+		}
+		return string.IsNullOrEmpty(projectFolder) ? "" : Path.GetFullPath(ImagePath, projectFolder);
+	}
+
+	/// <summary>Turns an absolute <see cref="ImagePath"/> inside <paramref name="projectFolder"/> into a relative one (called when the project is saved).</summary>
+	public void RelativizeImagePath(string? projectFolder)
+	{
+		if (Path.IsPathRooted(ImagePath))
+		{
+			ImagePath = StoredImagePath(projectFolder, ImagePath);
+		}
+	}
 
 	/// <summary>Width of a blank canvas in pixels.</summary>
 	[XmlAttribute]
@@ -182,7 +236,7 @@ public sealed class Scene : ObservableObject
 	[XmlIgnore]
 	[Browsable(false)]
 	public bool IsDefault =>
-		Mode == SceneMode.Canvas && Image.Length == 0 && ImageData == null && Width == DefaultWidth && Height == DefaultHeight
+		Mode == SceneMode.Canvas && Image.Length == 0 && ImagePath.Length == 0 && ImageData == null && Width == DefaultWidth && Height == DefaultHeight
 		&& DampingEdge == 0 && RefractiveIndex == DefaultRefractiveIndex && !ImageSources
 		&& ImageSourceScale == DefaultImageSourceScale && ObjectSources;
 
@@ -190,6 +244,7 @@ public sealed class Scene : ObservableObject
 	public void Normalize()
 	{
 		Image ??= "";
+		ImagePath ??= "";
 		Width = Math.Clamp(Width, MinSize, MaxSize);
 		Height = Math.Clamp(Height, MinSize, MaxSize);
 		DampingEdge = Math.Clamp(DampingEdge, 0, MaxDampingEdge);

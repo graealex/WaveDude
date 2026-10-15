@@ -43,6 +43,10 @@
 					<TextBox Style="{StaticResource ImageOnly}" Text="{Binding Image, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:Scene.Image}" />
 				</DockPanel>
 
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Scene.ImagePath}" />
+				<TextBlock VerticalAlignment="Center" Text="{Binding ImagePath}" TextTrimming="CharacterEllipsis" ToolTip="{meta:Hint model:Scene.ImagePath}"
+				           AutomationProperties.AutomationId="SceneImagePath" />
+
 				<TextBlock Style="{StaticResource FormLabel}" Text="{DynamicResource LabelEmbeddedImage}" />
 				<TextBlock VerticalAlignment="Center" Text="{Binding ImageData, Converter={StaticResource ImageInfo}}"
 				           ToolTip="{DynamicResource TipEmbeddedImage}" AutomationProperties.AutomationId="SceneImageInfo" />

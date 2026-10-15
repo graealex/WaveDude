@@ -725,6 +725,21 @@ internal static class Program
 			Project loaded = Project.Load(stream);
 			Check(loaded.ColorSchemes.Count == 1 && loaded.ColorSchemes[0].Name == "Mine" && loaded.ColorSchemes[0].Colors.SequenceEqual(field.Colors), "a project file embeds its own schemes");
 			Check(loaded.Scene.ImageData != null && loaded.Scene.ImageData.SequenceEqual(project.Scene.ImageData) && loaded.Scene.Image == "scene.png", "a project file embeds the scene image bytes (base64)");
+			// the image's source path (2026-10-15): relative inside the project folder, absolute elsewhere, resolved back, not a simulation change
+			string projectFolder = Path.Combine(Path.GetTempPath(), "wd-project");
+			Check(Scene.StoredImagePath(projectFolder, Path.Combine(projectFolder, "scenes", "a.png")) == Path.Combine("scenes", "a.png") && Scene.StoredImagePath(projectFolder, Path.Combine(Path.GetTempPath(), "b.png")) == Path.Combine(Path.GetTempPath(), "b.png") && Scene.StoredImagePath(null, Path.Combine(projectFolder, "a.png")) == Path.Combine(projectFolder, "a.png"),
+				"StoredImagePath: relative inside the project folder, absolute outside or without a folder");
+			project.Scene.ImagePath = Path.Combine("scenes", "a.png");
+			Check(project.Scene.ResolveImagePath(projectFolder) == Path.Combine(projectFolder, "scenes", "a.png") && project.Scene.ResolveImagePath(null) == "" && new Scene { ImagePath = Path.Combine(projectFolder, "a.png") }.ResolveImagePath(null) == Path.Combine(projectFolder, "a.png"),
+				"ResolveImagePath: relative needs the folder, absolute does not");
+			using var stream2 = new MemoryStream();
+			project.Save(stream2);
+			stream2.Position = 0;
+			Check(Project.Load(stream2).Scene.ImagePath == Path.Combine("scenes", "a.png"), "the image path round-trips through the file");
+			Check(!new ProjectChange(project.Scene, nameof(Scene.ImagePath)).AffectsSimulation && new ProjectChange(project.Scene, nameof(Scene.ImageData)).AffectsSimulation, "the path is no simulation change, the bytes are");
+			var abs = new Scene { ImagePath = Path.Combine(projectFolder, "a.png") };
+			abs.RelativizeImagePath(projectFolder);
+			Check(abs.ImagePath == "a.png", "RelativizeImagePath on save");
 			var edited = loaded.ColorSchemes[0];
 			int changes = 0;
 			edited.PropertyChanged += (_, args) => changes += args.PropertyName == nameof(ColorScheme.Stops) ? 1 : 0;
@@ -905,6 +920,7 @@ internal static class Program
 		Project p = LegacyProject.Import(Path.Combine(root, "Wave_Dude_Examples", "Example12_Dispersion", "configuration.json"), notes, out string name);
 		Check(name == "Example12_Dispersion" && p.Description.StartsWith("This example shows the difference", StringComparison.Ordinal) && notes.Count == 0, "Example 12: name and description, no notes");
 		Check(p.Scene.Mode == SceneMode.Image && p.Scene.Image == "frequency_race_track (2).png" && p.Scene.ImageData is { Length: 58074 } && p.Scene.Width == 1920 && p.Scene.Height == 1080, "scene: image mode, the image embedded (58074 bytes) under its file name, 1920 x 1080");
+		Check(Path.IsPathRooted(p.Scene.ImagePath) && p.Scene.ImagePath.EndsWith(Path.Combine("scene_images", "frequency_race_track (2).png"), StringComparison.OrdinalIgnoreCase), "the import keeps the image's source path (absolute) for the watch");
 		Check(p.Scene.DampingEdge == 64 && !p.Scene.ImageSources && p.Scene.ObjectSources && p.Scene.RefractiveIndex == 1.0 && p.Scene.ImageSourceScale == 1.0, "scene: damping 64, object sources on, image sources off");
 		Check(p.Simulation.Steps == 15000 && p.Simulation.VisualizeEvery == 2 && !p.Simulation.FourthOrderLaplacian && p.Simulation.WaveSpeed == 1.0 && p.Simulation.TimeDecay == 10.0 && p.Simulation.SourceFrequencyScale == 2.0 && p.Simulation.IntensityScale == 1.0, "simulation: 15000 steps every 2, 9-point stencil, c 1, decay 10");
 		Check(p.Display.Field.Brightness == 80 && p.Display.Intensity.Brightness == 30 && p.Display.Field.BlackLevel == -0.05 && p.Display.Intensity.BlackLevel == 0 && p.Display.Field.ColorScheme == "Default_Field" && p.Display.Intensity.ColorScheme == "Default_intensity", "display: brightness 80 / 30, black levels, schemes");

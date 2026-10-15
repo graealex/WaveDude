@@ -178,6 +178,8 @@ public partial class MainWindow : Window
 			Logger.Info("Opened '{Path}'", fileName);
 			RememberRecent(fileName);
 			projectTree.SelectRoot();
+			// the embedded image against its file: a changed file is taken (the project is then dirty) and watched from here on
+			SyncSceneImage("changed since the project was saved");
 		}
 		catch (Exception ex)
 		{
@@ -200,6 +202,7 @@ public partial class MainWindow : Window
 			DiscardRun();
 			Project = imported;
 			Filename = null;
+			SyncSceneImage("imported");
 			_suggestedFileName = LegacyProject.SuggestedFileName(fileName, projectName);
 			foreach (string note in notes)
 			{
@@ -242,9 +245,12 @@ public partial class MainWindow : Window
 		try
 		{
 			fileName = Path.GetFullPath(fileName);
+			// an image file inside the project's folder is stored relative to it, so the project moves with its image
+			Project.Scene.RelativizeImagePath(Path.GetDirectoryName(fileName));
 			Project.Save(fileName);
 			Filename = fileName;
 			IsDirty = false;
+			ArmSceneImageWatch();
 			Logger.Info("Saved '{Path}'", fileName);
 			RememberRecent(fileName);
 			return true;

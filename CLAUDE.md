@@ -142,7 +142,16 @@ WPF shell as it stands:
   `PreviewPane.RefreshColors`). The scene image is picked with Scene > Browse… and **embedded**:
   `Scene.ImageData` holds the file's bytes (base64 element, `XmlSerializer`'s own encoding),
   `Scene.Image` just its name, the view shows "w × h, KB"; `LoadSceneImage` decodes the bytes once
-  per array, a path is still honoured for old files. Open decisions: base64 vs BaseXML for the
+  per array, a path is still honoured for old files. **The embedded image follows its file** (2026-10-15, the
+  user's rule): `Scene.ImagePath` remembers where the bytes came from (relative to the project file when inside
+  its folder, made relative on save, absolute otherwise; set by Browse and the importer; shown read-only in the
+  scene view, id `SceneImagePath`; a project from before the path existed finds its image by name beside the
+  project file or in a `scene_images` folder next to it, `LocateSceneImageFile`); `MainWindow.SceneImageWatch.cs` watches that file while the project is open
+  (`FileSystemWatcher`, 400 ms debounce, reads retried while the editor holds the file) and re-embeds it when
+  its bytes differ, and compares it once when a project is opened or imported, taking the file when it differs.
+  Both go through the model, so the project turns dirty (asterisk, save prompt), the run goes stale and the
+  frame is recomputed; a path change alone is not a simulation change. No hash: the embedded bytes are the
+  baseline and the file has to be read to re-embed it anyway. Open decisions: base64 vs BaseXML for the
   bytes (base64 is what `XmlSerializer` does natively; BaseXML would need an in-house codec); a colour
   picker dialog for the stops (hex text only today; the WinForms `ColorDialog` would need
   `UseWindowsForms`); renaming a project scheme does not update the layers that refer to it.
@@ -584,6 +593,12 @@ The two legacy harnesses are console programs compiled with `csc` against the `W
   **harness hooks** in the app, read from the environment: `WAVEDUDE_EXPORT_PATH` replaces the Save dialog
   (`{name}` = the suggested name) and `WAVEDUDE_DISCARD_EDITS=1` skips the save question on closing
   (`Start-App` sets it), because posted keys cannot drive a common dialog or a message box.
+  `_tools/ui_check/SceneImageCheck.ps1` (2026-10-15, 6 checks, about 25 s: the app ends dirty, so the close
+  runs into the save prompt and `Stop-App` kills it after 8 s) builds a project in a temporary folder whose
+  embedded image (the ball lens) differs from the file its path names (the race track): opening it takes the
+  file and turns the project dirty, the status bar says so, the scene view shows the path; then the file is
+  overwritten on disk and the picture follows within a moment; a second project without a path finds its
+  image by name in `scene_images` and stores the relative path (8 checks, about 40 s).
   `FocusedId` is **one** UI Automation query for the element with keyboard focus (a template part's
   id such as `PART_EditableTextBox` is mapped to its owner); asking 17 ids one by one cost half a
   second per Tab and made `FocusOn` crawl. Timings after the 2026-10-14 clean-up: RunCheck 67 s

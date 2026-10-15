@@ -16,6 +16,7 @@ public sealed record ProjectChange(object Item, string? Property)
 	/// </summary>
 	public bool AffectsSimulation => Item switch
 	{
+		Scene when Property == nameof(Scene.ImagePath) => false,
 		Scene or Simulation or Source or SourceArray => true,
 		Project => Property is nameof(Project.Seed) or nameof(Project.Scene) or nameof(Project.Simulation) or nameof(Project.Sources),
 		ObservableCollection<ColorScheme> or ObservableCollection<Probe> => false,

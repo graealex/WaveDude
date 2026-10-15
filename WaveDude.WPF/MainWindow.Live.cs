@@ -132,6 +132,11 @@ public partial class MainWindow
 	private void OnProjectChanged(object? sender, ProjectChange change)
 	{
 		IsDirty = true;
+		if (change.Item is Scene && change.Property is nameof(Scene.ImagePath) or nameof(Scene.ImageData))
+		{
+			// a new image file to watch (Browse, a reload, a path made relative)
+			ArmSceneImageWatch();
+		}
 		if (change.Item is ColorScheme or ObservableCollection<ColorScheme>)
 		{
 			// a project scheme edited, added or removed: recolour the frame shown
@@ -377,6 +382,7 @@ public partial class MainWindow
 
 	private void ShutdownScratch()
 	{
+		DisarmSceneImageWatch();
 		_scratchRequested = null;
 		_scratchTimer?.Stop();
 		_rerunTimer?.Stop();

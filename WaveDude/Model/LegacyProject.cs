@@ -114,6 +114,8 @@ public static class LegacyProject
 		{
 			scene.ImageData = File.ReadAllBytes(imagePath);
 			scene.Image = Path.GetFileName(imagePath);
+			// the source stays known (absolute: the imported project has no file yet), so the file is watched
+			scene.ImagePath = Path.GetFullPath(imagePath);
 		}
 		else
 		{

@@ -283,6 +283,8 @@
 	<s:String x:Key="Hint.Scene.Mode">Toile vierge de la taille donnée, ou toile construite à partir de l'image de scène.</s:String>
 	<s:String x:Key="Label.Scene.Image">Image de scène</s:String>
 	<s:String x:Key="Hint.Scene.Image">Image dont la toile est construite : rouge = indice de réfraction, vert = sources, bleu = amortissement. Le nom de l'image intégrée, ou un chemin relatif au dossier du projet.</s:String>
+	<s:String x:Key="Label.Scene.ImagePath">Fichier image</s:String>
+	<s:String x:Key="Hint.Scene.ImagePath">Origine de l'image intégrée. Le fichier est surveillé tant que le projet est ouvert et réintégré quand il change ; à l'ouverture du projet, un fichier modifié remplace aussi l'image intégrée.</s:String>
 	<s:String x:Key="Label.Scene.Width">Largeur</s:String>
 	<s:String x:Key="Hint.Scene.Width">Largeur d'une toile vierge en pixels.</s:String>
 	<s:String x:Key="Label.Scene.Height">Hauteur</s:String>
