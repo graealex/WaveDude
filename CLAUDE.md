@@ -1001,8 +1001,7 @@ cover them. Left: probe data as CSV (series per step, profiles per frame), an in
 canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 
 **Also open, smaller.** base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
-dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
-pan (roadmap).
+dropping the 9-point Laplacian (author's suggestion, user undecided).
 
 ## Roadmap
 
@@ -1016,17 +1015,10 @@ pan (roadmap).
    order of value: probe data as CSV.
    Store: ~~a RAM-first frame store with a budget~~ (done 2026-10-14, two tiers, no background spill
    needed: the file takes the tail of a run that does not fit).
-   Timeline, agreed 2026-10-09 (the scrub bar, in/out range, transport keys and the available-frames
-   shading are done; these stay inside the preview pane, below the pictures):
-   - **Event tracks** under the bar, one row per source and probe on the same time axis: a source
-     draws a bar from its start to its end step (pulse envelope as a filled shape), a probe draws
-     its start step as a flag; clicking selects the item in the Project tree, dragging a bar's
-     edge changes its start/stop steps. Needs a scrollable track area and a collapse rule for
-     many rows.
-   - **Zoom and pan of the time axis**: Ctrl+wheel zooms around the cursor, Shift+wheel pans, a
-     thin overview bar shows the visible window; needed once tracks exist, since 2500 steps at
-     one pixel per frame do not fit.
-   Deferred, possibly never: filmstrip thumbnails behind the bar (needs cached frames).
+   Timeline: the scrub bar, in/out range, transport keys and the available-frames shading are done and
+   **that is the timeline** (the user, 2026-10-16: it works, no need to complicate it). The event tracks, the
+   zoom and pan of the axis and the filmstrip thumbnails that an earlier session had planned for it are
+   dropped; do not resurrect them.
 6. ~~Retire `Wave_Dude_2D`~~ (removed 2026-10-15 together with the VB source; the solution file still carries the old name).
 
 ## Rebrand and licensing (designed 2026-10-15, applied the same day)
