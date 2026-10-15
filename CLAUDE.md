@@ -555,15 +555,20 @@ WPF shell as it stands:
   execute `SetInPoint`/`SetOutPoint` with the frame as parameter). Playback stops at the out point
   or wraps to the in point while looping.
 - **Keyboard first.** Every control must be reachable and operable with Tab and the arrow keys and
-  show its keyboard focus (accent border); the user tests without the mouse. The preview pane is
+  show its keyboard focus (accent border); the user tests without the mouse. The base `Button` style shows
+  the focus as the accent border and drops WPF's dotted rectangle (2026-10-15). The preview pane is
   the model: explicit `TabIndex` order, the menu bar is not in the Tab cycle (F10 focuses it,
   2026-10-14), the radio group is one tab stop (`IsTabStop` bound to
   `IsChecked`, arrows handled in code because WPF's directional navigation skips non-tab-stops),
   Play/Pause hand focus to each other when they get disabled, `AutomationProperties.AutomationId`
   on everything a harness needs. Every shortcut a harness must press needs an **unmodified** key
-  (posted messages cannot carry Shift/Ctrl/Alt), which is why Stop also has Esc. Toolbar buttons
-  in `ProjectTree`/`MessagesPane` are still `Focusable=False` (reachable only through
-  menus/shortcuts), not yet brought in line.
+  (posted messages cannot carry Shift/Ctrl/Alt), which is why Stop also has Esc. The toolbars of
+  `ProjectTree` (ids `ToolAddSource`, `ToolAddProbe`, `ToolMoveUp`, `ToolMoveDown`, `ToolRemove`; the `ToolGlyphButton`
+  style) and `MessagesPane` (`MessagesLevel:<name>`, `MessagesSearch`, `MessagesRegex`, `MessagesAutoScroll`,
+  `MessagesClear`, left to right through `TabIndex`, whatever the dock order says; the list is `MessagesList`) are in
+  the Tab cycle since 2026-10-15 (`KeyboardCheck.ps1`); the buttons on the tree's rows stay out of it, since the
+  toolbar and the context menu do the same. **Dock pane titles** are visible to UI Automation as
+  `DockTitle:<pane id>` (a `TextBlock` inside a template is out of the control view unless it carries an id).
 - File type: `FileAssociation.Register` (called from `App.OnStartup`) registers `.wdproj` → ProgId
   `WaveDudeNext.Project` → `"exe" "%1"` under HKCR when elevated, else HKCU\Software\Classes (same order
   as DTCODataSimulator), idempotently; a double-click arrives as `e.Args[0]` and goes to
@@ -727,6 +732,10 @@ passing harnesses for comfort, never all of them after an edit.
   popup's own window is captured as `%TEMP%\wavedude_color_picker.popup.png`.
   A `Rectangle` has no automation peer (the gradient's id `SchemeGradient` is invisible to UIA; the "Add stop"
   button marks the editor instead).
+  `_tools/ui_check/KeyboardCheck.ps1` (2026-10-15, about 12 checks, about 15 s) walks the Project pane's toolbar with
+  Tab (the disabled buttons skipped), adds a source with Space on "+ Source" and removes it with Space on the remove
+  button, opens the Messages pane through View > Panes by keyboard, walks its toolbar left to right, flips a level
+  with Space, clears the list with Space on the clear button (`MessagesList` empty), and reads both dock titles.
   `_tools/ui_check/AboutCheck.ps1` (2026-10-15, 18 checks, about 10 s) opens Help > About by keyboard (F10, Left wraps
   to the Help header, Down, Enter), finds the dialog as a child of the main window, posts its keys to the dialog's own
   handle (`DKey`), and checks the version line against `git rev-parse --short=7 HEAD`, the copyright and credit lines,
@@ -994,7 +1003,7 @@ canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 
 **Also open, smaller.** base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
 dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
-pan (roadmap); dock pane titles are not exposed to UI Automation.
+pan (roadmap).
 
 ## Roadmap
 

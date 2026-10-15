@@ -67,6 +67,8 @@ try {
 	Check "the Properties pane's labels follow (Frequenz)" ($script:win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c) -ne $null)
 	# the dock pane titles are not exposed to UI Automation by name, so only the tree folders are checked here
 	Check "the tree's folders follow at once (Sonden, Farbschemata)" ((MenuItemVisible "Sonden") -and (MenuItemVisible "Farbschemata") -and -not (MenuItemVisible "Probes"))
+	# the dock pane titles are exposed to UI Automation since 2026-10-15 (id DockTitle:<pane id>)
+	Check "the dock pane titles follow (Projekt, Eigenschaften)" (((Find "DockTitle:project").Current.Name -eq "Projekt") -and ((Find "DockTitle:properties").Current.Name -eq "Eigenschaften")) ((Find "DockTitle:project").Current.Name)
 	Check "the app never took the foreground" ((Foreground) -ne "APP") (Foreground)
 }
 finally { Stop-App }

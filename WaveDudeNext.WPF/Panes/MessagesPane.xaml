@@ -27,12 +27,13 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<UserControl.Resources>
 		<StreamGeometry x:Key="ClearGeometry">M1,2 L9,2 M3,2 L3,9 L7,9 L7,2 M4,0 L6,0</StreamGeometry>
 
+		<!-- in the Tab cycle since 2026-10-15 (the keyboard-first rule); keyboard focus is the accent border -->
 		<Style x:Key="ToolToggle" TargetType="{x:Type ToggleButton}">
 			<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
 			<Setter Property="Padding" Value="6,1" />
 			<Setter Property="Margin" Value="1,0" />
 			<Setter Property="MinHeight" Value="20" />
-			<Setter Property="Focusable" Value="False" />
+			<Setter Property="FocusVisualStyle" Value="{x:Null}" />
 			<Setter Property="Template">
 				<Setter.Value>
 					<ControlTemplate TargetType="{x:Type ToggleButton}">
@@ -51,6 +52,9 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 							<Trigger Property="IsChecked" Value="False">
 								<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
 							</Trigger>
+							<Trigger Property="IsKeyboardFocused" Value="True">
+								<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+							</Trigger>
 						</ControlTemplate.Triggers>
 					</ControlTemplate>
 				</Setter.Value>
@@ -60,7 +64,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 		<!-- one toggle per level, "Level (count)", colour of the level -->
 		<DataTemplate DataType="{x:Type local:LevelFilter}">
 			<ToggleButton Style="{StaticResource ToolToggle}" IsChecked="{Binding IsVisible, Mode=TwoWay}"
-			              ToolTip="{DynamicResource TipMessagesLevel}">
+			              ToolTip="{DynamicResource TipMessagesLevel}" AutomationProperties.AutomationId="{Binding Name, StringFormat='MessagesLevel:{0}'}">
 				<ToggleButton.Content>
 					<TextBlock>
 						<Run Text="{Binding Name, Mode=OneWay}" /><Run Text=" (" /><Run Text="{Binding Count, Mode=OneWay}" /><Run Text=")" />
@@ -79,44 +83,13 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<DockPanel>
 		<!-- toolbar: level filters, search, auto-scroll, clear -->
 		<Border DockPanel.Dock="Top" BorderBrush="{DynamicResource ToolWindowBorder}" BorderThickness="0,0,0,1" Padding="2,2">
-			<DockPanel>
-				<Button DockPanel.Dock="Right" Width="18" Height="18" Margin="1,0" Focusable="False" ToolTip="{DynamicResource TipMessagesClear}"
-				        AutomationProperties.Name="{DynamicResource TipMessagesClear}" Command="{x:Static local:MessagesPane.Clear}">
-					<Button.Template>
-						<ControlTemplate TargetType="{x:Type Button}">
-							<Border x:Name="Bd" Background="Transparent" SnapsToDevicePixels="True">
-								<Path Data="{StaticResource ClearGeometry}" Stroke="{DynamicResource WindowForeground}" StrokeThickness="1.2"
-								      HorizontalAlignment="Center" VerticalAlignment="Center" />
-							</Border>
-							<ControlTemplate.Triggers>
-								<Trigger Property="IsMouseOver" Value="True">
-									<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
-								</Trigger>
-							</ControlTemplate.Triggers>
-						</ControlTemplate>
-					</Button.Template>
-				</Button>
-				<ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}" Content="{DynamicResource MessagesAutoScroll}"
-				              ToolTip="{DynamicResource TipMessagesAutoScroll}" IsChecked="{Binding AutoScroll, Mode=TwoWay}" />
-				<CheckBox DockPanel.Dock="Right" Content="{DynamicResource MessagesRegex}" ToolTip="{DynamicResource TipMessagesRegex}"
-				          IsChecked="{Binding UseRegex, Mode=TwoWay}" Margin="6,0" VerticalAlignment="Center" />
-				<Grid DockPanel.Dock="Right" Width="180" Margin="6,0,0,0">
-					<TextBox x:Name="searchBox" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-					         AutomationProperties.Name="{DynamicResource MessagesSearchHint}" />
-					<TextBlock Text="{DynamicResource MessagesSearchHint}" Margin="5,0" VerticalAlignment="Center" IsHitTestVisible="False"
-					           Foreground="{DynamicResource GrayText}">
-						<TextBlock.Style>
-							<Style TargetType="{x:Type TextBlock}">
-								<Setter Property="Visibility" Value="Collapsed" />
-								<Style.Triggers>
-									<DataTrigger Binding="{Binding Text, ElementName=searchBox}" Value="">
-										<Setter Property="Visibility" Value="Visible" />
-									</DataTrigger>
-								</Style.Triggers>
-							</Style>
-						</TextBlock.Style>
-					</TextBlock>
-				</Grid>
+			<!-- declared left to right, levels first, so the Tab order is the visual order (TabIndex across nested panels
+			     was not honoured by WPF: the list came between the levels and the search box) -->
+			<Grid>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*" />
+					<ColumnDefinition Width="Auto" />
+				</Grid.ColumnDefinitions>
 				<ItemsControl ItemsSource="{Binding Levels}">
 					<ItemsControl.ItemsPanel>
 						<ItemsPanelTemplate>
@@ -124,10 +97,52 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 						</ItemsPanelTemplate>
 					</ItemsControl.ItemsPanel>
 				</ItemsControl>
-			</DockPanel>
+				<StackPanel Grid.Column="1" Orientation="Horizontal">
+					<Grid Width="180" Margin="6,0,0,0">
+						<TextBox x:Name="searchBox" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+						         AutomationProperties.Name="{DynamicResource MessagesSearchHint}" AutomationProperties.AutomationId="MessagesSearch" />
+						<TextBlock Text="{DynamicResource MessagesSearchHint}" Margin="5,0" VerticalAlignment="Center" IsHitTestVisible="False"
+						           Foreground="{DynamicResource GrayText}">
+							<TextBlock.Style>
+								<Style TargetType="{x:Type TextBlock}">
+									<Setter Property="Visibility" Value="Collapsed" />
+									<Style.Triggers>
+										<DataTrigger Binding="{Binding Text, ElementName=searchBox}" Value="">
+											<Setter Property="Visibility" Value="Visible" />
+										</DataTrigger>
+									</Style.Triggers>
+								</Style>
+							</TextBlock.Style>
+						</TextBlock>
+					</Grid>
+					<CheckBox Content="{DynamicResource MessagesRegex}" ToolTip="{DynamicResource TipMessagesRegex}"
+					          IsChecked="{Binding UseRegex, Mode=TwoWay}" Margin="6,0" VerticalAlignment="Center" AutomationProperties.AutomationId="MessagesRegex" />
+					<ToggleButton Style="{StaticResource ToolToggle}" Content="{DynamicResource MessagesAutoScroll}"
+					              ToolTip="{DynamicResource TipMessagesAutoScroll}" IsChecked="{Binding AutoScroll, Mode=TwoWay}" AutomationProperties.AutomationId="MessagesAutoScroll" />
+					<Button Width="18" Height="18" Margin="1,0" FocusVisualStyle="{x:Null}" ToolTip="{DynamicResource TipMessagesClear}"
+					        AutomationProperties.Name="{DynamicResource TipMessagesClear}" AutomationProperties.AutomationId="MessagesClear" Command="{x:Static local:MessagesPane.Clear}">
+						<Button.Template>
+							<ControlTemplate TargetType="{x:Type Button}">
+								<Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" SnapsToDevicePixels="True">
+									<Path Data="{StaticResource ClearGeometry}" Stroke="{DynamicResource WindowForeground}" StrokeThickness="1.2"
+									      HorizontalAlignment="Center" VerticalAlignment="Center" />
+								</Border>
+								<ControlTemplate.Triggers>
+									<Trigger Property="IsMouseOver" Value="True">
+										<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
+									</Trigger>
+									<Trigger Property="IsKeyboardFocused" Value="True">
+										<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}" />
+									</Trigger>
+								</ControlTemplate.Triggers>
+							</ControlTemplate>
+						</Button.Template>
+					</Button>
+				</StackPanel>
+			</Grid>
 		</Border>
 
-		<ListView x:Name="list" ItemsSource="{Binding View}" SelectionMode="Extended"
+		<ListView x:Name="list" ItemsSource="{Binding View}" SelectionMode="Extended" AutomationProperties.AutomationId="MessagesList"
 		          ScrollViewer.HorizontalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True">
 			<ListView.ItemContainerStyle>
 				<Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
