@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Verification harness for the WaveDude library (engines, probes, rendering, frame store, run driver).
+  <!-- Verification harness for the WaveDudeNext library (engines, probes, rendering, frame store, run driver).
        Not part of the solution; run with "dotnet run" on this project (Release) -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\WaveDude\WaveDude.csproj" />
+    <ProjectReference Include="..\..\WaveDudeNext\WaveDudeNext.csproj" />
   </ItemGroup>
 
 </Project>

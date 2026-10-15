@@ -1,0 +1,38 @@
+<UserControl x:Class="WaveDudeNext.WPF.Views.SimulationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:WaveDudeNext.WPF.Controls"
+             xmlns:meta="clr-namespace:WaveDudeNext.WPF.Markup"
+             xmlns:model="clr-namespace:WaveDudeNext.Model;assembly=WaveDudeNext">
+
+	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+		<StackPanel Margin="8">
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionRun}" />
+			<controls:FormPanel>
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.Steps}" />
+				<controls:NumberBox Text="{Binding Steps}" Minimum="1" Maximum="10000000" Increment="100" ToolTip="{meta:Hint model:Simulation.Steps}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.VisualizeEvery}" />
+				<controls:NumberBox Text="{Binding VisualizeEvery}" Minimum="1" Maximum="1000" ToolTip="{meta:Hint model:Simulation.VisualizeEvery}" />
+			</controls:FormPanel>
+
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionSolver}" />
+			<controls:FormPanel>
+				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Simulation.FourthOrderLaplacian}"
+				          IsChecked="{Binding FourthOrderLaplacian}" ToolTip="{meta:Hint model:Simulation.FourthOrderLaplacian}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.WaveSpeed}" />
+				<controls:NumberBox Text="{Binding WaveSpeed}" Minimum="0.000001" Maximum="1000000" Increment="0.01" ToolTip="{meta:Hint model:Simulation.WaveSpeed}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.TimeDecay}" />
+				<controls:NumberBox Text="{Binding TimeDecay}" Minimum="1" Maximum="100" ToolTip="{meta:Hint model:Simulation.TimeDecay}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.SourceFrequencyScale}" />
+				<controls:NumberBox Text="{Binding SourceFrequencyScale}" Minimum="0" Maximum="1000" Increment="0.1" ToolTip="{meta:Hint model:Simulation.SourceFrequencyScale}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Simulation.IntensityScale}" />
+				<controls:NumberBox Text="{Binding IntensityScale}" Minimum="0.0000001" Maximum="1000000" Increment="0.1" ToolTip="{meta:Hint model:Simulation.IntensityScale}" />
+			</controls:FormPanel>
+		</StackPanel>
+	</ScrollViewer>
+</UserControl>

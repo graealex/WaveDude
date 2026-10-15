@@ -1,7 +1,7 @@
 # UI harness: double-clicking the status bar opens the Messages pane when hidden and focuses
 # it when shown. Hides the pane first via View > Panes if needed.
 param(
-	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows")).Path
+	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows")).Path
 )
 
 Add-Type -AssemblyName UIAutomationClient
@@ -31,7 +31,7 @@ function Focused {
 	$f.Current.ControlType.ProgrammaticName + " '" + $f.Current.Name.Substring(0, [Math]::Min(40, $f.Current.Name.Length)) + "'"
 }
 
-$p = Start-Process -FilePath (Join-Path $Dir "WaveDude.WPF.exe") -PassThru
+$p = Start-Process -FilePath (Join-Path $Dir "WaveDudeNext.WPF.exe") -PassThru
 Start-Sleep -Seconds 5
 $p.Refresh()
 [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null

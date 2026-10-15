@@ -1,0 +1,136 @@
+<UserControl x:Class="WaveDudeNext.WPF.Views.SourceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:WaveDudeNext.WPF.Controls"
+             xmlns:meta="clr-namespace:WaveDudeNext.WPF.Markup"
+             xmlns:panes="clr-namespace:WaveDudeNext.WPF.Panes"
+             xmlns:converters="clr-namespace:WaveDudeNext.WPF.Converters"
+             xmlns:localization="clr-namespace:WaveDudeNext.WPF.Localization"
+             xmlns:model="clr-namespace:WaveDudeNext.Model;assembly=WaveDudeNext">
+
+	<UserControl.Resources>
+		<converters:WavelengthConverter x:Key="Wavelength" />
+		<!-- pulse settings only matter for a pulsed source -->
+		<Style x:Key="PulsedOnlyText" TargetType="{x:Type controls:NumberBox}" BasedOn="{StaticResource {x:Type controls:NumberBox}}">
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding Mode}" Value="Continuous">
+					<Setter Property="IsEnabled" Value="False" />
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
+		<Style x:Key="PulsedOnlyCombo" TargetType="{x:Type ComboBox}" BasedOn="{StaticResource EnumComboBox}">
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding Mode}" Value="Continuous">
+					<Setter Property="IsEnabled" Value="False" />
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
+	</UserControl.Resources>
+
+	<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+		<StackPanel Margin="8">
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionGeneral}" />
+			<controls:FormPanel>
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Name}" />
+				<TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="{meta:Hint model:Source.Name}" />
+
+				<CheckBox controls:FormPanel.FullWidth="True" Content="{meta:Label model:Source.Enabled}"
+				          IsChecked="{Binding Enabled}" ToolTip="{meta:Hint model:Source.Enabled}" />
+			</controls:FormPanel>
+
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionPosition}" />
+			<controls:FormPanel>
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.X}" />
+				<controls:NumberBox Text="{Binding X}" Minimum="0" ToolTip="{meta:Hint model:Source.X}" AutomationProperties.AutomationId="SourceX" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Y}" />
+				<controls:NumberBox Text="{Binding Y}" Minimum="0" ToolTip="{meta:Hint model:Source.Y}" />
+			</controls:FormPanel>
+
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionWave}" />
+			<controls:FormPanel>
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Frequency}" />
+				<controls:NumberBox Text="{Binding Frequency}" Minimum="1" Maximum="255" ToolTip="{meta:Hint model:Source.Frequency}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Amplitude}" />
+				<controls:NumberBox Text="{Binding Amplitude}" Minimum="0" Maximum="100" ToolTip="{meta:Hint model:Source.Amplitude}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Phase}" />
+				<controls:NumberBox Text="{Binding Phase}" Minimum="-180" Maximum="180" ToolTip="{meta:Hint model:Source.Phase}" />
+
+				<!-- read-only: the wavelength this frequency gives with the project's wave speed (Simulation.Wavelength) -->
+				<TextBlock Style="{StaticResource FormLabel}" Text="{DynamicResource LabelWavelength}" />
+				<TextBlock VerticalAlignment="Center" ToolTip="{DynamicResource TipWavelength}"
+				           AutomationProperties.AutomationId="SourceWavelength">
+					<TextBlock.Text>
+						<MultiBinding Converter="{StaticResource Wavelength}">
+							<Binding Path="Frequency" />
+							<Binding Path="Project.Simulation.WaveSpeed" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+							<Binding Path="Project.Simulation.SourceFrequencyScale" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+							<Binding Path="Project.Simulation.FourthOrderLaplacian" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+							<!-- the language, so "(nominal)" is re-read on a switch -->
+							<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+						</MultiBinding>
+					</TextBlock.Text>
+				</TextBlock>
+			</controls:FormPanel>
+
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionTiming}" />
+			<controls:FormPanel>
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.Mode}" />
+				<ComboBox Style="{StaticResource EnumComboBox}" ItemsSource="{meta:EnumValues model:SourceMode}"
+				          SelectedItem="{Binding Mode}" ToolTip="{meta:Hint model:Source.Mode}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.PulseShape}" />
+				<ComboBox Style="{StaticResource PulsedOnlyCombo}" ItemsSource="{meta:EnumValues model:PulseShape}"
+				          SelectedItem="{Binding PulseShape}" ToolTip="{meta:Hint model:Source.PulseShape}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.PulseWidth}" />
+				<controls:NumberBox Style="{StaticResource PulsedOnlyText}" Text="{Binding PulseWidth}" Minimum="1" ToolTip="{meta:Hint model:Source.PulseWidth}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.OffWidth}" />
+				<controls:NumberBox Style="{StaticResource PulsedOnlyText}" Text="{Binding OffWidth}" Minimum="1" ToolTip="{meta:Hint model:Source.OffWidth}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:Source.DetachAfter}" />
+				<controls:NumberBox Text="{Binding DetachAfter}" Minimum="-1" ToolTip="{meta:Hint model:Source.DetachAfter}" />
+			</controls:FormPanel>
+
+			<Label Style="{StaticResource FormSection}" Content="{DynamicResource SectionArray}" />
+			<CheckBox Content="{meta:Label model:Source.IsComposite}" IsChecked="{Binding IsComposite}"
+			          ToolTip="{meta:Hint model:Source.IsComposite}" Margin="0,0,0,4" />
+			<!-- the array's own settings; empty and disabled while there is no array -->
+			<controls:FormPanel DataContext="{Binding Array}"
+			                    IsEnabled="{Binding DataContext.IsComposite, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}">
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SizeX}" />
+				<controls:NumberBox Text="{Binding SizeX}" Minimum="1" ToolTip="{meta:Hint model:SourceArray.SizeX}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SizeY}" />
+				<controls:NumberBox Text="{Binding SizeY}" Minimum="1" ToolTip="{meta:Hint model:SourceArray.SizeY}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SpacingX}" />
+				<controls:NumberBox Text="{Binding SpacingX}" ToolTip="{meta:Hint model:SourceArray.SpacingX}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.SpacingY}" />
+				<controls:NumberBox Text="{Binding SpacingY}" ToolTip="{meta:Hint model:SourceArray.SpacingY}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.Angle}" />
+				<controls:NumberBox Text="{Binding Angle}" Minimum="-180" Maximum="180" Increment="5" ToolTip="{meta:Hint model:SourceArray.Angle}" />
+
+				<!-- the four random amounts are offsets added per emitter on top of the values above (the author's point 9) -->
+				<Label controls:FormPanel.FullWidth="True" Style="{StaticResource FormSection}" Content="{DynamicResource SectionRandom}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomFrequency}" />
+				<controls:NumberBox Text="{Binding RandomFrequency}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomFrequency}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomPhase}" />
+				<controls:NumberBox Text="{Binding RandomPhase}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomPhase}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomOffWidth}" />
+				<controls:NumberBox Text="{Binding RandomOffWidth}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomOffWidth}" />
+
+				<TextBlock Style="{StaticResource FormLabel}" Text="{meta:Label model:SourceArray.RandomPosition}" />
+				<controls:NumberBox Text="{Binding RandomPosition}" Minimum="0" ToolTip="{meta:Hint model:SourceArray.RandomPosition}" />
+			</controls:FormPanel>
+		</StackPanel>
+	</ScrollViewer>
+</UserControl>

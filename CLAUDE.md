@@ -19,12 +19,12 @@ the author's original program will be published separately as preserved assets. 
 probes, colour schemes and renderer descend from his code (ported 2026-10-09 and reworked since); the
 model's documented defaults and the JSON importer (`Model/LegacyProject`) keep his semantics.
 
-`Wave_Dude_2D.sln` (the name is still the old one; renaming it is a later rebrand step) holds two projects:
+`WaveDudeNext.sln` (the name is still the old one; renaming it is a later rebrand step) holds two projects:
 
 | project | what | state |
 |---|---|---|
-| `WaveDude/` | SDK class library, `net10.0`, nullable + implicit usings; packages NLog and `System.Numerics.Tensors` (Microsoft, MIT: vectorised float↔Half) | the model (`Model/`), the engines (`Engine/`), probes, rendering, the run driver and frame store (`Runs/`), export; see "Architecture (WaveDude library)" |
-| `WaveDude.WPF/` | SDK WPF app, `net10.0-windows`, references `WaveDude` | **the UI**; docking shell, editors, preview with live simulation; builds clean (0 warnings) |
+| `WaveDudeNext/` | SDK class library, `net10.0`, nullable + implicit usings; packages NLog and `System.Numerics.Tensors` (Microsoft, MIT: vectorised float↔Half) | the model (`Model/`), the engines (`Engine/`), probes, rendering, the run driver and frame store (`Runs/`), export; see "Architecture (WaveDudeNext library)" |
+| `WaveDudeNext.WPF/` | SDK WPF app, `net10.0-windows`, references `WaveDudeNext` | **the UI**; docking shell, editors, preview with live simulation; builds clean (0 warnings) |
 
 WPF shell as it stands:
 - `MainWindow` = menu + the in-house `Docking/DockHost` (Project tree pane left, Preview document
@@ -161,7 +161,7 @@ WPF shell as it stands:
   (Copper 3, Orange hot 4, Hot orange 5, Blue to yellow 7, Simply red 7, Flare inverted 8, Greens 9,
   Rainbow 12, Magma 13, Inferno 16, Ice and fire 21, Orange symmetry 21). The stop arithmetic
   reproduces the author's resampling bit for bit for evenly spaced stops. **The shipped schemes are
-  `WaveDude/ColorSchemes/*.wdscheme`** (converted 2026-10-13 with `library_check -- convert-schemes <folder>`,
+  `WaveDudeNext/ColorSchemes/*.wdscheme`** (converted 2026-10-13 with `library_check -- convert-schemes <folder>`,
   a one-off kept in the harness; moved out of the repo root into the library project and **renamed
   2026-10-15**, the user's rule: plain names with spaces and a capital first letter, no underscores, no
   "_GNU", "inv" spelt out, "Turky" corrected to "Turkey", each file named like its scheme; the old
@@ -345,7 +345,7 @@ WPF shell as it stands:
   the status bar (`StatusExport` text + progress bar, `ExportStatusConverter`); Esc cancels it (Stop prefers
   the export over the run); runs are not started, Play does nothing and the auto re-run waits while an export
   reads the store (`IsExporting`); New/Open/Close cancel it; closing waits up to 10 s for the files. Formats
-  (`WaveDude.Export`, in-house but MP4): PNG sequence (lossless, Paeth, `PngEncoder`), JPEG sequence (baseline
+  (`WaveDudeNext.Export`, in-house but MP4): PNG sequence (lossless, Paeth, `PngEncoder`), JPEG sequence (baseline
   4:2:0, Annex K tables scaled IJG-style, `JpegEncoder`), MPEG-1 I-pictures in a program stream (`Mpeg1Writer`:
   one slice per macroblock row, default matrix, quantiser 31..1 from the quality, one of the eight MPEG-1 frame
   rates, logged when it differs; table B.14 up to 13 bits, escapes beyond), uncompressed AVI with OpenDML
@@ -523,7 +523,7 @@ WPF shell as it stands:
   in `ProjectTree`/`MessagesPane` are still `Focusable=False` (reachable only through
   menus/shortcuts), not yet brought in line.
 - File type: `FileAssociation.Register` (called from `App.OnStartup`) registers `.wdproj` → ProgId
-  `WaveDude.Project` → `"exe" "%1"` under HKCR when elevated, else HKCU\Software\Classes (same order
+  `WaveDudeNext.Project` → `"exe" "%1"` under HKCR when elevated, else HKCU\Software\Classes (same order
   as DTCODataSimulator), idempotently; a double-click arrives as `e.Args[0]` and goes to
   `MainWindow.OpenFile`. That a per-user entry overrides a machine-wide one is intended: a per-user
   install, or a plain copy with no installer, must win over a global installation for that user.
@@ -533,10 +533,10 @@ History: the port began 2026-10-07 as ILSpy-decompiled output of the author's VB
 documented and audited against his real source (supplied 2026-10-08), the engines were copied into the
 library 2026-10-09, and the two legacy trees were removed 2026-10-15 (see "What this is").
 
-The shipped colour schemes live in `WaveDude/ColorSchemes/` (`*.wdscheme` XML since 2026-10-13, in the
-library project since 2026-10-15; **embedded into `WaveDude.dll`** as resources `ColorSchemes/<file>` by the
+The shipped colour schemes live in `WaveDudeNext/ColorSchemes/` (`*.wdscheme` XML since 2026-10-13, in the
+library project since 2026-10-15; **embedded into `WaveDudeNext.dll`** as resources `ColorSchemes/<file>` by the
 library's csproj, loaded by `ColorSchemeStore.LoadBuiltIn`; the user's own schemes come from
-`%LOCALAPPDATA%\WaveDude\ColorSchemes` and shadow built-ins of the same name; agreed 2026-10-10, no
+`%LOCALAPPDATA%\WaveDudeNext\ColorSchemes` and shadow built-ins of the same name; agreed 2026-10-10, no
 external files). `.vs/`, `bin/`, `obj/` are ignored.
 
 No automated tests in the solution; standalone harnesses exist under `_tools/` (see Verification).
@@ -544,11 +544,11 @@ No automated tests in the solution; standalone harnesses exist under `_tools/` (
 ## Build
 
 - Visual Studio 18 (2026) Community and the .NET 10 SDK are installed.
-- Whole solution: `dotnet build Wave_Dude_2D.sln` (both projects are SDK-style; no full MSBuild needed since
+- Whole solution: `dotnet build WaveDudeNext.sln` (both projects are SDK-style; no full MSBuild needed since
   the legacy csproj went, 2026-10-15).
-- WPF + library only: `dotnet build WaveDude.WPF/WaveDude.WPF.csproj` (the UI harnesses run the Debug exe).
-- Publish: `dotnet publish WaveDude.WPF/WaveDude.WPF.csproj -p:PublishProfile=SingleFile` →
-  `WaveDude.WPF/bin/Publish/`: one framework-dependent win-x64 `WaveDude.WPF.exe`, nothing else needed.
+- WPF + library only: `dotnet build WaveDudeNext.WPF/WaveDudeNext.WPF.csproj` (the UI harnesses run the Debug exe).
+- Publish: `dotnet publish WaveDudeNext.WPF/WaveDudeNext.WPF.csproj -p:PublishProfile=SingleFile` →
+  `WaveDudeNext.WPF/bin/Publish/`: one framework-dependent win-x64 `WaveDudeNext.WPF.exe`, nothing else needed.
   The profile takes the framework from the project.
 - Expected result: 0 errors, 0 warnings. `DocumentationFile` is on, so malformed `///` XML or a wrong
   `<param>` name is a build warning — keep it at zero.
@@ -561,7 +561,7 @@ the proof for a local change (a label, a glyph, one binding); `library_check` (a
 library changes; a UI harness only when the flow it covers changed, and only that one. Never re-run
 passing harnesses for comfort, never all of them after an edit.
 
-- `_tools/library_check/` — an SDK console project (not in the `.sln`) referencing `WaveDude.csproj`:
+- `_tools/library_check/` — an SDK console project (not in the `.sln`) referencing `WaveDudeNext.csproj`:
   `dotnet run --project _tools/library_check -c Release`. 70+ checks over the library: scene from BGRA
   bytes; CPU vs GPU field, intensity, point samples and line profiles within 1e-3 (actual ~1e-7) for
   both stencils, probe re-install, `SetProbes(null)`, double dispose, the factory fallback; seed
@@ -687,7 +687,9 @@ passing harnesses for comfort, never all of them after an edit.
   `_tools/ui_check/ComboListShot.ps1` opens the speed combo by keyboard and screenshots the list
   (the popup has no HWND in UIA, so its screen rectangle is copied), for judging list colours.
   `PrintWindow(…, PW_RENDERFULLCONTENT)` captures the inactive window. UIA lookups can miss while
-  the UI thread is busy, so `Find` retries; the harness parks the foreground on its own off-screen
+  the UI thread is busy, so `Find` retries; it searches the control view, which WPF rightly keeps free of
+  collapsed elements (a screen reader must not meet a hidden picture), so a check on something hidden goes
+  through `FindRaw` (the raw view, `IsOffscreen` set; 2026-10-15, after the picture toggle check failed); the harness parks the foreground on its own off-screen
   form (minimise the app, activate the form, show the app without activation). The older scripts in the
   folder (`MessagesCheck`, `ProjectTreeCheck`, `StatusBar*Check`) predate this rule and still use
   patterns/mouse; rewrite them on `Common.ps1` when they are next needed.
@@ -697,7 +699,7 @@ Other files in `_tools/` are one-off scripts from the clean-up (`replace_method.
 history, not build inputs. `field_usage.py <Class> …` is still useful: it lists every private
 field/const of a class with the methods that use it, flagging single-method ones.
 
-## Architecture (WaveDude library, 2026-10-09)
+## Architecture (WaveDudeNext library, 2026-10-09)
 
 ```
 Project (Model/, UI thread)  --RunSpec.Create-->  RunSpec (immutable snapshot: EngineOptions, Emitters, ProbeSpecs, ScenePixels)
@@ -715,19 +717,19 @@ ScratchRunner (one long-running task, one kept engine: Reset/SetEmitters/SetProb
    ProbeTrace per probe) -> FramePresenter via SnapshotFrameSource, ProbeGraphOverlay via PreviewPane.ShownScratch
 ExportJob (Export/, its own STA thread: per frame of the range, per target CopyLayer -> FrameRenderer -> GlowingEdges.BlendAdditive
    -> Decorate (the WPF ProbeGraphPainter) -> IFrameSink: ImageSequenceSink (PngEncoder | JpegEncoder), Mpeg1Writer, AviWriter, Mp4Writer)
-FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-sized; Half planes, padding stripped;
+FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, pre-sized; Half planes, padding stripped;
    |           positional RandomAccess reads/writes through the OS cache, no memory mapping)
    '- read by FramePresenter (WPF): CopyLayer -> FrameRenderer (LUT, Parallel.For) -> WriteableBitmap
 ```
 
-- Namespaces: `WaveDude.Engine` (engines, `SceneData`, `Emitter`, `EngineOptions`, `OpenClApi`),
-  `WaveDude.Probes` (`ProbeSpec`, sampler, collector, series, trace with per-frame profiles, update,
-  `ProbeGraph` geometry), `WaveDude.Rendering`
+- Namespaces: `WaveDudeNext.Engine` (engines, `SceneData`, `Emitter`, `EngineOptions`, `OpenClApi`),
+  `WaveDudeNext.Probes` (`ProbeSpec`, sampler, collector, series, trace with per-frame profiles, update,
+  `ProbeGraph` geometry), `WaveDudeNext.Rendering`
   (`Rgb` with hex text and a `TypeConverter`, `ColorScheme` as one evenly spaced colour list that is
   observable and XML-serialisable, `ColorLut`, `ColorSchemeStore` reading the author's JSON and
   reading/writing XML, built-in schemes embedded, `FrameRenderer`),
-  `WaveDude.Runs` (`RunSpec`, `SimulationRun`, `RunState`, `FrameStore`, `FrameLayer(s)`,
-  `FrameCache`, `ScenePixels`), `WaveDude.Export` (2026-10-14: `IFrameSink`, `ExportJob`, `ExportFormat(s)`,
+  `WaveDudeNext.Runs` (`RunSpec`, `SimulationRun`, `RunState`, `FrameStore`, `FrameLayer(s)`,
+  `FrameCache`, `ScenePixels`), `WaveDudeNext.Export` (2026-10-14: `IFrameSink`, `ExportJob`, `ExportFormat(s)`,
   the encoders and writers, `BitWriter`, `YuvPlanes` + `Dct8x8` shared by JPEG and MPEG-1, `Crc32`). All ported
   from the author's program and adapted. Not
   ported: his video sinks (`MfVideoWriter` was rewritten as `Mp4Writer`, `AviMjpegWriter` replaced by
@@ -739,7 +741,7 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   device works. A `Gpu` attribute in an old `.wdproj` is ignored by the serializer. Nothing but the
   menu item writes the setting; every change is logged with a time stamp and a CPU run caused by it
   says so (2026-10-10, after the GPU was found off twice with no known cause). Note that each exe path
-  (Debug, Release, Publish) has its own `user.config` folder under `%LOCALAPPDATA%\WaveDude.WPF`, so
+  (Debug, Release, Publish) has its own `user.config` folder under `%LOCALAPPDATA%\WaveDudeNext.WPF`, so
   check the one of the build that was running.
 - **Engine contract** (`IWaveEngine`): padded grid (`Stride = Width + 2`), one driver thread at a
   time, `PrepareFrame` before reading, CPU `FieldData` is a different array every sub-step, GPU
@@ -917,7 +919,7 @@ PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next ses
   `ScaleMode` (running window / full run), `Window` (steps), `AutoScaleX/Y`, `YMin/YMax`,
   `StartAfter`. The handles on the pictures exist (`SceneOverlay`, ids `Probe:<name>:A|B`).
 - Spec: the author's GDI+ `ProbeGraphPainter` / `ProbeOverlay` (in git history), now ported
-  as geometry to `WaveDude.Probes.ProbeGraph` and drawn by `ProbeGraphOverlay`. Still to do: the
+  as geometry to `WaveDudeNext.Probes.ProbeGraph` and drawn by `ProbeGraphOverlay`. Still to do: the
   **probe signal lane** under the timeline on the same time axis (roadmap item 5), drawn from the same
   traces (`ProbeGraph.ComputeRanges` and its binning can be reused), and the box in exports (the layout is
   renderer-neutral; a `DrawingVisual` rendered into the frame would do). Author's point 7, second half.
@@ -936,10 +938,10 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
 ## Roadmap
 
 1. ~~Make it compile~~ · 2. ~~clean up / document~~ · 2b. ~~AVI fix, style pass, engine refactor~~
-3. ~~**Extract the engine into `WaveDude/`**~~ (done 2026-10-09 as a copy). Still open from this item:
+3. ~~**Extract the engine into `WaveDudeNext/`**~~ (done 2026-10-09 as a copy). Still open from this item:
    real test projects (the user chose to keep the `dotnet run` harness for now).
 4. ~~**Make the engine loop `Task`-based**~~ (`SimulationRun`, 2026-10-09).
-5. **WPF UI** in `WaveDude.WPF`: the preview shows a live run and replays it from the frame store
+5. **WPF UI** in `WaveDudeNext.WPF`: the preview shows a live run and replays it from the frame store
    (done 2026-10-09); editors, colour schemes, scene image and outline, languages (done 2026-10-14,
    see the handoff section); probe graph boxes and export from the store (done 2026-10-14). Next, in this
    order of value: the **probe signal lane**, probe data as CSV, a progress bar for runs (the busy indicator
@@ -965,11 +967,20 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
 
 The WPF app becomes **WaveDude Next** (agreed with Jeroen Vleggaar by mail 2026-10-15; he proposed
 "Pro", the user chose "Next" since Pro/Plus suggests a paid tier). Project, namespaces, the GitHub
-repo, About and installer take that name. The new icon is `WaveDude.WPF/App.svg`
+repo, About and installer take that name. The new icon is `WaveDudeNext.WPF/App.svg`
 (a damped circular wave, its magnitude coloured through the "Default intensity" scheme, chosen 2026-10-15
 from eleven candidates; the candidates and their generator were deleted the same day), with `App.png`
 (128 px) and `App.ico` (16 to 256 px as PNG entries) rendered from it; the csproj's `ApplicationIcon` and
 the window's `Icon` both use `App.ico`.
+
+**Names, done 2026-10-15** (the user: nothing is published yet, so every name changes): the projects, folders,
+namespaces and solution are `WaveDudeNext`, `WaveDudeNext.WPF`, `WaveDudeNext.sln`; the ProgIds are
+`WaveDudeNext.Project` / `WaveDudeNext.ColorScheme` (descriptions "WaveDude Next project" / "… colour scheme"),
+the data folders `%LOCALAPPDATA%\WaveDudeNext\{ColorSchemes,cache}`, the settings folder
+`%LOCALAPPDATA%\WaveDudeNext.WPF` (follows the assembly name), the window title and the About entry say
+"WaveDude Next", the log file is `WaveDudeNext.WPF.log`. The old per-user registrations and settings folders
+were deleted on this machine. Still the old name: the GitHub repository and this checkout's folder
+(`C:\Work\WaveDude`), "Wave Dude 2D" where the author's program or its files are meant.
 
 **People**: Alexander Graef (author of WaveDude Next; "Gräf" in his mail signature, "Graef" in code);
 JJM (Jeroen) Vleggaar, Huygens Optics (author of Wave Dude 2D, GPL-3.0-or-later, Copyright (C) 2026);

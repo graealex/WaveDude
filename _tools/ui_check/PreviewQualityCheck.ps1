@@ -10,8 +10,8 @@
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\PreviewQualityCheck.ps1 [-Trace]
 param([switch]$Trace)
 . (Join-Path $PSScriptRoot "Common.ps1")
-$exe = Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows\WaveDude.WPF.exe"
-$log = Join-Path (Split-Path $exe) "WaveDude.WPF.log"
+$exe = Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe"
+$log = Join-Path (Split-Path $exe) "WaveDudeNext.WPF.log"
 $project = Join-Path $PSScriptRoot "tiny.wdproj"
 $by = [string][char]0xD7                           # the multiplication sign of the log's "64x48", built from its code so the script stays ASCII
 $failures = 0

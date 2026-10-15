@@ -2,7 +2,7 @@
 # lines are listed, that the level toggles carry counts, that the search box filters, and
 # screenshots the result.
 param(
-	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows")).Path,
+	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows")).Path,
 	[string]$Screenshot = (Join-Path $PSScriptRoot "..\smoke.png")
 )
 
@@ -33,7 +33,7 @@ function ByName($scope, $name) { $scope.FindFirst($TS::Descendants, (New-Object 
 function ByType($scope, $type) { $scope.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, $type))) }
 function Expand($e) { $e.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand(); Start-Sleep -Milliseconds 600 }
 
-$p = Start-Process -FilePath (Join-Path $Dir "WaveDude.WPF.exe") -ArgumentList "`"$sample`"" -PassThru
+$p = Start-Process -FilePath (Join-Path $Dir "WaveDudeNext.WPF.exe") -ArgumentList "`"$sample`"" -PassThru
 Start-Sleep -Seconds 5
 $p.Refresh()
 [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null

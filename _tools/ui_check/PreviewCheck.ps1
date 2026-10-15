@@ -6,7 +6,7 @@
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\PreviewCheck.ps1 [-Exe <path>] [-Shot <png>] [-Trace]
 
 param(
-	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows\WaveDude.WPF.exe"),
+	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe"),
 	[string]$Shot = (Join-Path $env:TEMP "wavedude_preview_check.png"),
 	[switch]$Trace   # append foreground state and focused element to every line
 )
@@ -36,7 +36,7 @@ try {
 	$fwBoth = (Find "PreviewFieldImage").Current.BoundingRectangle.Width
 	Key $VK_SPACE 200
 	$fwAlone = (Find "PreviewFieldImage").Current.BoundingRectangle.Width
-	Check "Space on the intensity toggle hides the intensity picture and the field takes the room" (-not (ToggleOn "PreviewShowIntensity") -and ((Find "PreviewIntensityImage").Current.IsOffscreen) -and $fwAlone -gt $fwBoth * 1.5) ("field width {0} -> {1}" -f $fwBoth, $fwAlone)
+	Check "Space on the intensity toggle hides the intensity picture and the field takes the room" (-not (ToggleOn "PreviewShowIntensity") -and ((FindRaw "PreviewIntensityImage").Current.IsOffscreen) -and $fwAlone -gt $fwBoth * 1.5) ("field width {0} -> {1}" -f $fwBoth, $fwAlone)
 	Key $VK_SPACE 200
 	Check "and shows it again at the old size" ((ToggleOn "PreviewShowIntensity") -and -not ((Find "PreviewIntensityImage").Current.IsOffscreen) -and [math]::Abs((Find "PreviewFieldImage").Current.BoundingRectangle.Width - $fwBoth) -lt 2)
 
@@ -142,8 +142,8 @@ try {
 	Check "stacked layout: splitter is a horizontal bar between them" ($cell.Width -gt $cell.Height -and $cell.Top -ge $fr.Bottom -and $cell.Bottom -le $ir.Top) ("splitter {0}x{1} at {2},{3}" -f $cell.Width, $cell.Height, $cell.Left, $cell.Top)
 	[Native]::Capture($hwnd, $Shot)
 	Write-Output "screenshot: $Shot"
-	# Tab must enter the group at the checked radio, which is now the second one
-	FocusOn "PreviewSpeed"
+	# Tab must enter the group at the checked radio, which is now the second one (the intensity toggle precedes the group)
+	FocusOn "PreviewShowIntensity"
 	Key $VK_TAB 150
 	Check "Tab enters the split group at the checked (stacked) radio" (Focused "PreviewStacked") (FocusedId)
 	Key $VK_LEFT 200

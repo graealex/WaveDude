@@ -2,7 +2,7 @@
 # (expects the "Opened" line in the bar) and with a missing one (expects the error line on red
 # behind the message box), and screenshots the second case.
 param(
-	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows")).Path,
+	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows")).Path,
 	[string]$Screenshot = (Join-Path $PSScriptRoot "..\smoke.png")
 )
 
@@ -40,21 +40,21 @@ function MainWindowOf($p) {
 }
 
 # 0. plain start: the closing start-up line
-$p = Start-Process -FilePath (Join-Path $Dir "WaveDude.WPF.exe") -PassThru
+$p = Start-Process -FilePath (Join-Path $Dir "WaveDudeNext.WPF.exe") -PassThru
 Start-Sleep -Seconds 5
 $win = MainWindowOf $p
 "plain start -> status: " + (Status $win)
 $null = $p.CloseMainWindow(); $p.WaitForExit(5000) | Out-Null
 
 # 1. good file
-$p = Start-Process -FilePath (Join-Path $Dir "WaveDude.WPF.exe") -ArgumentList "`"$sample`"" -PassThru
+$p = Start-Process -FilePath (Join-Path $Dir "WaveDudeNext.WPF.exe") -ArgumentList "`"$sample`"" -PassThru
 Start-Sleep -Seconds 5
 $win = MainWindowOf $p
 "good file -> status: " + (Status $win)
 $null = $p.CloseMainWindow(); $p.WaitForExit(5000) | Out-Null
 
 # 2. missing file: the error dialog is up, the bar behind it shows the error
-$p = Start-Process -FilePath (Join-Path $Dir "WaveDude.WPF.exe") -ArgumentList "`"$Dir\does-not-exist.wdproj`"" -PassThru
+$p = Start-Process -FilePath (Join-Path $Dir "WaveDudeNext.WPF.exe") -ArgumentList "`"$Dir\does-not-exist.wdproj`"" -PassThru
 Start-Sleep -Seconds 5
 # UI Automation lists the owned message box under the main window, not under the desktop
 $main = MainWindowOf $p

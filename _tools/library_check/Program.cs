@@ -3,12 +3,12 @@ using System.Diagnostics;
 using System.Numerics.Tensors;
 using System.Runtime.InteropServices;
 using NLog;
-using WaveDude.Engine;
-using WaveDude.Export;
-using WaveDude.Model;
-using WaveDude.Probes;
-using WaveDude.Rendering;
-using WaveDude.Runs;
+using WaveDudeNext.Engine;
+using WaveDudeNext.Export;
+using WaveDudeNext.Model;
+using WaveDudeNext.Probes;
+using WaveDudeNext.Rendering;
+using WaveDudeNext.Runs;
 
 namespace LibraryCheck;
 
@@ -942,7 +942,7 @@ internal static class Program
 	private static void CheckColorSchemes()
 	{
 		Console.WriteLine("--- colour schemes");
-		string folder = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "WaveDude", "ColorSchemes"));
+		string folder = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "WaveDudeNext", "ColorSchemes"));
 		var errors = new List<string>();
 		List<ColorScheme> schemes = ColorSchemeStore.LoadBuiltIn(errors);
 		foreach (string error in errors)

@@ -1,0 +1,343 @@
+<Window x:Class="WaveDudeNext.WPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:WaveDudeNext.WPF"
+        xmlns:docking="clr-namespace:WaveDudeNext.WPF.Docking"
+        xmlns:theming="clr-namespace:WaveDudeNext.WPF.Theming"
+        xmlns:localization="clr-namespace:WaveDudeNext.WPF.Localization"
+        xmlns:converters="clr-namespace:WaveDudeNext.WPF.Converters"
+        xmlns:panes="clr-namespace:WaveDudeNext.WPF.Panes"
+        xmlns:commands="clr-namespace:WaveDudeNext.WPF.Commands"
+        xmlns:p="clr-namespace:WaveDudeNext.WPF.Properties"
+        xmlns:runs="clr-namespace:WaveDudeNext.Runs;assembly=WaveDudeNext"
+        Icon="App.ico"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Width="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Width, Mode=TwoWay}"
+        Height="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Height, Mode=TwoWay}"
+        Left="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Left, Mode=TwoWay}"
+        Top="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_Top, Mode=TwoWay}"
+        WindowState="{Binding Source={x:Static p:Settings.Default}, Path=MainWindow_State, Mode=TwoWay}"
+        MinWidth="800" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        AllowDrop="True" Drop="OnDrop">
+
+	<Window.Resources>
+		<converters:EqualityConverter x:Key="Equality" />
+		<converters:FrameMemoryOptionConverter x:Key="FrameMemoryOption" />
+		<converters:IntEqualsConverter x:Key="IntEquals" />
+		<converters:TitleConverter x:Key="TitleConverter" />
+		<converters:RunStatusConverter x:Key="RunStatus" />
+
+		<RoutedUICommand x:Key="FileOpenRecent" />
+		<RoutedUICommand x:Key="ShowMessages" Text="Show messages" />
+		<RoutedUICommand x:Key="FileExit" Text="{StaticResource MenuFileExit}">
+			<RoutedUICommand.InputGestures>
+				<KeyGesture>Alt+F4</KeyGesture>
+			</RoutedUICommand.InputGestures>
+		</RoutedUICommand>
+
+		<!-- one entry per recent file: the path as plain text (no mnemonics), click opens it -->
+		<Style x:Key="RecentFileMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding}" />
+			<Setter Property="HeaderTemplate">
+				<Setter.Value>
+					<DataTemplate>
+						<TextBlock Text="{Binding}" />
+					</DataTemplate>
+				</Setter.Value>
+			</Setter>
+			<Setter Property="Command" Value="{StaticResource FileOpenRecent}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+		</Style>
+
+		<!-- one entry per registered pane: check mark follows IsShown, click toggles -->
+		<Style x:Key="PaneMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding Title}" />
+			<Setter Property="IsChecked" Value="{Binding IsShown, Mode=OneWay}" />
+			<Setter Property="Command" Value="{Binding ToggleCommand, ElementName=dockHost}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+		</Style>
+
+		<!-- one entry per language ("System" first): check mark follows the current code, click selects -->
+		<Style x:Key="LanguageMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding Name}" />
+			<Setter Property="Command" Value="{Binding SelectCommand, Source={x:Static localization:LanguageController.Instance}}" />
+			<Setter Property="CommandParameter" Value="{Binding Code}" />
+			<Setter Property="IsChecked">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource Equality}" Mode="OneWay">
+						<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+						<Binding Path="Code" />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<!-- one entry per theme: check mark follows the current theme, click selects -->
+		<!-- Simulation > Frames kept in memory: "Auto" and 10 % to 100 % of the RAM as an upper bound (2026-10-15); the
+		     header re-reads its word on a language switch through the second binding -->
+		<Style x:Key="FrameMemoryMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource FrameMemoryOption}" Mode="OneWay">
+						<Binding />
+						<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+			<Setter Property="Command" Value="{x:Static commands:SimulationCommands.SetFrameMemory}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+			<Setter Property="IsChecked">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource Equality}" Mode="OneWay">
+						<Binding Path="FrameMemoryPercent" Source="{x:Static p:Settings.Default}" />
+						<Binding />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+			<Setter Property="AutomationProperties.AutomationId" Value="{Binding StringFormat=MenuFrameMemory{0}}" />
+		</Style>
+		<Style x:Key="ThemeMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+			<Setter Property="Header" Value="{Binding Converter={StaticResource EnumName}}" />
+			<Setter Property="Command" Value="{Binding SelectCommand, Source={x:Static theming:ThemeController.Instance}}" />
+			<Setter Property="CommandParameter" Value="{Binding}" />
+			<Setter Property="IsChecked">
+				<Setter.Value>
+					<MultiBinding Converter="{StaticResource Equality}" Mode="OneWay">
+						<Binding Path="Current" Source="{x:Static theming:ThemeController.Instance}" />
+						<Binding />
+					</MultiBinding>
+				</Setter.Value>
+			</Setter>
+		</Style>
+	</Window.Resources>
+
+	<!-- the taskbar button shows the status bar's busy state too (export progress, or the marquee while waiting or computing a frame); MainWindow.Taskbar.cs feeds it -->
+	<Window.TaskbarItemInfo>
+		<TaskbarItemInfo />
+	</Window.TaskbarItemInfo>
+
+	<!-- "WaveDude Next - <file>", just the name while no file is open; an asterisk after the file (or "Untitled") marks unsaved edits -->
+	<Window.Title>
+		<MultiBinding Converter="{StaticResource TitleConverter}">
+			<Binding Source="{StaticResource Title}" />
+			<Binding Path="Filename" />
+			<Binding Path="IsDirty" />
+		</MultiBinding>
+	</Window.Title>
+
+	<Window.CommandBindings>
+		<CommandBinding Command="ApplicationCommands.New" Executed="OnFileNew" />
+		<CommandBinding Command="ApplicationCommands.Open" Executed="OnFileOpen" />
+		<CommandBinding Command="{StaticResource FileOpenRecent}" Executed="OnFileOpen" />
+		<CommandBinding Command="ApplicationCommands.Save" Executed="OnFileSave" />
+		<CommandBinding Command="ApplicationCommands.SaveAs" Executed="OnFileSaveAs" />
+		<CommandBinding Command="ApplicationCommands.Close" CanExecute="CanFileClose" Executed="OnFileClose" />
+		<CommandBinding Command="{StaticResource FileExit}" Executed="OnFileExit" />
+		<CommandBinding Command="{StaticResource ShowMessages}" Executed="OnShowMessages" />
+
+		<!-- the run; handlers in MainWindow.Simulation.cs -->
+		<CommandBinding Command="{x:Static commands:SimulationCommands.Run}" CanExecute="CanRun" Executed="OnRun" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.TogglePause}" CanExecute="CanControlRun" Executed="OnTogglePause" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.Stop}" CanExecute="CanStop" Executed="OnStop" />
+
+		<!-- export; handlers in MainWindow.Export.cs -->
+		<CommandBinding Command="{x:Static commands:ExportCommands.Field}" CanExecute="CanExport" Executed="OnExportField" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.Intensity}" CanExecute="CanExport" Executed="OnExportIntensity" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.Both}" CanExecute="CanExport" Executed="OnExportBoth" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.FieldFrame}" CanExecute="CanExport" Executed="OnExportFieldFrame" />
+		<CommandBinding Command="{x:Static commands:ExportCommands.IntensityFrame}" CanExecute="CanExport" Executed="OnExportIntensityFrame" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.EnsureRun}" Executed="OnEnsureRun" />
+		<CommandBinding Command="{x:Static commands:SimulationCommands.SetFrameMemory}" Executed="OnSetFrameMemory" />
+		<!-- the preview quality (View menu); handlers in MainWindow.xaml.cs -->
+		<CommandBinding Command="{x:Static commands:ViewCommands.SetPreviewResolution}" Executed="OnSetPreviewResolution" />
+		<CommandBinding Command="{x:Static commands:ViewCommands.SetPreviewFrames}" Executed="OnSetPreviewFrames" />
+		<CommandBinding Command="{x:Static commands:ViewCommands.SetPreviewSamples}" Executed="OnSetPreviewSamples" />
+
+		<!-- project structure; handlers in MainWindow.Project.cs -->
+		<CommandBinding Command="{x:Static commands:ProjectCommands.AddSource}" Executed="OnAddSource" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.AddProbe}" Executed="OnAddProbe" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.Add}" CanExecute="CanAdd" Executed="OnAdd" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.Duplicate}" CanExecute="CanEditItem" Executed="OnDuplicate" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.Remove}" CanExecute="CanEditItem" Executed="OnRemove" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveUp}" CanExecute="CanMoveUp" Executed="OnMoveUp" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.MoveDown}" CanExecute="CanMoveDown" Executed="OnMoveDown" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.ToggleEnabled}" CanExecute="CanToggleEnabled" Executed="OnToggleEnabled" />
+		<CommandBinding Command="{x:Static commands:ProjectCommands.BrowseSceneImage}" Executed="OnBrowseSceneImage" />
+	</Window.CommandBindings>
+
+	<!-- SaveAs has no default gesture -->
+	<Window.InputBindings>
+		<KeyBinding Command="ApplicationCommands.SaveAs" Key="S" Modifiers="Ctrl+Shift" />
+	</Window.InputBindings>
+
+	<DockPanel>
+
+		<!-- not in the Tab cycle (Windows convention: F10 or Alt reach the menu bar); Tab used to wander through the headers into a submenu -->
+		<Menu x:Name="mainMenu" DockPanel.Dock="Top" KeyboardNavigation.TabNavigation="None" IsTabStop="False" PreviewKeyDown="OnMenuPreviewKeyDown">
+			<MenuItem Header="{DynamicResource MenuFile}">
+				<MenuItem Command="ApplicationCommands.New" Header="{DynamicResource MenuFileNew}" />
+				<MenuItem Command="ApplicationCommands.Open" Header="{DynamicResource MenuFileOpen}" />
+				<MenuItem Header="{DynamicResource MenuFileRecent}"
+				          ItemsSource="{Binding RecentFiles, Source={x:Static p:Settings.Default}}"
+				          ItemContainerStyle="{StaticResource RecentFileMenuItemStyle}" />
+				<Separator />
+				<MenuItem Command="ApplicationCommands.Save" Header="{DynamicResource MenuFileSave}" />
+				<MenuItem Command="ApplicationCommands.SaveAs" Header="{DynamicResource MenuFileSaveAs}" InputGestureText="Ctrl+Shift+S" />
+				<Separator />
+				<!-- export of the current run's frames (the export range, the display settings as they are); the same entries sit on the pictures' context menus -->
+				<MenuItem Header="{DynamicResource MenuFileExport}" AutomationProperties.AutomationId="MenuExport">
+					<MenuItem Command="{x:Static commands:ExportCommands.Field}" Header="{DynamicResource MenuFileExportField}" AutomationProperties.AutomationId="MenuExportField" />
+					<MenuItem Command="{x:Static commands:ExportCommands.Intensity}" Header="{DynamicResource MenuFileExportIntensity}" AutomationProperties.AutomationId="MenuExportIntensity" />
+					<MenuItem Command="{x:Static commands:ExportCommands.Both}" Header="{DynamicResource MenuFileExportBoth}" AutomationProperties.AutomationId="MenuExportBoth" />
+					<Separator />
+					<!-- the frame the preview shows, from the same run, as one image -->
+					<MenuItem Command="{x:Static commands:ExportCommands.FieldFrame}" Header="{DynamicResource MenuFileExportFieldFrame}" AutomationProperties.AutomationId="MenuExportFieldFrame" />
+					<MenuItem Command="{x:Static commands:ExportCommands.IntensityFrame}" Header="{DynamicResource MenuFileExportIntensityFrame}" AutomationProperties.AutomationId="MenuExportIntensityFrame" />
+				</MenuItem>
+				<Separator />
+				<MenuItem Command="ApplicationCommands.Close" Header="{DynamicResource MenuFileClose}" />
+				<Separator />
+				<MenuItem Command="{StaticResource FileExit}" Header="{DynamicResource MenuFileExit}" />
+			</MenuItem>
+			<MenuItem Header="{DynamicResource MenuView}">
+				<MenuItem Header="{DynamicResource MenuViewPanes}"
+				          ItemsSource="{Binding Items, ElementName=dockHost}"
+				          ItemContainerStyle="{StaticResource PaneMenuItemStyle}" />
+				<MenuItem x:Name="themeMenu" Header="{DynamicResource MenuViewTheme}"
+				          ItemsSource="{Binding Options, Source={x:Static theming:ThemeController.Instance}}"
+				          ItemContainerStyle="{StaticResource ThemeMenuItemStyle}" />
+				<MenuItem Header="{DynamicResource MenuViewLanguage}"
+				          ItemsSource="{Binding Options, Source={x:Static localization:LanguageController.Instance}}"
+				          ItemContainerStyle="{StaticResource LanguageMenuItemStyle}" />
+				<Separator />
+				<!-- the reduced preview (2026-10-15): how much of a run is captured and kept, for weaker machines; user
+				     settings, never the project's, and an export always uses a full run -->
+				<MenuItem Header="{DynamicResource MenuViewResolution}" AutomationProperties.AutomationId="MenuPreviewResolution">
+					<MenuItem Header="{DynamicResource MenuViewResolutionFull}" Command="{x:Static commands:ViewCommands.SetPreviewResolution}" CommandParameter="1"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewResolution, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewResolution1" />
+					<MenuItem Header="{DynamicResource MenuViewResolutionHalf}" Command="{x:Static commands:ViewCommands.SetPreviewResolution}" CommandParameter="2"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewResolution, Converter={StaticResource IntEquals}, ConverterParameter=2, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewResolution2" />
+					<MenuItem Header="{DynamicResource MenuViewResolutionQuarter}" Command="{x:Static commands:ViewCommands.SetPreviewResolution}" CommandParameter="4"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewResolution, Converter={StaticResource IntEquals}, ConverterParameter=4, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewResolution4" />
+				</MenuItem>
+				<MenuItem Header="{DynamicResource MenuViewFrames}" AutomationProperties.AutomationId="MenuPreviewFrames">
+					<MenuItem Header="{DynamicResource MenuViewFramesFull}" Command="{x:Static commands:ViewCommands.SetPreviewFrames}" CommandParameter="1"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewFrames, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewFrames1" />
+					<MenuItem Header="{DynamicResource MenuViewFramesHalf}" Command="{x:Static commands:ViewCommands.SetPreviewFrames}" CommandParameter="2"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewFrames, Converter={StaticResource IntEquals}, ConverterParameter=2, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewFrames2" />
+					<MenuItem Header="{DynamicResource MenuViewFramesQuarter}" Command="{x:Static commands:ViewCommands.SetPreviewFrames}" CommandParameter="4"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewFrames, Converter={StaticResource IntEquals}, ConverterParameter=4, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewFrames4" />
+				</MenuItem>
+				<MenuItem Header="{DynamicResource MenuViewSamples}" AutomationProperties.AutomationId="MenuPreviewSamples">
+					<MenuItem Header="{DynamicResource MenuViewSamples16}" Command="{x:Static commands:ViewCommands.SetPreviewSamples}" CommandParameter="2"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewSampleBytes, Converter={StaticResource IntEquals}, ConverterParameter=2, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewSamples2" />
+					<MenuItem Header="{DynamicResource MenuViewSamples8}" Command="{x:Static commands:ViewCommands.SetPreviewSamples}" CommandParameter="1"
+					          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=PreviewSampleBytes, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=OneWay}"
+					          AutomationProperties.AutomationId="MenuPreviewSamples1" />
+				</MenuItem>
+			</MenuItem>
+			<MenuItem Header="{DynamicResource MenuSimulation}">
+				<MenuItem Command="{x:Static commands:SimulationCommands.Run}" Header="{DynamicResource MenuSimulationRun}" InputGestureText="F5" />
+				<!-- one entry pauses and resumes; the header follows whether a pause is pending -->
+				<MenuItem Command="{x:Static commands:SimulationCommands.TogglePause}" InputGestureText="F6">
+					<MenuItem.Style>
+						<Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
+							<Setter Property="Header" Value="{DynamicResource MenuSimulationPause}" />
+							<Style.Triggers>
+								<DataTrigger Binding="{Binding Run.State}" Value="{x:Static runs:RunState.Paused}">
+									<Setter Property="Header" Value="{DynamicResource MenuSimulationResume}" />
+								</DataTrigger>
+							</Style.Triggers>
+						</Style>
+					</MenuItem.Style>
+				</MenuItem>
+				<MenuItem Command="{x:Static commands:SimulationCommands.Stop}" Header="{DynamicResource MenuSimulationStop}" InputGestureText="Shift+F5" />
+				<Separator />
+				<!-- the engine is the application's choice, not the project's: it does not change the result -->
+				<MenuItem Header="{DynamicResource MenuSimulationUseGpu}" IsCheckable="True"
+				          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=UseGpu, Mode=TwoWay}"
+				          AutomationProperties.AutomationId="MenuUseGpu" />
+				<MenuItem Header="{DynamicResource MenuSimulationAutoRerun}" IsCheckable="True"
+				          IsChecked="{Binding Source={x:Static p:Settings.Default}, Path=AutoRerun, Mode=TwoWay}"
+				          AutomationProperties.AutomationId="MenuAutoRerun" />
+				<!-- the memory a run's frames may take before the rest goes to disk: the application decides from what is free
+				     ("Auto", 2026-10-15), a percentage of the RAM is only an upper bound on that -->
+				<MenuItem Header="{DynamicResource MenuSimulationFrameMemory}" AutomationProperties.AutomationId="MenuFrameMemory"
+				          ItemsSource="{x:Static local:MainWindow.FrameMemoryOptions}"
+				          ItemContainerStyle="{StaticResource FrameMemoryMenuItemStyle}" />
+			</MenuItem>
+			<MenuItem Header="{DynamicResource MenuHelp}">
+				<MenuItem Header="{DynamicResource MenuHelpAbout}" />
+			</MenuItem>
+		</Menu>
+
+		<!-- double-click opens or focuses the Messages pane, like the log window in the reference apps -->
+		<StatusBar DockPanel.Dock="Bottom" ToolTip="{DynamicResource TipStatusBar}">
+			<StatusBar.InputBindings>
+				<MouseBinding Gesture="LeftDoubleClick" Command="{StaticResource ShowMessages}" />
+			</StatusBar.InputBindings>
+			<!-- the busy indicator: an export (frames done), an export waiting for its run or a scratch frame being
+			     computed for the preview (indeterminate); Esc cancels an export -->
+			<StatusBarItem DockPanel.Dock="Right" HorizontalAlignment="Right">
+				<StackPanel Orientation="Horizontal">
+					<TextBlock Text="{Binding BusyText}" AutomationProperties.AutomationId="StatusExport" VerticalAlignment="Center" />
+					<ProgressBar Width="120" Height="12" Margin="6,0,8,0" VerticalAlignment="Center" ToolTip="{DynamicResource TipExportCancel}"
+					             Minimum="0" Maximum="{Binding Export.FrameCount, FallbackValue=1}" Value="{Binding Export.FramesDone, Mode=OneWay, FallbackValue=0}"
+					             IsIndeterminate="{Binding IsBusyIndeterminate}" AutomationProperties.AutomationId="StatusBusyBar"
+					             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+				</StackPanel>
+			</StatusBarItem>
+			<!-- the run's progress on the right: state, steps, engine; empty while there is no run -->
+			<StatusBarItem DockPanel.Dock="Right" HorizontalAlignment="Right">
+				<TextBlock AutomationProperties.AutomationId="StatusRun">
+					<TextBlock.Text>
+						<MultiBinding Converter="{StaticResource RunStatus}">
+							<Binding Path="Run.State" />
+							<Binding Path="Run.StepsDone" />
+							<Binding Path="Run.TotalSteps" />
+							<Binding Path="Run.EngineDescription" />
+							<Binding Path="IsRunStale" />
+							<!-- the language, so the words follow a switch (the status kept "Abgeschlossen" after one, 2026-10-15) -->
+							<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+						</MultiBinding>
+					</TextBlock.Text>
+				</TextBlock>
+			</StatusBarItem>
+			<StatusBarItem>
+				<TextBlock x:Name="txtStatus" Text="{DynamicResource Ready}" AutomationProperties.AutomationId="StatusMessage" />
+			</StatusBarItem>
+		</StatusBar>
+
+		<docking:DockHost x:Name="dockHost">
+			<docking:DockHost.Items>
+				<docking:DockItem x:Name="projectDock" Id="project" Title="{StaticResource PaneProject}" DefaultSide="Left">
+					<panes:ProjectTree x:Name="projectTree" Project="{Binding Project}" SelectedItemChanged="OnTreeSelectionChanged" />
+				</docking:DockItem>
+				<docking:DockItem x:Name="propertiesDock" Id="properties" Title="{StaticResource PaneProperties}" DefaultSide="Right">
+					<panes:PropertiesPane x:Name="propertiesPane" SelectedObject="{Binding SelectedItem}" Project="{Binding Project}" />
+				</docking:DockItem>
+				<docking:DockItem x:Name="messagesDock" Id="messages" Title="{StaticResource PaneMessages}" DefaultSide="Bottom">
+					<panes:MessagesPane x:Name="messagesPane" TargetName="messages" />
+				</docking:DockItem>
+			</docking:DockHost.Items>
+			<docking:DockHost.DocumentContent>
+				<Border BorderThickness="1" BorderBrush="{DynamicResource ToolWindowBorder}">
+					<panes:PreviewPane x:Name="previewPane" Project="{Binding Project}" Run="{Binding Run}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+					                   IsStale="{Binding IsRunStale}" IsProbesStale="{Binding IsProbesStale}" ScratchFrame="{Binding ScratchFrame}"
+					                   IsComputing="{Binding IsComputingFrame}"
+					                   Position="{Binding PreviewPosition, Mode=TwoWay}"
+					                   Orientation="{Binding Source={x:Static p:Settings.Default}, Path=PreviewOrientation, Mode=TwoWay}" />
+				</Border>
+			</docking:DockHost.DocumentContent>
+		</docking:DockHost>
+
+	</DockPanel>
+</Window>

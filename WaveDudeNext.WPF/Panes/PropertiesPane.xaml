@@ -1,0 +1,54 @@
+<UserControl x:Class="WaveDudeNext.WPF.Panes.PropertiesPane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WaveDudeNext.WPF.Panes"
+             xmlns:views="clr-namespace:WaveDudeNext.WPF.Views"
+             xmlns:converters="clr-namespace:WaveDudeNext.WPF.Converters"
+             xmlns:model="clr-namespace:WaveDudeNext.Model;assembly=WaveDudeNext"
+             xmlns:rendering="clr-namespace:WaveDudeNext.Rendering;assembly=WaveDudeNext">
+
+	<!-- one view per model type; the content control picks the template by the selected object's type -->
+	<UserControl.Resources>
+		<DataTemplate DataType="{x:Type model:Project}">
+			<views:ProjectView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type model:Scene}">
+			<views:SceneView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type model:Simulation}">
+			<views:SimulationView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type model:Display}">
+			<views:DisplayView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type model:Source}">
+			<views:SourceView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type model:Probe}">
+			<views:ProbeView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type rendering:ColorScheme}">
+			<views:ColorSchemeView />
+		</DataTemplate>
+		<DataTemplate DataType="{x:Type converters:NamedCollection}">
+			<views:CollectionView />
+		</DataTemplate>
+	</UserControl.Resources>
+
+	<Grid>
+		<ContentControl Focusable="False"
+		                Content="{Binding SelectedObject, RelativeSource={RelativeSource AncestorType={x:Type local:PropertiesPane}}}" />
+		<TextBlock Margin="6" Foreground="{DynamicResource GrayText}" Text="{DynamicResource NoSelection}">
+			<TextBlock.Style>
+				<Style TargetType="{x:Type TextBlock}">
+					<Setter Property="Visibility" Value="Collapsed" />
+					<Style.Triggers>
+						<DataTrigger Binding="{Binding SelectedObject, RelativeSource={RelativeSource AncestorType={x:Type local:PropertiesPane}}}" Value="{x:Null}">
+							<Setter Property="Visibility" Value="Visible" />
+						</DataTrigger>
+					</Style.Triggers>
+				</Style>
+			</TextBlock.Style>
+		</TextBlock>
+	</Grid>
+</UserControl>

@@ -7,7 +7,7 @@
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\RunCheck.ps1 [-Exe <path>] [-Trace]
 
 param(
-	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows\WaveDude.WPF.exe"),
+	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe"),
 	[switch]$Trace   # append foreground state and focused element to every line
 )
 

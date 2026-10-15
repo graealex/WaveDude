@@ -113,6 +113,22 @@ function Find([string]$id) {
 	}
 	throw "element '$id' not found"
 }
+# the same lookup in the raw view: a collapsed element (WPF leaves what is not visible out of the control view,
+# rightly, so a screen reader never meets it) is still there, with IsOffscreen set
+function FindRaw([string]$id) {
+	$c = New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, $id)
+	$cr = New-Object System.Windows.Automation.CacheRequest
+	$cr.TreeFilter = [System.Windows.Automation.Automation]::RawViewCondition
+	$cr.Push()
+	try {
+		for ($i = 0; $i -lt 10; $i++) {
+			$e = $script:win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
+			if ($e -ne $null) { return $e }
+			Start-Sleep -Milliseconds 200
+		}
+	} finally { $cr.Pop() }
+	throw "element '$id' not found in the raw view"
+}
 # a pattern object, used only to *read* its Current properties (never call its methods)
 function Pattern($e, [string]$name) {
 	$type = [System.Windows.Automation.InvokePattern].Assembly.GetType("System.Windows.Automation." + $name + "Pattern", $true)

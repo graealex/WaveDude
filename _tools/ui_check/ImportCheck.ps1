@@ -7,7 +7,7 @@
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\ImportCheck.ps1 [-Exe <path>] [-Trace]
 
 param(
-	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows\WaveDude.WPF.exe"),
+	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe"),
 	[switch]$Trace
 )
 
@@ -15,7 +15,7 @@ param(
 
 Start-App $Exe (Join-Path $PSScriptRoot "..\..\Wave_Dude_Examples\Example12_Dispersion\configuration.json")
 try {
-	Check "the imported project is unsaved: the title is the bare application name" ($win.Current.Name -eq "Wave Dude") $win.Current.Name
+	Check "the imported project is unsaved: the title is the bare application name" ($win.Current.Name -eq "WaveDude Next") $win.Current.Name
 	$sources = @("Source 1", "Source 2", "Source 3", "Source 4") | Where-Object { try { (Find ("Tree:" + $_)) -ne $null } catch { $false } }
 	Check "the tree lists the four sources" ($sources.Count -eq 4) ("found " + $sources.Count)
 	$probes = @("Probe 1", "Probe 2") | Where-Object { try { (Find ("Tree:" + $_)) -ne $null } catch { $false } }

@@ -6,7 +6,7 @@
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\LanguageCheck.ps1 [-Trace]
 param([switch]$Trace)
 . (Join-Path $PSScriptRoot "Common.ps1")
-$exe = Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows\WaveDude.WPF.exe"
+$exe = Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe"
 $project = Join-Path $PSScriptRoot "tiny.wdproj"
 $failures = 0
 function Check([string]$name, [bool]$ok, [string]$detail = "") {

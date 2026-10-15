@@ -1,0 +1,169 @@
+<UserControl x:Class="WaveDudeNext.WPF.Panes.MessagesPane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WaveDudeNext.WPF.Panes"
+             xmlns:logging="clr-namespace:WaveDudeNext.WPF.Logging"
+             DataContext="{Binding RelativeSource={RelativeSource Self}}">
+
+	<UserControl.Resources>
+		<StreamGeometry x:Key="ClearGeometry">M1,2 L9,2 M3,2 L3,9 L7,9 L7,2 M4,0 L6,0</StreamGeometry>
+
+		<Style x:Key="ToolToggle" TargetType="{x:Type ToggleButton}">
+			<Setter Property="Foreground" Value="{DynamicResource WindowForeground}" />
+			<Setter Property="Padding" Value="6,1" />
+			<Setter Property="Margin" Value="1,0" />
+			<Setter Property="MinHeight" Value="20" />
+			<Setter Property="Focusable" Value="False" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type ToggleButton}">
+						<Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
+						        Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+							<ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsChecked" Value="True">
+								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonBackground}" />
+								<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ButtonBorder}" />
+							</Trigger>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
+							</Trigger>
+							<Trigger Property="IsChecked" Value="False">
+								<Setter Property="Foreground" Value="{DynamicResource GrayText}" />
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<!-- one toggle per level, "Level (count)", colour of the level -->
+		<DataTemplate DataType="{x:Type local:LevelFilter}">
+			<ToggleButton Style="{StaticResource ToolToggle}" IsChecked="{Binding IsVisible, Mode=TwoWay}"
+			              ToolTip="{DynamicResource TipMessagesLevel}">
+				<ToggleButton.Content>
+					<TextBlock>
+						<Run Text="{Binding Name, Mode=OneWay}" /><Run Text=" (" /><Run Text="{Binding Count, Mode=OneWay}" /><Run Text=")" />
+					</TextBlock>
+				</ToggleButton.Content>
+			</ToggleButton>
+		</DataTemplate>
+	</UserControl.Resources>
+
+	<UserControl.CommandBindings>
+		<CommandBinding Command="ApplicationCommands.Copy" CanExecute="CanCopy" Executed="OnCopy" />
+		<CommandBinding Command="{x:Static local:MessagesPane.CopyAll}" CanExecute="CanCopyAll" Executed="OnCopyAll" />
+		<CommandBinding Command="{x:Static local:MessagesPane.Clear}" Executed="OnClear" />
+	</UserControl.CommandBindings>
+
+	<DockPanel>
+		<!-- toolbar: level filters, search, auto-scroll, clear -->
+		<Border DockPanel.Dock="Top" BorderBrush="{DynamicResource ToolWindowBorder}" BorderThickness="0,0,0,1" Padding="2,2">
+			<DockPanel>
+				<Button DockPanel.Dock="Right" Width="18" Height="18" Margin="1,0" Focusable="False" ToolTip="{DynamicResource TipMessagesClear}"
+				        AutomationProperties.Name="{DynamicResource TipMessagesClear}" Command="{x:Static local:MessagesPane.Clear}">
+					<Button.Template>
+						<ControlTemplate TargetType="{x:Type Button}">
+							<Border x:Name="Bd" Background="Transparent" SnapsToDevicePixels="True">
+								<Path Data="{StaticResource ClearGeometry}" Stroke="{DynamicResource WindowForeground}" StrokeThickness="1.2"
+								      HorizontalAlignment="Center" VerticalAlignment="Center" />
+							</Border>
+							<ControlTemplate.Triggers>
+								<Trigger Property="IsMouseOver" Value="True">
+									<Setter TargetName="Bd" Property="Background" Value="{DynamicResource ButtonHover}" />
+								</Trigger>
+							</ControlTemplate.Triggers>
+						</ControlTemplate>
+					</Button.Template>
+				</Button>
+				<ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}" Content="{DynamicResource MessagesAutoScroll}"
+				              ToolTip="{DynamicResource TipMessagesAutoScroll}" IsChecked="{Binding AutoScroll, Mode=TwoWay}" />
+				<CheckBox DockPanel.Dock="Right" Content="{DynamicResource MessagesRegex}" ToolTip="{DynamicResource TipMessagesRegex}"
+				          IsChecked="{Binding UseRegex, Mode=TwoWay}" Margin="6,0" VerticalAlignment="Center" />
+				<Grid DockPanel.Dock="Right" Width="180" Margin="6,0,0,0">
+					<TextBox x:Name="searchBox" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+					         AutomationProperties.Name="{DynamicResource MessagesSearchHint}" />
+					<TextBlock Text="{DynamicResource MessagesSearchHint}" Margin="5,0" VerticalAlignment="Center" IsHitTestVisible="False"
+					           Foreground="{DynamicResource GrayText}">
+						<TextBlock.Style>
+							<Style TargetType="{x:Type TextBlock}">
+								<Setter Property="Visibility" Value="Collapsed" />
+								<Style.Triggers>
+									<DataTrigger Binding="{Binding Text, ElementName=searchBox}" Value="">
+										<Setter Property="Visibility" Value="Visible" />
+									</DataTrigger>
+								</Style.Triggers>
+							</Style>
+						</TextBlock.Style>
+					</TextBlock>
+				</Grid>
+				<ItemsControl ItemsSource="{Binding Levels}">
+					<ItemsControl.ItemsPanel>
+						<ItemsPanelTemplate>
+							<StackPanel Orientation="Horizontal" />
+						</ItemsPanelTemplate>
+					</ItemsControl.ItemsPanel>
+				</ItemsControl>
+			</DockPanel>
+		</Border>
+
+		<ListView x:Name="list" ItemsSource="{Binding View}" SelectionMode="Extended"
+		          ScrollViewer.HorizontalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True">
+			<ListView.ItemContainerStyle>
+				<Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
+					<Setter Property="ToolTip" Value="{Binding Exception}" />
+					<Style.Triggers>
+						<DataTrigger Binding="{Binding LevelName}" Value="Trace">
+							<Setter Property="Foreground" Value="{DynamicResource LogTrace}" />
+						</DataTrigger>
+						<DataTrigger Binding="{Binding LevelName}" Value="Debug">
+							<Setter Property="Foreground" Value="{DynamicResource LogDebug}" />
+						</DataTrigger>
+						<DataTrigger Binding="{Binding LevelName}" Value="Info">
+							<Setter Property="Foreground" Value="{DynamicResource LogInfo}" />
+						</DataTrigger>
+						<DataTrigger Binding="{Binding LevelName}" Value="Warn">
+							<Setter Property="Foreground" Value="{DynamicResource LogWarn}" />
+						</DataTrigger>
+						<DataTrigger Binding="{Binding LevelName}" Value="Error">
+							<Setter Property="Foreground" Value="{DynamicResource LogError}" />
+						</DataTrigger>
+						<DataTrigger Binding="{Binding LevelName}" Value="Fatal">
+							<Setter Property="Foreground" Value="{DynamicResource LogFatal}" />
+							<Setter Property="FontWeight" Value="Bold" />
+						</DataTrigger>
+					</Style.Triggers>
+				</Style>
+			</ListView.ItemContainerStyle>
+			<ListView.ContextMenu>
+				<ContextMenu>
+					<MenuItem Header="{DynamicResource MessagesCopy}" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C" />
+					<MenuItem Header="{DynamicResource MessagesCopyAll}" Command="{x:Static local:MessagesPane.CopyAll}" />
+					<Separator />
+					<MenuItem Header="{DynamicResource MessagesClear}" Command="{x:Static local:MessagesPane.Clear}" />
+				</ContextMenu>
+			</ListView.ContextMenu>
+			<ListView.View>
+				<GridView>
+					<GridViewColumn Header="{DynamicResource MessagesColumnTime}" Width="90" DisplayMemberBinding="{Binding Time, StringFormat=HH:mm:ss.fff}" />
+					<GridViewColumn Header="{DynamicResource MessagesColumnLevel}" Width="55" DisplayMemberBinding="{Binding LevelName}" />
+					<GridViewColumn Header="{DynamicResource MessagesColumnLogger}" Width="130">
+						<GridViewColumn.CellTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding LoggerShort}" ToolTip="{Binding Logger}" TextTrimming="CharacterEllipsis" />
+							</DataTemplate>
+						</GridViewColumn.CellTemplate>
+					</GridViewColumn>
+					<GridViewColumn Header="{DynamicResource MessagesColumnMessage}" Width="900">
+						<GridViewColumn.CellTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+							</DataTemplate>
+						</GridViewColumn.CellTemplate>
+					</GridViewColumn>
+				</GridView>
+			</ListView.View>
+		</ListView>
+	</DockPanel>
+</UserControl>

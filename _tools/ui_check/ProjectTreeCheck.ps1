@@ -2,7 +2,7 @@
 # through UI Automation against the Debug build and prints the tree order after each step.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File ProjectTreeCheck.ps1
 param(
-	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows")).Path,
+	[string]$Dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows")).Path,
 	[string]$Screenshot = (Join-Path $PSScriptRoot "..\smoke.png")
 )
 
@@ -19,7 +19,7 @@ $sample = Join-Path $Dir "sample.wdproj"
 </Project>
 '@ | Set-Content -Path $sample -Encoding utf8
 
-$log = Join-Path $Dir "WaveDude.WPF.log"
+$log = Join-Path $Dir "WaveDudeNext.WPF.log"
 $before = (Get-Content $log -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
 
 Add-Type -AssemblyName UIAutomationClient
@@ -62,7 +62,7 @@ function Drag($from, $to) {
 	Start-Sleep -Seconds 1
 }
 
-$p = Start-Process -FilePath (Join-Path $Dir "WaveDude.WPF.exe") -ArgumentList "`"$sample`"" -PassThru
+$p = Start-Process -FilePath (Join-Path $Dir "WaveDudeNext.WPF.exe") -ArgumentList "`"$sample`"" -PassThru
 Start-Sleep -Seconds 5
 $p.Refresh()
 [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null

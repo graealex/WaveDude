@@ -6,7 +6,7 @@
 #   powershell -ExecutionPolicy Bypass -File _tools\ui_check\ComboListShot.ps1 [-Exe <path>] [-Shot <png>]
 
 param(
-	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDude.WPF\bin\Debug\net10.0-windows\WaveDude.WPF.exe"),
+	[string]$Exe = (Join-Path $PSScriptRoot "..\..\WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe"),
 	[string]$Shot = (Join-Path $env:TEMP "wavedude_combo_list.png")
 )
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing, System.Windows.Forms

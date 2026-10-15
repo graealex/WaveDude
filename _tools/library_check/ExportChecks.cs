@@ -3,10 +3,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
-using WaveDude.Export;
-using WaveDude.Model;
-using WaveDude.Rendering;
-using WaveDude.Runs;
+using WaveDudeNext.Export;
+using WaveDudeNext.Model;
+using WaveDudeNext.Rendering;
+using WaveDudeNext.Runs;
 
 namespace LibraryCheck;
 
