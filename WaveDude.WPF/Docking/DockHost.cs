@@ -52,6 +52,12 @@ public sealed class DockHost : Grid
 			}
 		});
 		DragManager = new DockDragManager(this);
+		// the hosted content is re-parented on every rebuild and leaves the tree for a moment, so it gets the
+		// host's data context handed over explicitly rather than inherited (2026-10-15): inherited, its
+		// bindings passed through null and back, which put the preview at frame 0 and made the project tree
+		// drop its selection (an ItemsSource going null makes a TreeView select nothing)
+		DataContextChanged += (_, _) => HandOverDataContext();
+		Items.CollectionChanged += (_, _) => HandOverDataContext();
 		ToggleCommand = new RelayCommand<DockItem>(item =>
 		{
 			if (item.Group != null)
@@ -623,6 +629,7 @@ public sealed class DockHost : Grid
 
 	private void Rebuild()
 	{
+		HandOverDataContext();
 		foreach (DockGroupControl control in _groupControls)
 		{
 			control.Detach();
@@ -644,6 +651,30 @@ public sealed class DockHost : Grid
 			ActivateGroup(group);
 		}
 		LayoutChanged?.Invoke(this, EventArgs.Empty);
+	}
+
+	/// <summary>The hosted contents whose data context the host set, so a change of the host's reaches them and one of their own is left alone.</summary>
+	private readonly HashSet<FrameworkElement> _handedOver = [];
+
+	/// <summary>
+	/// Sets the host's data context on every hosted content (the items' and the document) that has none of its
+	/// own, as a local value that survives the re-parenting of a rebuild; a content with its own stays untouched.
+	/// </summary>
+	private void HandOverDataContext()
+	{
+		object? context = DataContext;
+		IEnumerable<FrameworkElement> contents = Items.Select(item => item.Content as FrameworkElement).Append(_center).OfType<FrameworkElement>();
+		foreach (FrameworkElement element in contents)
+		{
+			if (_handedOver.Contains(element) || element.ReadLocalValue(DataContextProperty) == DependencyProperty.UnsetValue)
+			{
+				if (context != null)
+				{
+					element.DataContext = context;
+					_handedOver.Add(element);
+				}
+			}
+		}
 	}
 
 	private FrameworkElement Build(DockNode node)

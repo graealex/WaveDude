@@ -384,6 +384,15 @@ WPF shell as it stands:
 - **Unsaved edits** (2026-10-14): `MainWindow.IsDirty`, set by the watcher on any model change, cleared on
   open/new/save; the title gets `*` after the file (or "Untitled*", `TitleConverter`, re-read on a language
   switch) and New, Open, Close, Exit and a drop ask Yes/No/Cancel (`ConfirmDiscard`, `SaveChangesFormat`).
+- **The dock host re-parents its content** when a pane opens or closes (`DockHost.Rebuild` clears and
+  rebuilds its tree); out of the tree a content's inherited `DataContext` would be gone and its bindings
+  would pass through null and back (the preview read that as a new project and a new run and went to
+  frame 0, and the project tree dropped its selection: an item source going null makes a `TreeView` select
+  nothing, 2026-10-15). The host hands its own data context to every hosted content without one of its own
+  as a local value (`HandOverDataContext`, on its own data context change, on items added, and before each
+  rebuild), so the content never depends on the tree it is moved around in; the panes need no guard. A
+  first version pinned and released the context around the rebuild, and released it before the new
+  group containers had applied their templates, which was exactly the null it meant to prevent.
 - Preview document: `Panes/PreviewPane`. Two pictures (field,
   intensity) side by side or stacked (`Orientation`, persisted as the `PreviewOrientation` user
   setting), each centred in its cell with its label laid out by `Controls/PictureFrame` (label above
