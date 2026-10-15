@@ -5,6 +5,7 @@
              xmlns:meta="clr-namespace:WaveDude.WPF.Markup"
              xmlns:panes="clr-namespace:WaveDude.WPF.Panes"
              xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
+             xmlns:localization="clr-namespace:WaveDude.WPF.Localization"
              xmlns:model="clr-namespace:WaveDude.Model;assembly=WaveDude">
 
 	<UserControl.Resources>
@@ -67,6 +68,8 @@
 							<Binding Path="Project.Simulation.WaveSpeed" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
 							<Binding Path="Project.Simulation.SourceFrequencyScale" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
 							<Binding Path="Project.Simulation.FourthOrderLaplacian" RelativeSource="{RelativeSource AncestorType={x:Type panes:PropertiesPane}}" />
+							<!-- the language, so "(nominal)" is re-read on a switch -->
+							<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
 						</MultiBinding>
 					</TextBlock.Text>
 				</TextBlock>

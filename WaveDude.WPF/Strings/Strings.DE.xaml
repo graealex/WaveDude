@@ -23,6 +23,15 @@
 	<s:String x:Key="MenuFileExit">_Beenden</s:String>
 	<s:String x:Key="MenuView">_Ansicht</s:String>
 	<s:String x:Key="MenuViewPanes">_Fenster</s:String>
+	<s:String x:Key="DockWindowPosition">Fensterposition</s:String>
+	<s:String x:Key="DockMoveLeft">Nach _links</s:String>
+	<s:String x:Key="DockMoveRight">Nach _rechts</s:String>
+	<s:String x:Key="DockMoveTop">Nach _oben</s:String>
+	<s:String x:Key="DockMoveBottom">Nach _unten</s:String>
+	<s:String x:Key="DockCloseMenu">_Schließen</s:String>
+	<s:String x:Key="DockClose">Schließen</s:String>
+	<s:String x:Key="WavelengthNominal">(nominell)</s:String>
+	<s:String x:Key="ImageUnreadable">(nicht lesbar)</s:String>
 	<s:String x:Key="MenuViewTheme">_Design</s:String>
 	<s:String x:Key="MenuViewLanguage">_Sprache</s:String>
 	<s:String x:Key="MenuViewResolution">Vorschau_auflösung</s:String>
@@ -175,7 +184,9 @@
 	<s:String x:Key="SectionGraph">Diagramm</s:String>
 	<s:String x:Key="SectionAxes">Achsen</s:String>
 	<s:String x:Key="ButtonNewSeed">_Neuer Startwert</s:String>
-	<s:String x:Key="ItemCountFormat">{0} Einträge</s:String>
+	<s:String x:Key="ItemCountZero">Keine Einträge</s:String>
+	<s:String x:Key="ItemCountOne">1 Eintrag</s:String>
+	<s:String x:Key="ItemCountMany">{0} Einträge</s:String>
 
 	<s:String x:Key="ButtonBrowse">Durchsuchen…</s:String>
 	<s:String x:Key="TipBrowseSceneImage">Bilddatei wählen; sie wird in das Projekt eingebettet</s:String>

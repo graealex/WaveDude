@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
 
@@ -26,7 +27,7 @@ public sealed class ImageInfoConverter : IValueConverter
 		}
 		catch (Exception ex) when (ex is NotSupportedException or FileFormatException or IOException)
 		{
-			return "(unreadable)";
+			return Application.Current?.TryFindResource("ImageUnreadable") as string ?? "(unreadable)";
 		}
 	}
 

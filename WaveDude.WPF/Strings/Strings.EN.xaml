@@ -23,6 +23,17 @@
 	<s:String x:Key="MenuFileExit">E_xit</s:String>
 	<s:String x:Key="MenuView">_View</s:String>
 	<s:String x:Key="MenuViewPanes">_Panes</s:String>
+	<!-- the dock panes' header buttons and the position menu -->
+	<s:String x:Key="DockWindowPosition">Window position</s:String>
+	<s:String x:Key="DockMoveLeft">Move to _Left</s:String>
+	<s:String x:Key="DockMoveRight">Move to _Right</s:String>
+	<s:String x:Key="DockMoveTop">Move to _Top</s:String>
+	<s:String x:Key="DockMoveBottom">Move to _Bottom</s:String>
+	<s:String x:Key="DockCloseMenu">_Close</s:String>
+	<s:String x:Key="DockClose">Close</s:String>
+	<!-- words the converters append: the wavelength row with the 9-point stencil, an embedded image that cannot be decoded -->
+	<s:String x:Key="WavelengthNominal">(nominal)</s:String>
+	<s:String x:Key="ImageUnreadable">(unreadable)</s:String>
 	<s:String x:Key="MenuViewTheme">_Theme</s:String>
 	<s:String x:Key="MenuViewLanguage">_Language</s:String>
 	<s:String x:Key="MenuViewResolution">Preview _resolution</s:String>
@@ -175,7 +186,9 @@
 	<s:String x:Key="SectionGraph">Graph</s:String>
 	<s:String x:Key="SectionAxes">Axes</s:String>
 	<s:String x:Key="ButtonNewSeed">_New seed</s:String>
-	<s:String x:Key="ItemCountFormat">{0} items</s:String>
+	<s:String x:Key="ItemCountZero">No entries</s:String>
+	<s:String x:Key="ItemCountOne">1 entry</s:String>
+	<s:String x:Key="ItemCountMany">{0} entries</s:String>
 
 	<s:String x:Key="ButtonBrowse">Browse…</s:String>
 	<s:String x:Key="TipBrowseSceneImage">Pick an image file; it is embedded in the project</s:String>

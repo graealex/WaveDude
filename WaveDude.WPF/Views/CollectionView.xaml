@@ -1,11 +1,22 @@
 <UserControl x:Class="WaveDude.WPF.Views.CollectionView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:WaveDude.WPF.Converters"
+             xmlns:localization="clr-namespace:WaveDude.WPF.Localization">
+	<UserControl.Resources>
+		<converters:ItemCountConverter x:Key="ItemCount" />
+	</UserControl.Resources>
 
-	<!-- a folder node (Sources, Probes): just the name and the count for now -->
+	<!-- a folder node (Sources, Probes): just the name and the count for now; the count with its plural, re-read on a language switch -->
 	<StackPanel Margin="8">
 		<Label Style="{StaticResource FormSection}" Content="{Binding Label}" Margin="0,2,0,4" />
-		<TextBlock Style="{StaticResource FormValue}" Margin="0"
-		           Text="{Binding Items.Count, StringFormat={StaticResource ItemCountFormat}}" />
+		<TextBlock Style="{StaticResource FormValue}" Margin="0" AutomationProperties.AutomationId="CollectionCount">
+			<TextBlock.Text>
+				<MultiBinding Converter="{StaticResource ItemCount}" Mode="OneWay">
+					<Binding Path="Items.Count" />
+					<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
+				</MultiBinding>
+			</TextBlock.Text>
+		</TextBlock>
 	</StackPanel>
 </UserControl>

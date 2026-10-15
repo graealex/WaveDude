@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
 using WaveDude.Model;
 
@@ -25,7 +26,12 @@ public sealed class WavelengthConverter : IMultiValueConverter
 			return "\u2013";
 		}
 		string text = string.Format(culture, "\u2248 {0:0.0} px", wavelength);
-		return fourthOrder ? text : text + " (nominal)";
+		if (fourthOrder)
+		{
+			return text;
+		}
+		// the 9-point stencil disperses: the word from the string table (a fifth input, the language, re-reads it on a switch)
+		return text + " " + (Application.Current?.TryFindResource("WavelengthNominal") as string ?? "(nominal)");
 	}
 
 	public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture) =>

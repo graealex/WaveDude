@@ -672,8 +672,8 @@
 								<DockPanel Margin="5,0,2,0">
 									<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
 										<Button x:Name="PART_MenuButton" Style="{StaticResource DockHeaderButtonStyle}"
-										        Content="{StaticResource DropDownGeometry}" ToolTip="Window position"
-										        AutomationProperties.Name="Window position"
+										        Content="{StaticResource DropDownGeometry}" ToolTip="{DynamicResource DockWindowPosition}"
+										        AutomationProperties.Name="{DynamicResource DockWindowPosition}"
 										        Foreground="{DynamicResource TitleBarInactiveForeground}"
 										        Background="{DynamicResource TitleBarButtonHoverInactive}">
 											<Button.ContextMenu>
@@ -684,18 +684,18 @@
 															<Setter Property="CommandTarget" Value="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}" />
 														</Style>
 													</ContextMenu.Resources>
-													<MenuItem Header="Move to _Left" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Left}" />
-													<MenuItem Header="Move to _Right" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Right}" />
-													<MenuItem Header="Move to _Top" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Top}" />
-													<MenuItem Header="Move to _Bottom" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Bottom}" />
+													<MenuItem Header="{DynamicResource DockMoveLeft}" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Left}" />
+													<MenuItem Header="{DynamicResource DockMoveRight}" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Right}" />
+													<MenuItem Header="{DynamicResource DockMoveTop}" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Top}" />
+													<MenuItem Header="{DynamicResource DockMoveBottom}" Command="{x:Static docking:DockCommands.MoveToSide}" CommandParameter="{x:Static docking:DockSide.Bottom}" />
 													<Separator />
-													<MenuItem Header="_Close" Command="{x:Static docking:DockCommands.Close}" />
+													<MenuItem Header="{DynamicResource DockCloseMenu}" Command="{x:Static docking:DockCommands.Close}" />
 												</ContextMenu>
 											</Button.ContextMenu>
 										</Button>
 										<Button x:Name="PART_CloseButton" Style="{StaticResource DockHeaderButtonStyle}"
-										        Content="{StaticResource CloseGeometry}" ToolTip="Close"
-										        AutomationProperties.Name="Close"
+										        Content="{StaticResource CloseGeometry}" ToolTip="{DynamicResource DockClose}"
+										        AutomationProperties.Name="{DynamicResource DockClose}"
 										        Command="{x:Static docking:DockCommands.Close}"
 										        Foreground="{DynamicResource TitleBarInactiveForeground}"
 										        Background="{DynamicResource TitleBarButtonHoverInactive}"

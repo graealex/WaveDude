@@ -254,7 +254,16 @@ WPF shell as it stands:
   needed: the generator was a one-off script, the English block in `Strings.EN.xaml` is what the
   attributes said on 2026-10-14. **Adding a model property means adding its keys to all four
   tables** (the key-set check in the notes' verification list catches a missing one). Not
-  localised: log messages.
+  localised: log messages. **Plurals** (2026-10-15, after "1 entries" in the folder view): a count goes through
+  `Converters/ItemCountConverter` with the keys `ItemCountZero` / `ItemCountOne` / `ItemCountMany` ("No
+  entries", "1 entry", "{0} entries"; French keeps the singular for zero), a `MultiBinding` with the language as
+  its second input so the words follow a switch; a `StringFormat` with a `StaticResource` never did. Use the
+  same three-key shape for any other count that gets words. The same sweep (2026-10-15) moved the last literals
+  into the tables: the dock pane headers' "Window position" / "Close" and the position menu (`Dock*` keys, read
+  by `Themes/Controls.xaml` as `DynamicResource`), the wavelength row's "(nominal)" (`WavelengthNominal`; the
+  source view's `MultiBinding` got the language as a fifth input) and the scene image row's "(unreadable)"
+  (`ImageUnreadable`; a value converter, so that rare word changes with the next value, not with the switch).
+  Only the two never-shown command names ("Show messages", "Copy all") stay English.
 - **Probe graphs** (2026-10-14, the author's point 7, first half): every active probe's graph box is drawn
   over the picture of its layer, as the author's app did (translucent dark box, axes with "nice" ticks,
   yellow curve, title strip with the live readout "= value" / "max value"). The numbers live in the

@@ -23,6 +23,15 @@
 	<s:String x:Key="MenuFileExit">_Quitter</s:String>
 	<s:String x:Key="MenuView">_Affichage</s:String>
 	<s:String x:Key="MenuViewPanes">_Panneaux</s:String>
+	<s:String x:Key="DockWindowPosition">Position du panneau</s:String>
+	<s:String x:Key="DockMoveLeft">Déplacer à _gauche</s:String>
+	<s:String x:Key="DockMoveRight">Déplacer à _droite</s:String>
+	<s:String x:Key="DockMoveTop">Déplacer en _haut</s:String>
+	<s:String x:Key="DockMoveBottom">Déplacer en _bas</s:String>
+	<s:String x:Key="DockCloseMenu">_Fermer</s:String>
+	<s:String x:Key="DockClose">Fermer</s:String>
+	<s:String x:Key="WavelengthNominal">(nominale)</s:String>
+	<s:String x:Key="ImageUnreadable">(illisible)</s:String>
 	<s:String x:Key="MenuViewTheme">_Thème</s:String>
 	<s:String x:Key="MenuViewLanguage">_Langue</s:String>
 	<s:String x:Key="MenuViewResolution">_Résolution de l'aperçu</s:String>
@@ -175,7 +184,9 @@
 	<s:String x:Key="SectionGraph">Graphique</s:String>
 	<s:String x:Key="SectionAxes">Axes</s:String>
 	<s:String x:Key="ButtonNewSeed">_Nouvelle graine</s:String>
-	<s:String x:Key="ItemCountFormat">{0} éléments</s:String>
+	<s:String x:Key="ItemCountZero">Aucune entrée</s:String>
+	<s:String x:Key="ItemCountOne">1 entrée</s:String>
+	<s:String x:Key="ItemCountMany">{0} entrées</s:String>
 
 	<s:String x:Key="ButtonBrowse">Parcourir…</s:String>
 	<s:String x:Key="TipBrowseSceneImage">Choisir un fichier image ; il est intégré au projet</s:String>
