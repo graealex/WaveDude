@@ -294,7 +294,15 @@ WPF shell as it stands:
   Media Foundation of Windows (`Mp4Writer` + `MediaFoundation` interop: hardware transforms enabled, quality
   rate control + GOP = fps + no B-frames as encoding parameters with the author's bits-per-pixel bitrate as the
   declared average and the fallback, odd sizes padded by repeating the edge; absent on Windows N without the
-  Media Feature Pack, the command then says so). `Video.Fps`/`Quality` (default 85 since 2026-10-14, the user's JPEG default; was the author's 70) drive every video; quality means JPEG
+  Media Feature Pack, the command then says so), and a QuickTime movie with the Animation codec
+  (`MovAnimationWriter`, 2026-10-15, the user's choice of the one lossless single-file format for the editing
+  suites, Final Cut above all since it opens no AVI: 24-bit RGB run-length coded, every frame a key frame,
+  `ftyp qt  `, the `moov` first in a reservation sized from the planned frame count (1024 fixed + 12 a frame,
+  overwritten at close, a `free` atom over the rest; a writer without a plan puts it at the end), one 64-bit
+  `mdat`, `rle ` sample description and `co64`; ffmpeg's `qtrle` gives
+  the frames back pixel for pixel; a real-world ratio of only 1.3 : 1 on a 1080p canvas full of waves, 54 : 1
+  while most of it is black, since runs of identical pixels are all the codec compresses; 10 ms a frame in
+  the job). `Video.Fps`/`Quality` (default 85 since 2026-10-14, the user's JPEG default; was the author's 70) drive every video; quality means JPEG
   table scaling, the MPEG-1 quantiser and the H.264 quality. **A still**: "Export this frame…" first on each
   picture's context menu (id `ContextExportFrame`) and File > Export > Field frame… / Intensity frame…
   write the frame the preview shows as one PNG or JPEG (`ImageFileSink`, `ExportFormats.OpenStill`), named

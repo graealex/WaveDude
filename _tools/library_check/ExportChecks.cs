@@ -126,6 +126,54 @@ internal static class ExportChecks
 			AviWalk shortWalk = WalkAvi(File.ReadAllBytes(shortPath));
 			check(shortWalk.Segments == 1 && shortWalk.Frames == 1 && shortWalk.TotalInDmlh == 1 && shortWalk.EndsAtFileEnd, "avi: cancelled after one frame is a valid one-frame file");
 
+			// MOV with the Animation codec: the atoms, ffmpeg's qtrle decoder giving the frames back exactly, a run of one colour compressing
+			string movPath = Path.Combine(folder, "seven.mov");
+			bool moovFirst;
+			using (var mov = new MovAnimationWriter(movPath, w, h, 25, 7))
+			{
+				foreach (int[] frame in frames)
+				{
+					mov.Add(frame);
+				}
+				check(mov.FrameCount == 7 && mov.FrameBytes < 7L * w * h * 3, "mov: 7 frames taken, smaller than raw (" + mov.FrameBytes + " of " + 7L * w * h * 3 + " bytes)");
+				mov.Close();
+				moovFirst = mov.MoovFirst;
+			}
+			byte[] movBytes = File.ReadAllBytes(movPath);
+			int moovAt = IndexOf(movBytes, "moov"u8, 0, movBytes.Length);
+			int mdatAt = IndexOf(movBytes, "mdat"u8, 0, movBytes.Length);
+			check(Encoding.ASCII.GetString(movBytes, 4, 4) == "ftyp" && Encoding.ASCII.GetString(movBytes, 8, 4) == "qt  " && moovFirst && moovAt > 0 && moovAt < mdatAt
+				&& IndexOf(movBytes, "free"u8, moovAt, mdatAt) > moovAt && IndexOf(movBytes, "rle "u8, 0, movBytes.Length) > 0 && IndexOf(movBytes, "co64"u8, 0, movBytes.Length) > 0,
+				"mov: ftyp qt, the moov before the mdat with a free atom filling the reservation, an rle sample description, 64-bit offsets");
+			// a writer told nothing about the count has no reservation and puts the moov at the end, still a valid file
+			using (var trailing = new MovAnimationWriter(Path.Combine(folder, "trailing.mov"), w, h, 25))
+			{
+				foreach (int[] frame in frames)
+				{
+					trailing.Add(frame);
+				}
+				trailing.Close();
+				byte[] t = File.ReadAllBytes(Path.Combine(folder, "trailing.mov"));
+				check(!trailing.MoovFirst && IndexOf(t, "moov"u8, 0, t.Length) > IndexOf(t, "mdat"u8, 0, t.Length), "mov: with no planned count the moov goes at the end");
+			}
+			if (Ffmpeg != null)
+			{
+				byte[]? rgb = Decode(movPath, w, h, out int count);
+				bool exact = rgb != null && count == 7;
+				for (int i = 0; exact && i < 7; i++)
+				{
+					exact = Psnr(rgb!.AsSpan(i * w * h * 3, w * h * 3), frames[i], w, h) >= 99;
+				}
+				check(exact, "mov: ffmpeg decodes 7 frames, identical" + (rgb == null ? "" : ", got " + count));
+			}
+			var flat = new int[w * h];
+			Array.Fill(flat, unchecked((int)0xFF123456));
+			var scratch = new byte[6 + h * (w * 3 + w / 127 + 4)];
+			using (var mov = new MovAnimationWriter(Path.Combine(folder, "flat.mov"), w, h, 25))
+			{
+				int flatBytes = mov.Encode(flat, scratch);
+				check(flatBytes < h * 8 + 6, "mov: a flat frame codes to " + flatBytes + " bytes (under " + (h * 8 + 6) + ")");
+			}
 			// MP4: Media Foundation, when it is there
 			if (OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4))
 			{
@@ -447,8 +495,9 @@ internal static class ExportChecks
 			var project = new Project();
 			project.Scene.Width = w;
 			project.Scene.Height = h;
-			project.Simulation.Steps = 120;
-			project.Simulation.VisualizeEvery = 2;
+			// a long enough run for the waves to fill the canvas (the frames' content decides every lossless ratio), 60 frames spread over it
+			project.Simulation.Steps = 3000;
+			project.Simulation.VisualizeEvery = 50;
 			Source source = project.AddSource();
 			source.X = w / 2;
 			source.Y = h / 2;
@@ -543,6 +592,7 @@ internal static class ExportChecks
 				("jpeg sequence (WIC)", () => { ExportFormats.AlternativeJpeg = (fw, fh, q) => (stream, frame) => stream.Write(WicEncode(frame.ToArray(), fw, fh, q)); return ExportFormats.Open(ExportFormat.Jpeg, Path.Combine(folder, "k.jpg"), w, h, 30, 85, 60); }),
 				("mpeg-1", () => ExportFormats.Open(ExportFormat.Mpeg1, Path.Combine(folder, "j.mpg"), w, h, 30, 85, 60)),
 				("avi", () => ExportFormats.Open(ExportFormat.Avi, Path.Combine(folder, "j.avi"), w, h, 30, 85, 60)),
+				("mov (Animation)", () => ExportFormats.Open(ExportFormat.Mov, Path.Combine(folder, "j.mov"), w, h, 30, 85, 60)),
 				("mp4", () => ExportFormats.Open(ExportFormat.Mp4, Path.Combine(folder, "j.mp4"), w, h, 30, 85, 60)),
 				("mp4, writer not throttling", () => { Mp4Writer.Throttle = false; return ExportFormats.Open(ExportFormat.Mp4, Path.Combine(folder, "k.mp4"), w, h, 30, 85, 60); }),
 			})
@@ -556,7 +606,8 @@ internal static class ExportChecks
 				var clock = Stopwatch.StartNew();
 				job.Start();
 				job.Completion.Wait();
-				Console.WriteLine($"  job to {name}: {clock.Elapsed.TotalMilliseconds / store.Count:0.0} ms per frame ({job.State})");
+				string ratio = job.Targets[0].Sink is MovAnimationWriter movSink ? $", {(double)store.Count * w * h * 3 / Math.Max(1, movSink.FrameBytes):0.00} : 1 on the run's frames" : "";
+				Console.WriteLine($"  job to {name}: {clock.Elapsed.TotalMilliseconds / store.Count:0.0} ms per frame ({job.State}){ratio}");
 				ExportFormats.AlternativeJpeg = null;
 				Mp4Writer.Throttle = true;
 			}

@@ -13,6 +13,8 @@ public enum ExportFormat
 	Avi,
 	/// <summary>An H.264 MP4 through the Media Foundation of Windows; the quality setting applies.</summary>
 	Mp4,
+	/// <summary>A QuickTime movie with the Animation codec: lossless RGB, run-length coded, what the editing suites open natively.</summary>
+	Mov,
 }
 
 /// <summary>What is known about each <see cref="ExportFormat"/>: extensions, whether it is a sequence, how to open its sink.</summary>
@@ -83,7 +85,7 @@ public static class ExportFormats
 	}
 
 	/// <summary>The formats in filter order.</summary>
-	public static readonly ExportFormat[] All = [ExportFormat.Png, ExportFormat.Jpeg, ExportFormat.Mpeg1, ExportFormat.Avi, ExportFormat.Mp4];
+	public static readonly ExportFormat[] All = [ExportFormat.Png, ExportFormat.Jpeg, ExportFormat.Mpeg1, ExportFormat.Avi, ExportFormat.Mp4, ExportFormat.Mov];
 
 	/// <summary>The file extension with its dot.</summary>
 	public static string Extension(ExportFormat format) => format switch
@@ -93,6 +95,7 @@ public static class ExportFormats
 		ExportFormat.Mpeg1 => ".mpg",
 		ExportFormat.Avi => ".avi",
 		ExportFormat.Mp4 => ".mp4",
+		ExportFormat.Mov => ".mov",
 		_ => throw new ArgumentOutOfRangeException(nameof(format)),
 	};
 
@@ -104,6 +107,7 @@ public static class ExportFormats
 		".mpg" or ".mpeg" or ".m1v" => ExportFormat.Mpeg1,
 		".avi" => ExportFormat.Avi,
 		".mp4" or ".m4v" => ExportFormat.Mp4,
+		".mov" or ".qt" => ExportFormat.Mov,
 		_ => null,
 	};
 
@@ -168,6 +172,8 @@ public static class ExportFormats
 					throw new NotSupportedException("MP4 export needs the Media Foundation of Windows.");
 				}
 				return new Mp4Writer(path, width, height, fps, quality);
+			case ExportFormat.Mov:
+				return new MovAnimationWriter(path, width, height, fps, plannedFrames);
 			default:
 				throw new ArgumentOutOfRangeException(nameof(format));
 		}

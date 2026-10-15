@@ -19,6 +19,7 @@ Wave_Dude_Examples/**/*.wdproj
 Wave_Dude_Examples/**/*.avi
 Wave_Dude_Examples/**/*.mp4
 Wave_Dude_Examples/**/*.mpg
+Wave_Dude_Examples/**/*.mov
 Wave_Dude_Examples/**/*_field/
 Wave_Dude_Examples/**/*_intensity/
 Wave_Dude_Examples/**/*_field_*.png
