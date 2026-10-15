@@ -1239,10 +1239,6 @@ internal static class Program
 		Check(p.Sources[0] is { Array: null, DetachAfter: 670, PulseWidth: 70, OffWidth: 100, Frequency: 200 } && p.Simulation.TimeDecay == 8 && p.Display.Intensity.ColorScheme == "Copper", "a single detaching source (its unused array settings ignored), decay 8, Copper");
 		Check(p.Scene.Mode == SceneMode.Image && p.Scene.ImageData == null && notes.Count == 1, "image mode with the image missing: one note");
 
-		// a source the author never placed
-		notes.Clear();
-		p = LegacyProject.Import(Path.Combine(root, "Project", "Test", "configuration.json"), notes, out _);
-		Check(p.Sources.Count == 1 && !p.Sources[0].Enabled && notes.Any(n => n.Contains("no position")) && p.Simulation.TimeDecay == 5, "Test: a source without a position comes in disabled and noted");
 		bool refused = false;
 		string newer = Path.Combine(Path.GetTempPath(), "library_check-newer.json");
 		File.WriteAllText(newer, "{ \"format_version\": 2 }");

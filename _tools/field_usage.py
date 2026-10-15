@@ -1,4 +1,4 @@
-"""List every private field/const of the given classes with usage counts, grouped by method."""
+"""List every private field/const of the classes in the given .cs files with usage counts, grouped by method."""
 import re, sys
 
 STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
@@ -6,7 +6,7 @@ FIELD = re.compile(r'^\t\tprivate (?:readonly |static |const )*([A-Za-z0-9_<>\[\
 METHOD = re.compile(r'^\t\t(?:public|private|internal|protected)[^\r\n=;]*? ([A-Za-z0-9_]+)\([^)]*\)\s*(?:=>|\r?\n\t\t\{)', re.M)
 
 for f in sys.argv[1:]:
-    src = open('Wave_Dude_2D/%s.cs' % f, encoding='utf-8').read()
+    src = open(f, encoding='utf-8').read()
     code = '\n'.join(l for l in src.split('\n') if not l.strip().startswith('///'))
     code = STRING.sub('""', code)
     fields = FIELD.findall(code)

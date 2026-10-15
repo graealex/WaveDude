@@ -1,27 +1,30 @@
-# Wave Dude 2D — project notes for Claude
+# WaveDude Next — project notes for Claude
 
-Last updated 2026-10-14. Update this file when the facts below change.
+Last updated 2026-10-15. Update this file when the facts below change.
 
 ## What this is
 
-**Wave Dude 2D v0.29** — a 2D wave-equation simulator (field + accumulated intensity views,
-refractive-index scenes from images, point/composite sources, probes with live graphs, video export).
-Educational tool by Huygens Optics (`info@huygensoptics.com`, patreon `huygens_optics`).
-Licence: **GPL-3.0-or-later, Copyright (C) 2026 JJM Vleggaar (Huygens Optics)** per the headers in the
-author's VB source; the C# files do not carry the header yet (see `_tools/VB_SOURCE_AUDIT.md`).
+**WaveDude Next** — a 2D wave-equation simulator (field + accumulated intensity views, refractive-index
+scenes from images, point/composite sources, probes with live graphs, video export), the successor of
+Jeroen Vleggaar's (Huygens Optics) **Wave Dude 2D v0.29**, rebuilt as a .NET 10 library plus a WPF app with a
+live, scrubbable preview. Licence **GPL-3.0-or-later** (see "Rebrand and licensing" below for the people,
+the header and LICENSE.md).
 
-`2D_wave_sim_V01/` is the **author's original VB.NET source**, supplied after the C# port was made. It
-is newer than the binary that was decompiled (GPL headers and a GPL Help disclaimer were added after
-that build). Treat it as the authority for intent, comments and constant names; `_tools/VB_SOURCE_AUDIT.md`
-(2026-10-08) lists everything the decompile lost, file by file, with the C# line each item belongs at.
+**The old sources are gone from the tree** (2026-10-15, the first rebrand step): the author's VB.NET
+source (`2D_wave_sim_V01/`) and the C# port made from the decompiled binary (`Wave_Dude_2D/`), with the
+harnesses and one-off scripts that only served them (`_tools/engine_check`, `avi_check`,
+`VB_SOURCE_AUDIT.md`, `CLEANUP_GUIDE.md`, `DOC_GUIDE.md`, the `fix_*`/`modernize`/`split_form1`/
+`replace_method` scripts). They stay in git history (every commit up to the removal, e.g. `d3ac0d8`);
+the author's original program will be published separately as preserved assets. The library's engines,
+probes, colour schemes and renderer descend from his code (ported 2026-10-09 and reworked since); the
+model's documented defaults and the JSON importer (`Model/LegacyProject`) keep his semantics.
 
-`Wave_Dude_2D.sln` holds three projects:
+`Wave_Dude_2D.sln` (the name is still the old one; renaming it is a later rebrand step) holds two projects:
 
 | project | what | state |
 |---|---|---|
-| `Wave_Dude_2D/` | the original WinForms app, **.NET Framework 4.6.1**, legacy csproj, namespace `_2D_wave_sim_V01` | all the real code; builds and runs; **reference implementation, not the future** |
-| `WaveDude/` | SDK class library, `net10.0`, nullable + implicit usings; packages NLog and `System.Numerics.Tensors` (Microsoft, MIT: vectorised float↔Half) | the model (`Model/`), the engines (`Engine/`), probes, rendering, the run driver and frame store (`Runs/`); see "Architecture (WaveDude library)" |
-| `WaveDude.WPF/` | SDK WPF app, `net10.0-windows`, references `WaveDude` | **the replacement UI**; docking shell, editors, preview with live simulation; builds clean (0 warnings) |
+| `WaveDude/` | SDK class library, `net10.0`, nullable + implicit usings; packages NLog and `System.Numerics.Tensors` (Microsoft, MIT: vectorised float↔Half) | the model (`Model/`), the engines (`Engine/`), probes, rendering, the run driver and frame store (`Runs/`), export; see "Architecture (WaveDude library)" |
+| `WaveDude.WPF/` | SDK WPF app, `net10.0-windows`, references `WaveDude` | **the UI**; docking shell, editors, preview with live simulation; builds clean (0 warnings) |
 
 WPF shell as it stands:
 - `MainWindow` = menu + the in-house `Docking/DockHost` (Project tree pane left, Preview document
@@ -226,8 +229,9 @@ WPF shell as it stands:
   `MainWindow.OpenFile` routes any `.json` there (Open dialog, drag and drop, command line; the filter lists
   "Wave Dude 2D projects (configuration.json)"); the result is unsaved and Save As proposes
   `<project_name>.wdproj` beside the original (`_suggestedFileName`). Checked in `library_check` on
-  Examples 12, 5 and 3 and the `Project/Test` file (skipped when `Wave_Dude_Examples` is not found above
-  the harness binary), including an XML round trip and the refusal of a newer `format_version`.
+  Examples 12, 5 and 3 (skipped when `Wave_Dude_Examples` is not found above the harness binary),
+  including an XML round trip and the refusal of a newer `format_version`. The check that a source
+  without a position comes in disabled went with the `Project/Test` sample on 2026-10-15.
 - **Array rotation** (2026-10-14, the user's request): `SourceArray.Angle` in degrees, counter-clockwise on
   the screen (y points down, so x' = x cos + y sin, y' = y cos − x sin about the source position),
   normalised into (−180, 180]; applied in `Source.GenerateElements` before the random offsets, edited in the
@@ -525,41 +529,29 @@ WPF shell as it stands:
   install, or a plain copy with no installer, must win over a global installation for that user.
   `assoc`/`ftype` in cmd do not see HKCU registrations; test with a real launch.
 
-History: the C# in `Wave_Dude_2D/` started as ILSpy-decompiled output of a VB.NET binary. It has
-since been made to compile, cleaned to idiomatic C#, documented, and partly refactored (details
-below). Baseline commit `1266f10` is the first compiling, cleaned, documented state; everything
-after it (AVI fix, style pass, engine refactor, WPF shell) is uncommitted at the time of writing.
+History: the port began 2026-10-07 as ILSpy-decompiled output of the author's VB.NET binary, was cleaned,
+documented and audited against his real source (supplied 2026-10-08), the engines were copied into the
+library 2026-10-09, and the two legacy trees were removed 2026-10-15 (see "What this is").
 
 The shipped colour schemes live in `WaveDude/ColorSchemes/` (`*.wdscheme` XML since 2026-10-13, in the
 library project since 2026-10-15; **embedded into `WaveDude.dll`** as resources `ColorSchemes/<file>` by the
 library's csproj, loaded by `ColorSchemeStore.LoadBuiltIn`; the user's own schemes come from
 `%LOCALAPPDATA%\WaveDude\ColorSchemes` and shadow built-ins of the same name; agreed 2026-10-10, no
-external files). The repo root also holds `Project/` (a sample project root), tracked on purpose. `.vs/`,
-`bin/`, `obj/` are ignored.
+external files). `.vs/`, `bin/`, `obj/` are ignored.
 
 No automated tests in the solution; standalone harnesses exist under `_tools/` (see Verification).
 
 ## Build
 
 - Visual Studio 18 (2026) Community and the .NET 10 SDK are installed.
-- Whole solution (the legacy csproj needs full MSBuild):
-  ```
-  "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" Wave_Dude_2D.sln -restore -p:Configuration=Debug -v:minimal -nologo -m
-  ```
+- Whole solution: `dotnet build Wave_Dude_2D.sln` (both projects are SDK-style; no full MSBuild needed since
+  the legacy csproj went, 2026-10-15).
 - WPF + library only: `dotnet build WaveDude.WPF/WaveDude.WPF.csproj` (the UI harnesses run the Debug exe).
 - Publish: `dotnet publish WaveDude.WPF/WaveDude.WPF.csproj -p:PublishProfile=SingleFile` →
   `WaveDude.WPF/bin/Publish/`: one framework-dependent win-x64 `WaveDude.WPF.exe`, nothing else needed.
   The profile takes the framework from the project.
-- Expected result: 0 errors; 6 warnings in `Wave_Dude_2D` that are known and harmless
-  (`components` never assigned in the four generated Designer files, unused `Form1._hasRun`, one
-  sign-extension in `MfVideoWriter`). `DocumentationFile` is on, so malformed `///` XML or a wrong
+- Expected result: 0 errors, 0 warnings. `DocumentationFile` is on, so malformed `///` XML or a wrong
   `<param>` name is a build warning — keep it at zero.
-- Smoke test: launch `Wave_Dude_2D/bin/Debug/Wave_Dude_2D.exe`; the main window must appear with
-  title `2D wave simulation - (new project) *`.
-- Standalone compile check that does not touch `bin/obj` (safe while other work is in flight):
-  ```
-  cd Wave_Dude_2D && "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\Roslyn\csc.exe" -nologo -target:winexe -out:%TEMP%\check.exe -langversion:7.3 -r:System.dll -r:System.Core.dll -r:System.Drawing.dll -r:System.Windows.Forms.dll -r:Microsoft.VisualBasic.dll -r:System.Web.Extensions.dll -nowarn:0168,0649,0414,0675 *.cs My/*.cs My/Resources/*.cs Properties/*.cs
-  ```
 
 ## Verification harnesses (`_tools/`)
 
@@ -608,17 +600,6 @@ passing harnesses for comfort, never all of them after an edit.
   `skip GPU: …` when no OpenCL device works. `dotnet run --project _tools/library_check -c Release
   -- bench [w h]` prints the per-step cost table above for this machine.
 
-The two legacy harnesses are console programs compiled with `csc` against the `Wave_Dude_2D` sources
-(same reference list as above, `-target:exe`, `-nowarn:...,1591`):
-
-- `_tools/engine_check/Program.cs` — add `-main:EngineCheck.Program` and all `Wave_Dude_2D` sources.
-  Runs `WaveSimulator` and `GpuWaveSimulator` over one scene (image source, continuous / Gaussian-pulsed /
-  detaching smoothed-square object sources, an out-of-canvas source that must be dropped, point and
-  integrated-line probes with a start step), with both stencils, and requires field, intensity, probe
-  samples and line profiles to agree within 1e-3 relative (actual: ~1e-7). Also exercises probe
-  re-install, `SetProbes(null)` and double dispose. Prints `skip GPU: …` when no OpenCL device works.
-- `_tools/avi_check/Program.cs` — compile with `AviMjpegWriter.cs` only. Writes a 3-frame MJPEG AVI and
-  walks the RIFF tree (44 structural checks: header offsets, strh dwQuality = -1, movi size, idx1 offsets, EOF).
 
 - `_tools/ui_check/PreviewCheck.ps1` drives the WPF preview pane end to end on the default project
   (43 checks: play/pause at the 60 fps clock, speed incl. locale spelling, timeline keys, frame
@@ -747,9 +728,9 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   reading/writing XML, built-in schemes embedded, `FrameRenderer`),
   `WaveDude.Runs` (`RunSpec`, `SimulationRun`, `RunState`, `FrameStore`, `FrameLayer(s)`,
   `FrameCache`, `ScenePixels`), `WaveDude.Export` (2026-10-14: `IFrameSink`, `ExportJob`, `ExportFormat(s)`,
-  the encoders and writers, `BitWriter`, `YuvPlanes` + `Dct8x8` shared by JPEG and MPEG-1, `Crc32`). All copied
-  from `Wave_Dude_2D` and adapted; the legacy app keeps its own copies and does not reference the library. Not
-  ported: the legacy video sinks (`MfVideoWriter` was rewritten as `Mp4Writer`, `AviMjpegWriter` replaced by
+  the encoders and writers, `BitWriter`, `YuvPlanes` + `Dct8x8` shared by JPEG and MPEG-1, `Crc32`). All ported
+  from the author's program and adapted. Not
+  ported: his video sinks (`MfVideoWriter` was rewritten as `Mp4Writer`, `AviMjpegWriter` replaced by
   the OpenDML `AviWriter`), GDI+ painters (`ProbeGraphPainter` exists anew in WPF, `ProbeOverlay`), the glow
   overlay (now ported as `GlowingEdges`).
 - **The engine choice is not in the project** (2026-10-09, the user's call: the old app's flag was an
@@ -777,7 +758,7 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
 - **Determinism**: every emitter gets a non-zero `RngSeed` from `Pcg32(projectSeed,
   StableHash(name) ^ GapStream)`; both engines redraw the per-period off-width with the same
   xorshift32 (`Emitter.Xorshift32`, the GPU kernel's generator), so a run reproduces from the
-  project file and CPU = GPU bit-for-bit on the gap sequence. The legacy engines used unseeded
+  project file and CPU = GPU bit-for-bit on the gap sequence. The author's engines used unseeded
   `Random` and disagreed with each other.
 - **Frames vs. steps**: a frame is recorded after step `i` when `i % VisualizeEvery == 0`, so frame
   k shows the state after 0-based step `k × VisualizeEvery` (what the readout's `step` prints);
@@ -847,109 +828,30 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDude\cache, DeleteOnClose, pre-
   made the CPU preview unusable from the app. Flip it locally to step through engine code. The
   conversions go through `TensorPrimitives` for the same reason.
 
-## Architecture (Wave_Dude_2D)
+## Engine numerics (from the author's engines, verified by `library_check`)
 
-```
-My/MyApplication.Main  ->  MyProject.Forms.Form1   (VB "My" application framework; to be replaced by Program.Main)
-Form1 (partial, 8 files) -> SimulationRunner (own Thread; events ProgressChanged/EngineReady/ProbesUpdated/PreviewReady/Finished,
-                            all raised on the worker thread; Form1.PostToUi marshals via BeginInvoke)
-                            |- WaveEngineFactory -> IWaveEngine (Width/Height/Stride, FieldData, IntensityData, AdvanceOneStep,
-                            |     |                              PrepareFrame, SetProbes/SampleProbes/TakeProbeSamples/ReadProbeProfiles)
-                            |     |- WaveSimulator      CPU, Parallel.For over row bands; IDisposable is a no-op
-                            |     '- GpuWaveSimulator   OpenCL via OpenClApi (P/Invoke OpenCL.dll); kernels are C# string literals
-                            |- FrameRenderer + ColorLut/ColorScheme   float field -> ARGB pixels
-                            |- IFrameSink -> MfVideoWriter (Media Foundation SinkWriter P/Invoke, .mp4)
-                            |               AviFrameSink/AviMjpegWriter (.avi fallback)
-                            '- Probe* (Sampler/Collector/Series/Trace/Update sampled on the worker; GraphPainter/Overlay paint on the UI thread)
-Persistence: ProjectStore / ProjectConfig / Project   (JSON via System.Web.Extensions JavaScriptSerializer, snake_case keys)
-             AppSettings  -> %AppData%\2D_wave_sim_V01\settings.json
-             ColorSchemeStore -> *.json colour schemes in a user-chosen folder (ColorSchemeList/ ships the defaults;
-                                 FindDefaultFolder walks up from the exe looking for a *.sln, so a dev build edits the repo copy)
-Project folder layout:  <root>/<project>/configuration.json (+ legacy Configuration.txt), assets/, output_frames/, output_video/
-Model classes (plain POCOs): SceneSettings, SimulationSettings, SourceSettings(+SourceElement, enums), ProbeSettings(+enums), ColorScheme
-```
-
-### Engines (refactored 2026-10-07, verified by `engine_check`)
-
-- `IWaveEngine` does **not** extend `IDisposable`; implementations decide, and `SimulationRunner`
-  disposes via `(engine as IDisposable)?.Dispose()`. Both engines have no thread affinity and no
-  internal synchronisation: exactly one thread may drive an engine at a time (today the runner's
-  worker; the UI thread only reads `FieldData`/`IntensityData` while the run is paused). That is the
-  contract to keep when the driving loop becomes `Task`-based.
+- Both engines have no thread affinity and no internal synchronisation: exactly one thread may drive an
+  engine at a time (the run's worker, or the scratch runner's). `IWaveEngine` does **not** extend
+  `IDisposable`; implementations decide.
 - Numerics shared through `WaveSimulator`'s `internal static` helpers: `ComputeSubSteps`,
   `LowestSourceLevel`, `IntensityRetention`, `MaxOf`, `NominalDecayLevel`. Units: dx = dt = 1, c in
   cells/step, `c2 = 1/n²`, frequencies in radians/step (`level/255 × 0.5 × scale`), `Time` in steps.
   Scheme: leapfrog, 9-point Laplacian (0.066/0.184/−1) or 4th-order 5-point-per-axis with sub-stepping,
   soft source blending (`u = 0.9u + 0.1v`), two-stage EMA intensity. The docs in both files spell it out.
-- `GpuWaveSimulator` keeps device handles in two `Resources` groups (`_scene`: program + kernels +
-  buffers for the run; `_probes`: everything `SetProbes` creates, released and rebuilt on every call).
-  Kernel arguments are bound at build time; only time (arg 4/11) and the per-sub-step track flag
-  (`wave_step` arg 8) change per launch. The object-source kernel has 17 arguments — the table in
+- `GpuWaveSimulator` keeps device handles in `Resources` groups (the scene's program, kernels and buffers;
+  the emitters'; the probes'). Kernel arguments are bound at build time; only time and the per-sub-step
+  track flag change per launch. The object-source kernel has 17 arguments — the table in
   `BuildObjectSourceKernels` is indexed by argument number; an off-by-one there shows up as
   `CL_INVALID_ARG_SIZE`, which the harness catches.
 - `WaveSimulator` swaps its two field arrays every sub-step, so `FieldData` must be re-read per frame;
   `GpuWaveSimulator.FieldData` is a stable host array refreshed only by `PrepareFrame`.
-
-### What stayed in Wave_Dude_2D
-
-The engines, probes, colour schemes and renderer were **copied** into `WaveDude/` on 2026-10-09 (see
-"Architecture (WaveDude library)"); `Wave_Dude_2D/` is untouched, keeps its own copies and does not
-reference the library. Still only there: `SimulationRunner`/`SimulationJob`/`SimulationResult`
-(replaced by `RunSpec`/`SimulationRun`), the video sinks (`MfVideoWriter` + `IMF*Native`,
-`AviMjpegWriter`, `AviFrameSink`), the GDI+ painters (`ProbeGraphPainter`, `ProbeOverlay`), the glow
-overlay, the JSON project/settings persistence (`ProjectStore`, `ProjectConfig`, `AppSettings`,
-`JavaScriptSerializer`; the WPF app uses `.wdproj` XML instead). The library stays `net10.0` without
-`System.Drawing`: pixels are BGRA byte arrays (`ScenePixels`) and packed `int` BGRA32 buffers.
-
-## The WinForms UI (reference implementation)
-
-`Form1` is a partial class split along feature seams (~6,500 lines of logic, ~347 methods, 161 event
-handlers, 78 `MessageBox.Show` calls):
-
-| file | owns |
-|---|---|
-| `Form1.cs` | ctor, load/close, menu, project open/save/new, title, **all fields and nested types** (`ProjectListEntry`, `NativeSize`, `ThumbnailOptions`, `ProbeControlSet`) |
-| `Form1.Projects.cs` | "Projects in current root" list on the Settings tab |
-| `Form1.Output.cs` | Manage-output tab (scene/image/video lists, thumbnails, shell interop) |
-| `Form1.Scene.cs` | scene properties, scene image, glow-edge overlay |
-| `Form1.Colors.cs` | colour-scheme tab and stop editor |
-| `Form1.Simulation.cs` | simulation settings, run/pause/stop, preview, export, Explorer view-mode COM hack |
-| `Form1.Probes.cs` | probes tab (2 hard-wired probes via `ProbeControlSet[]`) |
-| `Form1.Sources.cs` | sources tab |
-
-Controls are private fields at the bottom of `Form1.Designer.cs`; handlers are attached in
-`InitializeComponent` under `// event wiring (was VB WithEvents/Handles)`. The Designer files are
-decompiled output with `global::` prefixes and have not been opened in the VS designer — do not
-expect round-tripping. `Form1.Designer.cs` has 318 controls on a fixed 1781×989 form with absolute
-positions, no `Dock`/`Anchor`, Microsoft Sans Serif in seven sizes, no DPI manifest — the reason the
-UI is being rebuilt in WPF rather than restyled. Six tabs: Settings, Sources, Probes, Preview, Manage
-output, Colors; a persistent bottom strip with Start/Pause, share-image and quick-navigate buttons.
-`HelpForm.cs` holds the user-facing description of every control and is the closest thing to a
-functional spec for the WPF UI.
+- The importer's per-key fallbacks differ from the model's constructor defaults on purpose (steps 2500 vs
+  0, 4th-order off vs on, c 0.563 vs 1.0, decay 10 vs 0): the author documented that old projects keep
+  their exact behaviour while new projects take the designer values.
 
 ## Known issues (open)
 
-- `Wave_Dude_2D.WaveEngineFactory.Create`: the "first choice failed" branch is dead
-  (`GpuWaveSimulator.TryCreate` never returns an engine together with a message). Fixed in the
-  library's copy only.
-- `SimulationSettings.FromConfig` per-key fallbacks differ from the constructor defaults
-  (steps 2500 vs 0, 4th-order false vs true, c 0.563 vs 1.0, decay 10 vs 0). **Not a bug**: the VB
-  docs (`SimulationSettings.vb:47-49, 92-119`) say old projects must keep their exact behaviour while new
-  projects take the Designer values via `StartNewProject`. The C# `<remarks>` now says so.
-- Still from the VB audit, not done: no GPL headers in the C# (deliberately deferred; the C# tree is
-  temporary); `AssemblyCopyright` lacks the author's name; decompiler artefacts remain (`MessageBoxIcon`
-  aliases, `Keys.Return`, `VBByRefStr ref string` on two OpenCL P/Invokes and `OpenClApi` not `static`
-  (both fixed in the library's copy only),
-  nested `*EventHandler` delegates in `SimulationRunner`, `colCreatedOn2` declared in `Form1.Simulation.cs`
-  instead of the Designer); the csproj does not copy `ColorSchemeList/` to the output as the vbproj did.
-- `btnRenameProject_Click` re-opens the project from disk, silently discarding unsaved edits.
-- `AboutForm` code says "Version 0.27", designer says 0.29; `HelpForm` text has typos ("everly").
-- Unused members: `Form1._hasRun`, `SimulationRunner.JpegQuality`,
-  `AppSettings.LastRootFolder/LastProjectName` (written, never read).
-- `My/*` + `WindowsFormsApplicationBase` startup is the only remaining `Microsoft.VisualBasic` use;
-  replace with `Program.Main` (`EnableVisualStyles`, `SetCompatibleTextRenderingDefault`) when convenient.
-- Private `ref` parameters that are really `out` remain outside the engines (`TryPictureToCanvas`,
-  `TryParseInt`, `DampingProblem`, `PromptForCValue`, `ComputeRanges`, `RgbToHsv`, …).
+
 - WPF: no progress bar for a run (status text only; the export has one); the Simulation menu has no About/Help; the probe
   signal lane is not drawn yet (the graph boxes are); the preview skips frames at
   1080p (see the numbers in the library architecture section).
@@ -959,21 +861,6 @@ functional spec for the WPF UI.
   "why is step twice the frame". Undecided (2026-10-09): label it `step 1546 of 2500`, drop the
   step from the bar, or label the timeline ticks in steps. Do not change on your own.
 
-Fixed on 2026-10-07 (kept here so nobody re-reports them): `AviMjpegWriter` header/offset mismatch
-(header was 236 bytes vs. 224 assumed; now spec-exact, see `avi_check`); `GpuWaveSimulator.SetProbes`
-leaking the previous probe set and ignoring `null`; GPU engine carrying 28 buffer fields that existed
-only to be released, plus a hand-copied `ComputeSubSteps`; `SourceElement.DetachRampSteps` now used by
-both engines instead of a literal 30.
-
-Fixed on 2026-10-08 from the VB audit (`_tools/VB_SOURCE_AUDIT.md`): the author's rationale comments,
-Python-provenance notes and wrong C# docs ported into every C# file; folded constants restored
-(`ColorScheme.StopCount/EntryCount`, `SceneSettings.Max*`, `Thumb*`, `FVM_*`, hex OpenCL constants,
-`4f/3f`-style fractions, local consts); locals renamed where the VB name was clearer. Behaviour
-restored to the author's: `AviMjpegWriter` strh `dwQuality` = -1 (new `avi_check` check);
-`WaveSimulator.ApplySources` reuses `_levelValue` instead of allocating per step; `ColorSchemeStore`
-probes for `*.sln` (was `*.vbproj`, which never matched above the C# exe); NaN-safe `!(a > b)` checks in
-`ProbeGraphPainter`/`ProbeSettings`; `ProbeSampler` uses `!= Amplitude`; `Form1.StopRole` parity test;
-`HelpForm` disclaimer is the author's GPL wording.
 
 ## Author feedback (Jeroen Vleggaar, e-mail of 2026-10-10)
 
@@ -1029,7 +916,7 @@ PreviewCheck 12 s, LanguageCheck 17 s, `library_check` about 20 s). The next ses
   `Measurement` (amplitude | value | integrated value), `BoxSize`, `BoxX/BoxY` (canvas pixels),
   `ScaleMode` (running window / full run), `Window` (steps), `AutoScaleX/Y`, `YMin/YMax`,
   `StartAfter`. The handles on the pictures exist (`SceneOverlay`, ids `Probe:<name>:A|B`).
-- Spec: the author's `ProbeGraphPainter.cs` / `ProbeOverlay.cs` in `Wave_Dude_2D/` (GDI+), now ported
+- Spec: the author's GDI+ `ProbeGraphPainter` / `ProbeOverlay` (in git history), now ported
   as geometry to `WaveDude.Probes.ProbeGraph` and drawn by `ProbeGraphOverlay`. Still to do: the
   **probe signal lane** under the timeline on the same time axis (roadmap item 5), drawn from the same
   traces (`ProbeGraph.ComputeRanges` and its binning can be reused), and the box in exports (the layout is
@@ -1049,9 +936,8 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
 ## Roadmap
 
 1. ~~Make it compile~~ · 2. ~~clean up / document~~ · 2b. ~~AVI fix, style pass, engine refactor~~
-3. ~~**Extract the engine into `WaveDude/`**~~ (done 2026-10-09 as a copy; the WinForms app stays
-   legacy and is not changed). Still open from this item: real test projects (the user chose to
-   keep the `dotnet run` harness for now).
+3. ~~**Extract the engine into `WaveDude/`**~~ (done 2026-10-09 as a copy). Still open from this item:
+   real test projects (the user chose to keep the `dotnet run` harness for now).
 4. ~~**Make the engine loop `Task`-based**~~ (`SimulationRun`, 2026-10-09).
 5. **WPF UI** in `WaveDude.WPF`: the preview shows a live run and replays it from the frame store
    (done 2026-10-09); editors, colour schemes, scene image and outline, languages (done 2026-10-14,
@@ -1073,14 +959,17 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
      thin overview bar shows the visible window; needed once tracks exist, since 2500 steps at
      one pixel per frame do not fit.
    Deferred, possibly never: filmstrip thumbnails behind the bar (needs cached frames).
-6. Retire `Wave_Dude_2D` once the WPF app covers it.
+6. ~~Retire `Wave_Dude_2D`~~ (removed 2026-10-15 together with the VB source; the solution file still carries the old name).
 
 ## Rebrand and licensing (designed 2026-10-15, **not applied yet**)
 
 The WPF app becomes **WaveDude Next** (agreed with Jeroen Vleggaar by mail 2026-10-15; he proposed
 "Pro", the user chose "Next" since Pro/Plus suggests a paid tier). Project, namespaces, the GitHub
-repo, About and installer take that name. The new icon is `Branding/Icons/05_rainbow_rings.svg`,
-installed as `WaveDude.WPF/App.svg|png|ico` (the candidates and `make_icons.py` stay in `Branding/Icons/`).
+repo, About and installer take that name. The new icon is `WaveDude.WPF/App.svg`
+(a damped circular wave, its magnitude coloured through the "Default intensity" scheme, chosen 2026-10-15
+from eleven candidates; the candidates and their generator were deleted the same day), with `App.png`
+(128 px) and `App.ico` (16 to 256 px as PNG entries) rendered from it; the csproj's `ApplicationIcon` and
+the window's `Icon` both use `App.ico`.
 
 **People**: Alexander Graef (author of WaveDude Next; "Gräf" in his mail signature, "Graef" in code);
 JJM (Jeroen) Vleggaar, Huygens Optics (author of Wave Dude 2D, GPL-3.0-or-later, Copyright (C) 2026);
@@ -1113,7 +1002,7 @@ licence to his repo). Private addresses stay out of files.
 
 Jeroen's line carries his copyright so the GPL's notice-preservation rule (sections 4 and 5) is met
 on the files that descend from his code without a separate notice. The author's own VB tree
-(`2D_wave_sim_V01/`) keeps his header and is not touched.
+was removed from the repo on 2026-10-15; his headers live on in git history.
 
 **LICENSE.md** (written 2026-10-15, the user's call): a short attribution block on top (the project
 name, the copyright line, the same "Based on the work of" list as the header, one GPL sentence, a
@@ -1142,10 +1031,7 @@ running on the source today.
   (canvas pixels vs picture-box pixels; steps vs seconds; radians vs degrees). Keep that up.
 - Formatting: tabs in `.cs`, Allman braces, governed by `.editorconfig`. In Git Bash `grep -P` is
   broken (locale); use `grep -E`.
-- Namespace stays `_2D_wave_sim_V01` in `Wave_Dude_2D` (settings path and resources depend on it).
-- `ColorScheme.StopCount` is 9 and `Form1` asserts the nine `btnColorN` buttons match it.
-- Probe count is hard-wired to 2 in the UI (`ProbeCount`, duplicated `*2` controls); the engines and
-  `ProbeSampler` take any number.
+
 - Video export needs Media Foundation (Windows N: Media Feature Pack); AVI/MJPEG is the fallback.
   GPU path needs an OpenCL ICD (`OpenCL.dll`); the CPU engine is the fallback. This machine has an
-  RTX 2080 with working OpenCL, so `engine_check` exercises both paths here.
+  RTX 2080 with working OpenCL, so `library_check` exercises both paths here.
