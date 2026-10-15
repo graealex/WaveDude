@@ -175,13 +175,12 @@ WPF shell as it stands:
   then the built-ins.
   `Controls/ColorSchemePicker` (a `ComboBox`, value = the scheme name) lists the project's schemes
   tagged "project", then the shared ones of the layer's `Kind`, each with a gradient strip, plus
-  "Load from file…" (JSON or `.wdscheme` into the project) and "Edit a copy in the project…" (clone,
-  reduced to 9 stops, selected in the tree). The tree has a "Colour schemes" folder (add, duplicate,
+  "Load from file…" (JSON or `.wdscheme` into the project) and "Edit a copy in the project…" (clone, selected in the tree). The tree has a "Colour schemes" folder (add, duplicate,
   remove, move, drag like sources); `Views/ColorSchemeView` edits name, kind (the author's "category", a
   free text his program stored but never read, was dropped 2026-10-15 from the model, the editor, the tables
   and the files; an old file's attribute is ignored on load, the JSON export no longer writes it) and one row
   per stop (position as a number box, swatch, hex), with "Add stop" (into the widest gap) and a
-  remove button per row, plus "Reduce to 9 stops" for a 255-stop table, and a "Based on" combo that
+  remove button per row, and a "Based on" combo that
   copies any shared or project scheme's stops into the one being edited (a new scheme starts grey).
   Edits
   recolour the preview at once (`ProjectWatcher` reports them as display changes,
@@ -202,7 +201,7 @@ WPF shell as it stands:
   scheme takes its layers along** (2026-10-15): `Project` watches its scheme list and each scheme's `Name`, keeps
   the last known name per scheme, and on a rename sets every display layer that named the old name
   (case-insensitively) to the new one; in the model, so every editor and the importer get it, and a removed scheme
-  is let go. The preview keeps its colours through a rename (the harness proves it by the field picture's hash). **The colour picker** (2026-10-15, the user's choice of an
+  is let go. The preview keeps its colours through a rename (the harness proves it by the field picture's hash). **No reduction in the editor** (2026-10-15, the user's call): the "Reduce to 9 stops" button, its command and strings and `ColorScheme.ReduceToStops` are gone, since the author's nine-stop form means nothing here (stops sit anywhere) and every shipped scheme is slimmed already; "Edit a copy in the project…" clones a scheme as it is (it reduced any scheme without exactly nine stops to nine evenly spaced ones, which made a lossy copy of the slimmed Inferno). A file loaded through "Load from file…" with more than 32 stops, one of the author's sampled tables, is slimmed to its bends on the way in (`ColorScheme.Simplify`, tolerance 3, logged), so 255 rows never reach the editor. **The colour picker** (2026-10-15, the user's choice of an
   in-house picker over the Windows dialog, which is not themed, has no live preview and cannot be driven by posted
   keys): each stop row's swatch is a `Controls/ColorPickerButton` (a `ToggleButton`; Space, Enter or Down open a
   popup below it, id `StopSwatch:<position>`, the hex box beside it `StopColor:<position>`, both in the locale's
@@ -993,7 +992,7 @@ progress and cancel are in, and the still of the shown frame; `library_check -- 
 cover them. Left: probe data as CSV (series per step, profiles per frame), an integer upscale for small
 canvases, HEVC (Media Foundation has it on some machines). Author's point 10.
 
-**Also open, smaller.** Offer `ColorScheme.Simplify` in the editor; base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
+**Also open, smaller.** base64 vs BaseXML for the embedded image; the RAM-first frame store (numbers above);
 dropping the 9-point Laplacian (author's suggestion, user undecided); timeline event tracks, zoom and
 pan (roadmap); dock pane titles are not exposed to UI Automation.
 

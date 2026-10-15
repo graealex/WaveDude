@@ -246,8 +246,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="PickerEditCopy">Modifier une copie dans le projet…</s:String>
 	<s:String x:Key="PickerProjectTag">projet</s:String>
 	<s:String x:Key="PickerMissingFormat">{0} (introuvable)</s:String>
-	<s:String x:Key="ButtonReduceToStops">Réduire à 9 points</s:String>
-	<s:String x:Key="TipReduceToStops">Garder 9 couleurs régulièrement espacées, prélevées dans cette table de 255 couleurs ; le dégradé est alors linéaire entre elles</s:String>
 	<s:String x:Key="LabelBasedOn">Modèle</s:String>
 	<s:String x:Key="TipBasedOn">Copie les points d'une palette existante dans celle-ci, à adapter ensuite</s:String>
 	<s:String x:Key="ButtonAddStop">Ajouter un point</s:String>

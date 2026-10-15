@@ -91,10 +91,6 @@ public partial class ColorSchemeView : UserControl
 		scheme.Description = "copy of scheme '" + chosen.Name + "'";
 	}
 
-	private void CanReduce(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Scheme is { IsStopScheme: false };
-
-	private void OnReduce(object sender, ExecutedRoutedEventArgs e) => Scheme?.ReduceToStops();
-
 	private void CanAddStop(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = Scheme != null;
 
 	private void OnAddStop(object sender, ExecutedRoutedEventArgs e) => Scheme?.AddStop();

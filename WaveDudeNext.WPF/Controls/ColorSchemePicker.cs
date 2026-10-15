@@ -72,6 +72,10 @@ public enum PickerAction
 public sealed class ColorSchemePicker : ComboBox
 {
 	private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+	/// <summary>More stops than this on a loaded file means a sampled table, which is slimmed to its bends.</summary>
+	private const int SampledTableStops = 32;
+	/// <summary>The tolerance (largest channel difference, 0 to 255) the shipped colormaps were slimmed with.</summary>
+	private const double SimplifyTolerance = 3;
 
 	/// <summary>Identifies the <see cref="Project"/> property.</summary>
 	public static readonly DependencyProperty ProjectProperty = DependencyProperty.Register(
@@ -261,6 +265,14 @@ public sealed class ColorSchemePicker : ComboBox
 		{
 			ColorScheme scheme = ColorSchemeStore.LoadFile(dialog.FileName);
 			scheme.FilePath = ""; // it lives in the project from now on
+			// one of the author's sampled 255-colour tables keeps only its bends (the shipped ones were slimmed the same
+			// way, tolerance 3 of 255): nobody edits 255 rows, and the look does not change
+			if (scheme.Stops.Count > SampledTableStops)
+			{
+				int before = scheme.Stops.Count;
+				scheme.Simplify(SimplifyTolerance);
+				Logger.Info("Colour scheme '{Name}': {Before} sampled colours reduced to {After} stops", scheme.Name, before, scheme.Stops.Count);
+			}
 			project.AddColorScheme(scheme);
 			SelectedName = scheme.Name;
 			Logger.Info("Colour scheme '{Name}' loaded from '{Path}' into the project", scheme.Name, dialog.FileName);
@@ -271,7 +283,7 @@ public sealed class ColorSchemePicker : ComboBox
 		}
 	}
 
-	/// <summary>Copies the scheme in use into the project as 9 stops, selects the copy and opens it in the Project tree.</summary>
+	/// <summary>Copies the scheme in use into the project as it is, selects the copy and opens it in the Project tree.</summary>
 	private void EditCopy()
 	{
 		if (Project is not { } project || ColorSchemeCatalog.Instance.Resolve(project, SelectedName) is not { } current)
@@ -279,10 +291,6 @@ public sealed class ColorSchemePicker : ComboBox
 			return;
 		}
 		ColorScheme copy = current.Clone(current.Name + " copy");
-		if (!copy.IsStopScheme)
-		{
-			copy.ReduceToStops();
-		}
 		if (project.ColorSchemes.Contains(current))
 		{
 			copy.Description = "copy of project scheme '" + current.Name + "'";

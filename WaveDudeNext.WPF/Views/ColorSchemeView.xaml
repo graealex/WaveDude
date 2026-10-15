@@ -31,13 +31,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 		<converters:RgbBrushConverter x:Key="RgbBrush" />
 		<StreamGeometry x:Key="MinusGeometry">M0,4 L8,4</StreamGeometry>
 		<!-- the "reduce" step applies to a sampled table only -->
-		<Style x:Key="TableOnly" TargetType="{x:Type FrameworkElement}">
-			<Style.Triggers>
-				<DataTrigger Binding="{Binding IsStopScheme}" Value="True">
-					<Setter Property="Visibility" Value="Collapsed" />
-				</DataTrigger>
-			</Style.Triggers>
-		</Style>
 		<Style x:Key="RemoveStopButton" TargetType="{x:Type Button}">
 			<Setter Property="Width" Value="18" />
 			<Setter Property="Height" Value="18" />
@@ -67,7 +60,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	</UserControl.Resources>
 
 	<UserControl.CommandBindings>
-		<CommandBinding Command="{x:Static commands:ColorSchemeCommands.ReduceToStops}" CanExecute="CanReduce" Executed="OnReduce" />
 		<CommandBinding Command="{x:Static commands:ColorSchemeCommands.AddStop}" CanExecute="CanAddStop" Executed="OnAddStop" />
 		<CommandBinding Command="{x:Static commands:ColorSchemeCommands.RemoveStop}" CanExecute="CanRemoveStop" Executed="OnRemoveStop" />
 	</UserControl.CommandBindings>
@@ -132,9 +124,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			<StackPanel Orientation="Horizontal">
 				<Button Padding="8,2" Margin="0,2,6,0" Content="{DynamicResource ButtonAddStop}" ToolTip="{DynamicResource TipAddStop}"
 				        Command="{x:Static commands:ColorSchemeCommands.AddStop}" AutomationProperties.AutomationId="SchemeAddStop" />
-				<Button Style="{StaticResource TableOnly}" Padding="8,2" Margin="0,2,0,0" Content="{DynamicResource ButtonReduceToStops}"
-				        ToolTip="{DynamicResource TipReduceToStops}" Command="{x:Static commands:ColorSchemeCommands.ReduceToStops}"
-				        AutomationProperties.AutomationId="SchemeReduce" />
 			</StackPanel>
 		</StackPanel>
 	</ScrollViewer>

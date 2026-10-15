@@ -246,8 +246,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="PickerEditCopy">Een kopie in het project bewerken…</s:String>
 	<s:String x:Key="PickerProjectTag">project</s:String>
 	<s:String x:Key="PickerMissingFormat">{0} (niet gevonden)</s:String>
-	<s:String x:Key="ButtonReduceToStops">Terugbrengen tot 9 punten</s:String>
-	<s:String x:Key="TipReduceToStops">9 gelijkmatig verdeelde kleuren uit deze tabel van 255 kleuren behouden; het verloop loopt dan recht tussen die punten</s:String>
 	<s:String x:Key="LabelBasedOn">Gebaseerd op</s:String>
 	<s:String x:Key="TipBasedOn">Neemt de punten van een bestaand schema over; daarna aanpassen</s:String>
 	<s:String x:Key="ButtonAddStop">Punt toevoegen</s:String>

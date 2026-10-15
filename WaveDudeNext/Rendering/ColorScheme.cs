@@ -97,8 +97,7 @@ public sealed class ColorStop : ObservableObject
 /// the author's files carried a 255-entry table plus, for the ones made in his editor, 9 evenly spaced
 /// stops; every shipped table equals the interpolation of its stops, so those schemes keep the 9 stops
 /// and the sampled colormaps keep 255 stops at i/254. Stops may sit anywhere (2026-10-13, the user's
-/// call: positions are fractions of the gradient); <see cref="ReduceToStops"/> samples a table down to
-/// the author's 9 evenly spaced ones. Serialises to XML as attributes plus one <c>Stop</c> element per
+/// call: positions are fractions of the gradient). Serialises to XML as attributes plus one <c>Stop</c> element per
 /// stop, both standalone (<c>.wdscheme</c>) and inside a project file. Observable: a stop's edit raises
 /// <c>Stops</c> on the scheme. UI thread for edits; the derived table is read by anyone building a LUT.
 /// </summary>
@@ -311,26 +310,6 @@ public sealed class ColorScheme : ObservableObject
 
 	/// <summary>Removes a stop; false when it is not here or the last one.</summary>
 	public bool RemoveStop(ColorStop stop) => Stops.Count > 1 && Stops.Remove(stop);
-
-	/// <summary>
-	/// Turns a sampled table into the author's editable gradient: keeps 9 evenly spaced colours sampled
-	/// from the table (his "9-stop copy"); a scheme that already has 9 stops is left alone. The look
-	/// changes where the table was not linear between those points.
-	/// </summary>
-	public void ReduceToStops()
-	{
-		if (IsStopScheme)
-		{
-			return;
-		}
-		var stops = new Rgb[StopCount];
-		for (int i = 0; i < StopCount; i++)
-		{
-			stops[i] = SampleAt((i * (EntryCount - 1)) / (double)(StopCount - 1));
-		}
-		Description = StopCount.ToString(CultureInfo.InvariantCulture) + "-stop copy of scheme '" + Name + "'";
-		SetColors(stops);
-	}
 
 	/// <summary>
 	/// Drops every stop that the straight line between its neighbours reproduces within

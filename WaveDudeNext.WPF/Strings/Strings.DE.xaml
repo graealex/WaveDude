@@ -246,8 +246,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="PickerEditCopy">Kopie im Projekt bearbeiten…</s:String>
 	<s:String x:Key="PickerProjectTag">Projekt</s:String>
 	<s:String x:Key="PickerMissingFormat">{0} (nicht gefunden)</s:String>
-	<s:String x:Key="ButtonReduceToStops">Auf 9 Stützpunkte reduzieren</s:String>
-	<s:String x:Key="TipReduceToStops">9 gleichmäßig verteilte Farben aus dieser 255-Farben-Tabelle behalten; der Verlauf läuft dann gerade zwischen ihnen</s:String>
 	<s:String x:Key="LabelBasedOn">Vorlage</s:String>
 	<s:String x:Key="TipBasedOn">Übernimmt die Stützpunkte eines vorhandenen Schemas; danach anpassen</s:String>
 	<s:String x:Key="ButtonAddStop">Stützpunkt hinzufügen</s:String>

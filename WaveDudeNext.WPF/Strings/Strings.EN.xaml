@@ -248,8 +248,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="PickerEditCopy">Edit a copy in the project…</s:String>
 	<s:String x:Key="PickerProjectTag">project</s:String>
 	<s:String x:Key="PickerMissingFormat">{0} (not found)</s:String>
-	<s:String x:Key="ButtonReduceToStops">Reduce to 9 stops</s:String>
-	<s:String x:Key="TipReduceToStops">Keep 9 evenly spaced colours sampled from this 255-colour table; the gradient then runs straight between them</s:String>
 	<s:String x:Key="LabelBasedOn">Based on</s:String>
 	<s:String x:Key="TipBasedOn">Copy the stops of an existing scheme into this one, then change them</s:String>
 	<s:String x:Key="ButtonAddStop">Add stop</s:String>
