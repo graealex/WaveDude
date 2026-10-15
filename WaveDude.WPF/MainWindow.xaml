@@ -250,6 +250,8 @@
 							<Binding Path="Run.TotalSteps" />
 							<Binding Path="Run.EngineDescription" />
 							<Binding Path="IsRunStale" />
+							<!-- the language, so the words follow a switch (the status kept "Abgeschlossen" after one, 2026-10-15) -->
+							<Binding Path="Current" Source="{x:Static localization:LanguageController.Instance}" />
 						</MultiBinding>
 					</TextBlock.Text>
 				</TextBlock>

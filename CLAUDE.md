@@ -209,7 +209,11 @@ WPF shell as it stands:
   French). The Properties
   pane is localised through generated keys: `Label.<Type>.<Member>`, `Hint.<Type>.<Member>` and
   `Enum.<Type>.<Member>`; the `meta:Label`/`meta:Hint` extensions return a `DynamicResource` when
-  the key exists (live) and the attribute text otherwise, `EnumNameConverter` looks the key up first.
+  the key exists (live) and the attribute text otherwise, `EnumNameConverter` looks the key up first. A converter's output does not follow a
+  language switch by itself: the enum combos' item template and the status bar's run line bind the current
+  language (`LanguageController.Instance.Current`) as an extra input of a `MultiBinding`, so they re-read
+  their words (2026-10-15, after "Intensiteit" and "Abgeschlossen" stayed on after a switch back; UI
+  Automation does not expose a combo's selection text, so a `PrintWindow` capture was the proof).
   The model's `DisplayName`/`Description` attributes stay the English source; `_tools/…` is not
   needed: the generator was a one-off script, the English block in `Strings.EN.xaml` is what the
   attributes said on 2026-10-14. **Adding a model property means adding its keys to all four
