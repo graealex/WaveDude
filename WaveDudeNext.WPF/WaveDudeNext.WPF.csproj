@@ -10,6 +10,12 @@
     <StartupObject>WaveDudeNext.WPF.Program</StartupObject>
     <!-- executable icon (Explorer, taskbar); the window icon is the same file as a resource -->
     <ApplicationIcon>App.ico</ApplicationIcon>
+    <!-- read by About and the file properties; the licence text is LICENSE.md, the header of every source file names it -->
+    <Authors>Alexander Graef</Authors>
+    <Copyright>Copyright (C) 2026 Alexander Graef</Copyright>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <!-- the .editorconfig code-style rules are build warnings too: a file without the licence header (IDE0073) -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
   <ItemGroup>

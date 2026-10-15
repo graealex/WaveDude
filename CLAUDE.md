@@ -963,7 +963,7 @@ pan (roadmap); Help > About has no content; dock pane titles are not exposed to 
    Deferred, possibly never: filmstrip thumbnails behind the bar (needs cached frames).
 6. ~~Retire `Wave_Dude_2D`~~ (removed 2026-10-15 together with the VB source; the solution file still carries the old name).
 
-## Rebrand and licensing (designed 2026-10-15, **not applied yet**)
+## Rebrand and licensing (designed 2026-10-15, applied the same day)
 
 The WPF app becomes **WaveDude Next** (agreed with Jeroen Vleggaar by mail 2026-10-15; he proposed
 "Pro", the user chose "Next" since Pro/Plus suggests a paid tier). Project, namespaces, the GitHub
@@ -989,8 +989,11 @@ numerics Jeroen's engine took its design from; surname not public; the 0x23 = Ma
 Jeroen's mail of 2026-10-08, which also says Manuel consented to publication and will add an MIT
 licence to his repo). Private addresses stay out of files.
 
-**Source header** (accepted 2026-10-15; the same text in every file, `'` in VB, `//` in C#,
-`<!-- -->` in XAML, `#` in PowerShell/Python; no per-file provenance, no "ported from / modified by"):
+**Source header** (accepted 2026-10-15, applied to every `.cs`, `.xaml`, `.ps1` and `.py` file the same day, the
+generated `Settings.Designer.cs` excepted; the same text in every file, `'` in VB, `//` in C#, `<!-- -->` as one
+block in XAML, `#` in PowerShell/Python; no per-file provenance, no "ported from / modified by". The warranty
+sentence ends in a full stop, not the semicolon first accepted: Roslyn's editorconfig parser cuts a value at the
+first `;` or `#` as a trailing comment, which truncated the `file_header_template` and flagged every file):
 
 ```
 ' SPDX-License-Identifier: GPL-3.0-or-later
@@ -1007,7 +1010,7 @@ licence to his repo). Private addresses stay out of files.
 ' WaveDude Next is free software: you can redistribute it and/or modify it under
 ' the terms of the GNU General Public License as published by the Free Software
 ' Foundation, either version 3 of the License, or (at your option) any later
-' version. It is distributed WITHOUT ANY WARRANTY; see the LICENSE.md file or
+' version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 ' <https://www.gnu.org/licenses/>.
 ```
 
@@ -1025,12 +1028,13 @@ first push** and move the block into the README if the label is missing. The lic
 never edited (the FSF allows verbatim copies only). `LICENSE.md` is the name the header points at
 (GitHub also accepts `LICENSE` and `COPYING`; one file, one name).
 
-**Companions when applied**: `<Authors>Alexander Graef</Authors>`, `<Copyright>Copyright (C) 2026
+**Companions, applied 2026-10-15**: `<Authors>Alexander Graef</Authors>`, `<Copyright>Copyright (C) 2026
 Alexander Graef</Copyright>`, `<PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>`
-in both SDK projects (About and the file properties read them); a README with a Credits section
-naming the three people as in the header; `file_header_template` in `.editorconfig` so the IDE adds
-the header to new files. Applying all of this is a separate step, after the coding session that is
-running on the source today.
+in both SDK projects (About and the file properties read them); `file_header_template` in `.editorconfig` so
+the IDE adds the header to new files, with IDE0073 at warning and `EnforceCodeStyleInBuild` in all three
+projects (the harness too), so **a file without the header is a build warning** and breaks the zero-warnings
+rule. Still to come: a README with a Credits section naming the three people as in the header (the file
+exists, empty; CLAUDE.md, LICENSE.md and README.md are solution items since 2026-10-15).
 
 ## Conventions
 
