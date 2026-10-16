@@ -160,6 +160,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="TipPreviewLoop">Wiedergabe im Exportbereich wiederholen (L)</s:String>
 	<s:String x:Key="TipPreviewLive">Dem neuesten Bild folgen, solange der Lauf läuft (F)</s:String>
 	<s:String x:Key="TipPreviewRun">Simulation von vorn starten (F5)</s:String>
+	<s:String x:Key="TipPreviewStop">Simulation stoppen; die bisherigen Bilder bleiben (Esc)</s:String>
 	<s:String x:Key="TipPreviewShowField">Feldbild anzeigen</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Intensitätsbild anzeigen</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: zum Verschieben ziehen; mit Tastaturfokus bewegen die Pfeiltasten um ein Pixel, mit Umschalt um zehn</s:String>

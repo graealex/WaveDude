@@ -691,7 +691,7 @@ passing harnesses for comfort, never all of them after an edit.
 - `_tools/ui_check/PreviewCheck.ps1` drives the WPF preview pane end to end on the default project
   (43 checks: play/pause at the 60 fps clock, speed incl. locale spelling, timeline keys, frame
   steps, in/out/loop, split radios, splitter, tab order, focus hand-off, foreground untouched).
-  `_tools/ui_check/RunCheck.ps1` runs simulations (33 checks): `tiny.wdproj` (64×48, 200 steps) with
+  `_tools/ui_check/RunCheck.ps1` runs simulations (36 checks): `tiny.wdproj` (64×48, 200 steps) with
   F5 to completion, live follow, `,` detaching, the field picture differing between frames (MD5 of
   a `PrintWindow` crop), `F` re-attaching, playback of the stored frames, a second run, the source
   handle sitting at the source's canvas position on both pictures, staying there when the window
@@ -699,7 +699,7 @@ passing harnesses for comfort, never all of them after an edit.
   labels, 2026-10-10) and moving with the arrow keys while the tree selection follows, a scratch frame replacing the black canvas after an edit with
   no run, and after the run: an edit marks it stale, the shown frame is recomputed from scratch,
   the automatic re-run completes with the position kept and reproduces the original picture; then
-  `tiny_long.wdproj` (2 000 000 steps, a frame every 1000) for F6 pause/resume and Esc stop with the
+  `tiny_long.wdproj` (2 000 000 steps, a frame every 1000) for F6 pause/resume and a stop through the Run button turned Stop with the
   partial frames kept, then an edit starting an automatic re-run that leaves the position and Live
   alone, and a second edit stopping it at once before a fresh one starts. Both dot-source `Common.ps1` (native helpers, lookups, `Start-App`/`Stop-App`,
   `CanvasPoint` for the picture's uniform mapping, `TreeItemSelected`). The split orientation is a
@@ -990,7 +990,10 @@ Thirteen points on a sneak peek of the WPF app; status as of 2026-10-12:
   while the format could still change; the string tables name them, `EnumNameConverter` falls back to a
   `[Description]`); (9) the four random amounts of an array sit under
   their own header "Random offsets, added per emitter"; (2) the in/out tooltips say "export range".
-- Done 2026-10-13: (1) a Run button (ring with a triangle, F5) left of Play, (4) two toggles left of
+- Done 2026-10-13: (1) a Run button (ring with a triangle, F5) left of Play; **the same button is Stop while a run is in
+  progress** (2026-10-16, the user's rule: ring with a square, `StopGeometry`, the `Stop` command, tooltip `TipPreviewStop`;
+  glyph, command and tooltip are style setters swapped by a `DataTrigger` on `Run.IsActive`, since a local value would beat
+  the trigger; the id stays `PreviewRun`, RunCheck tells the states apart by the name), (4) two toggles left of
   the split radios show or hide each picture (bound to the layer's `Preview`, so hiding the intensity
   also stops storing it; the remaining picture takes the whole area and the splitter collapses,
   `UpdatePictureLayout`), (6/3) the scene image and its outline in the preview.

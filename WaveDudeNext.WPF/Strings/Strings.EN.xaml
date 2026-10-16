@@ -162,6 +162,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="TipPreviewLoop">Loop playback over the export range (L)</s:String>
 	<s:String x:Key="TipPreviewLive">Follow the newest frame while the run is in progress (F)</s:String>
 	<s:String x:Key="TipPreviewRun">Run the simulation from the start (F5)</s:String>
+	<s:String x:Key="TipPreviewStop">Stop the simulation; the frames so far stay (Esc)</s:String>
 	<s:String x:Key="TipPreviewShowField">Show the field picture</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Show the intensity picture</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: drag to move; with keyboard focus the arrow keys move it by a pixel, ten with Shift</s:String>

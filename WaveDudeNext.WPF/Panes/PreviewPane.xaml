@@ -34,6 +34,8 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 
 		<!-- "run": a play triangle inside a ring (the author asked for an explicit start button, 2026-10-13) -->
 		<StreamGeometry x:Key="RunGeometry">M0,7 A7,7 0 1 1 14,7 A7,7 0 1 1 0,7 Z M1.4,7 A5.6,5.6 0 1 0 12.6,7 A5.6,5.6 0 1 0 1.4,7 Z M5.2,3.5 L10.8,7 L5.2,10.5 Z</StreamGeometry>
+		<!-- "stop": the same ring with a square inside; the Run button shows it while a run is in progress (2026-10-16) -->
+		<StreamGeometry x:Key="StopGeometry">M0,7 A7,7 0 1 1 14,7 A7,7 0 1 1 0,7 Z M1.4,7 A5.6,5.6 0 1 0 12.6,7 A5.6,5.6 0 1 0 1.4,7 Z M4.7,4.7 L9.3,4.7 L9.3,9.3 L4.7,9.3 Z</StreamGeometry>
 		<!-- the two pictures: a wave for the field, a sun for the intensity -->
 		<StreamGeometry x:Key="FieldGeometry">M0,6 C1.5,1 2.5,1 4,6 C5.5,11 6.5,11 8,6 C9,3 10,3 11,6 L11,7.5 C10,5 9,5 8,7.5 C6.5,12.5 5.5,12.5 4,7.5 C2.5,2.5 1.5,2.5 0,7.5 Z</StreamGeometry>
 		<StreamGeometry x:Key="IntensityGeometry">M3,5 A2,2 0 1 1 7,5 A2,2 0 1 1 3,5 Z M4.4,0 L5.6,0 L5.6,2 L4.4,2 Z M4.4,8 L5.6,8 L5.6,10 L4.4,10 Z M0,4.4 L2,4.4 L2,5.6 L0,5.6 Z M8,4.4 L10,4.4 L10,5.6 L8,5.6 Z</StreamGeometry>
@@ -334,10 +336,28 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 		     this one, since both dock to the bottom) and follows in the tab order. -->
 		<Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource ToolWindowBorder}" BorderThickness="0,1,0,0" Padding="4,3">
 			<DockPanel KeyboardNavigation.TabNavigation="Local">
-				<!-- an explicit "run the simulation" next to Play (Play alone starts one only when needed) -->
-				<Button DockPanel.Dock="Left" TabIndex="0" Style="{StaticResource TransportButton}" Content="{StaticResource RunGeometry}"
-				        Command="{x:Static commands:SimulationCommands.Run}" ToolTip="{DynamicResource TipPreviewRun}"
-				        AutomationProperties.Name="{DynamicResource TipPreviewRun}" AutomationProperties.AutomationId="PreviewRun" />
+				<!-- an explicit "run the simulation" next to Play (Play alone starts one only when needed); while a run is in
+				     progress the same button is Stop (the user's rule, 2026-10-16): glyph, command and tooltip come from the
+				     style, since a local value would win over the trigger. Its id stays PreviewRun; a harness tells the two
+				     apart by the name -->
+				<Button DockPanel.Dock="Left" TabIndex="0" AutomationProperties.AutomationId="PreviewRun">
+					<Button.Style>
+						<Style TargetType="{x:Type Button}" BasedOn="{StaticResource TransportButton}">
+							<Setter Property="Content" Value="{StaticResource RunGeometry}" />
+							<Setter Property="Command" Value="{x:Static commands:SimulationCommands.Run}" />
+							<Setter Property="ToolTip" Value="{DynamicResource TipPreviewRun}" />
+							<Setter Property="AutomationProperties.Name" Value="{DynamicResource TipPreviewRun}" />
+							<Style.Triggers>
+								<DataTrigger Binding="{Binding Run.IsActive, ElementName=pane, FallbackValue=False}" Value="True">
+									<Setter Property="Content" Value="{StaticResource StopGeometry}" />
+									<Setter Property="Command" Value="{x:Static commands:SimulationCommands.Stop}" />
+									<Setter Property="ToolTip" Value="{DynamicResource TipPreviewStop}" />
+									<Setter Property="AutomationProperties.Name" Value="{DynamicResource TipPreviewStop}" />
+								</DataTrigger>
+							</Style.Triggers>
+						</Style>
+					</Button.Style>
+				</Button>
 				<Rectangle DockPanel.Dock="Left" Width="1" Margin="4,2" Fill="{DynamicResource ToolWindowBorder}" />
 				<Button x:Name="playButton" DockPanel.Dock="Left" TabIndex="1" Style="{StaticResource TransportButton}" Content="{StaticResource PlayGeometry}"
 				        Command="MediaCommands.Play" ToolTip="{DynamicResource TipPreviewPlay}"

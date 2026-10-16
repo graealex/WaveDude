@@ -160,6 +160,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="TipPreviewLoop">Lire en boucle sur la plage d'export (L)</s:String>
 	<s:String x:Key="TipPreviewLive">Suivre l'image la plus récente pendant l'exécution (F)</s:String>
 	<s:String x:Key="TipPreviewRun">Lancer la simulation depuis le début (F5)</s:String>
+	<s:String x:Key="TipPreviewStop">Arrêter la simulation ; les images calculées restent (Échap)</s:String>
 	<s:String x:Key="TipPreviewShowField">Afficher l'image du champ</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Afficher l'image de l'intensité</s:String>
 	<s:String x:Key="TipMarkerFormat">{0} : glisser pour déplacer ; avec le focus clavier, les flèches déplacent d'un pixel, de dix avec Maj</s:String>

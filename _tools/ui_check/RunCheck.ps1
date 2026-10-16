@@ -153,6 +153,8 @@ try {
 	FocusOn "PreviewPlay"
 	Key $VK_F5 100
 	Check "F5: running" (WaitFor { (RunStatus) -like "Running:*" } 10000) (RunStatus)
+	# the Run button is Stop while the run is in progress (2026-10-16); same id, told apart by its name
+	Check "the Run button turned into Stop" (WaitFor { (Find "PreviewRun").Current.Name -like "Stop the simulation*" } 2000) ((Find "PreviewRun").Current.Name)
 	$null = WaitFor { (Position) -ge 2 } 5000 50
 	$f1 = Position
 	$advanced = WaitFor { (Position) -gt $f1 } 5000 50
@@ -165,8 +167,10 @@ try {
 	Key $VK_F6 100
 	Check "F6 resumes" (WaitFor { (RunStatus) -like "Running:*" } 5000) (RunStatus)
 	$null = WaitFor { (Position) -ge 40 } 20000 50   # enough frames for the scrub checks below, however fast the keys are
-	Key $VK_ESCAPE 100
-	Check "Esc stops the run" (WaitFor { (RunStatus) -like "Stopped:*" } 10000) (RunStatus)
+	FocusOn "PreviewRun"
+	Key $VK_SPACE 100
+	Check "Space on the Stop button stops the run" (WaitFor { (RunStatus) -like "Stopped:*" } 10000) (RunStatus)
+	Check "the button is Run again" (WaitFor { (Find "PreviewRun").Current.Name -like "Run the simulation*" } 2000) ((Find "PreviewRun").Current.Name)
 	Start-Sleep -Milliseconds 200
 	$last = Position
 	Check "the frames computed so far stay, the preview on the newest one, Live off" (-not (LiveOn) -and $last -gt 0 -and (Frame) -eq ("{0} / {0}" -f $last)) (Frame)

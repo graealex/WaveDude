@@ -160,6 +160,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="TipPreviewLoop">Afspelen herhalen binnen het exportbereik (L)</s:String>
 	<s:String x:Key="TipPreviewLive">Het nieuwste beeld volgen zolang de run loopt (F)</s:String>
 	<s:String x:Key="TipPreviewRun">Simulatie vanaf het begin starten (F5)</s:String>
+	<s:String x:Key="TipPreviewStop">Simulatie stoppen; de berekende beelden blijven (Esc)</s:String>
 	<s:String x:Key="TipPreviewShowField">Veldbeeld tonen</s:String>
 	<s:String x:Key="TipPreviewShowIntensity">Intensiteitsbeeld tonen</s:String>
 	<s:String x:Key="TipMarkerFormat">{0}: slepen om te verplaatsen; met toetsenbordfocus verplaatsen de pijltoetsen één pixel, tien met Shift</s:String>
