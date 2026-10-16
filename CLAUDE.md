@@ -1116,15 +1116,17 @@ Jeroen's line carries his copyright so the GPL's notice-preservation rule (secti
 on the files that descend from his code without a separate notice. The author's own VB tree
 was removed from the repo on 2026-10-15; his headers live on in git history.
 
-**LICENSE.md** (written 2026-10-15, the user's call): a short attribution block on top (the project
-name, the copyright line, the same "Based on the work of" list as the header, one GPL sentence, a
-rule), then the FSF's own Markdown of the license, <https://www.gnu.org/licenses/gpl-3.0.md>,
-**verbatim** (34,893 bytes, md5 `ba29b1da0f9c28e2a9e072aba46cf040`; `tail -n +19 LICENSE.md | md5sum`
-must give that). The block is about 2 % of the file, which should stay inside the near-exact match
-GitHub's license detection (licensee) needs to label the repo "GPL-3.0"; **check the sidebar after the
-first push** and move the block into the README if the label is missing. The license text itself is
-never edited (the FSF allows verbatim copies only). `LICENSE.md` is the name the header points at
-(GitHub also accepts `LICENSE` and `COPYING`; one file, one name).
+**LICENSE.md** (written 2026-10-15, the user's call) is the FSF's own Markdown of the license,
+<https://www.gnu.org/licenses/gpl-3.0.md>, **verbatim and nothing else** (34,893 bytes, md5
+`ba29b1da0f9c28e2a9e072aba46cf040`; `md5sum LICENSE.md` must give that). The first version carried a
+short attribution block on top (project name, copyright line, the "Based on the work of" list, one GPL
+sentence, a rule: 718 bytes, 2 % of the file); the first push to <https://github.com/graealex/WaveDude>
+showed that GitHub's license detection (licensee) does not tolerate even that: the API reported
+`"spdx_id": "NOASSERTION"`, the sidebar said "Other" (checked 2026-10-16). So the block was taken out the
+same day; the README's Credits and License sections carry the same facts. The license text itself is
+never edited (the FSF allows verbatim copies only), and nothing is added above or below it. `LICENSE.md`
+is the name the header points at (GitHub also accepts `LICENSE` and `COPYING`; one file, one name).
+**Check the sidebar after the next push**: it should read "GPL-3.0".
 
 **Companions, applied 2026-10-15**: `<Authors>Alexander Graef</Authors>`, `<Copyright>Copyright (C) 2026
 Alexander Graef</Copyright>`, `<PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>`

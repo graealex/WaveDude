@@ -1,21 +1,3 @@
-# WaveDude Next
-
-Copyright (C) 2026 Alexander Graef <alex@graef.cc>
-
-Based on the work of
-
-- JJM Vleggaar (Huygens Optics), author of Wave Dude 2D, Copyright (C) 2026:
-  <https://www.youtube.com/@HuygensOptics>, <https://www.huygensoptics.com>
-- Manuel (0x23, Diffraction Limited), author of WaveSimulator2D:
-  <https://www.youtube.com/@DiffractionLimited>, <https://github.com/0x23/WaveSimulator2D>
-
-WaveDude Next is free software: you can redistribute it and/or modify it under the terms of the
-GNU General Public License as published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY. The full
-license text follows.
-
----
-
 # GNU GENERAL PUBLIC LICENSE
 
 Version 3, 29 June 2007
