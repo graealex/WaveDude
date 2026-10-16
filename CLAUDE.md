@@ -903,9 +903,13 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, 
   frames in the run's `FrameShape` (halves, or palette index bytes; the canvas shrunk by the divisor, see
   "Reduced preview" in the WPF shell list), planes in `FrameLayer` order, only those
   present (`RunSpec.Layers`: field always; intensity when the intensity preview or export is on or a
-  probe needs it). The budget is `FrameMemory.Budget(percent)`: what `GlobalMemoryStatusEx` says is free now
+  probe needs it). The budget is `FrameMemory.Budget(percent, reclaimedBytes)`: what `GlobalMemoryStatusEx` says is free now
   minus a 2 GB margin (the application's own buffers and headroom for other programs, a sum that does not
-  scale with the machine's RAM), so a run never pushes the machine into its page file; Simulation > Frames
+  scale with the machine's RAM), so a run never pushes the machine into its page file; `reclaimedBytes` is the
+  outgoing run's `Store.RamBytes`, counted as available since `DiscardRun` frees it moments later (2026-10-16,
+  found on the 16 GB laptop: measured next to the old 5.4 GB store, a half-resolution re-run that fit whole in
+  RAM got a 0.6 GB budget and spilled 90 % to the HDD; the workstation's re-runs hit the disk the same way; the
+  arithmetic is a pure internal overload that `library_check` checks exactly); Simulation > Frames
   kept in memory (2026-10-15, the user's design after the three-step share read as crude) offers "Auto" (the
   same word in every language) and 10 % to 100 % of the physical RAM as an upper bound on top of that, the
   setting `FrameMemoryPercent` with 0 = Auto, the default (a `user.config` from before keeps its 50 until

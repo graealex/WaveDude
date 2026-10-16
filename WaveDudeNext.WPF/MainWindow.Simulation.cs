@@ -91,8 +91,9 @@ public partial class MainWindow
 		PreviewQuality quality = fullQuality ? PreviewQuality.Full : PreviewQualitySetting;
 		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu, trackIntensity, quality);
 		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
-		// the rest needs room on the cache drive (2026-10-14)
-		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent);
+		// the rest needs room on the cache drive (2026-10-14). The outgoing run's frames count as free: DiscardRun
+		// below gives them back before the new store's blocks are touched (2026-10-16)
+		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, Run?.Store.RamBytes ?? 0);
 		int ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
 		if (ramFrames < spec.StoredFrameCount)
 		{

@@ -63,15 +63,23 @@ public static class FrameMemory
 	/// <paramref name="percentOfPhysical"/> of the physical memory when that is not <see cref="Automatic"/>; never negative.
 	/// </summary>
 	/// <param name="percentOfPhysical">The user's upper bound, 1 to 100 (clamped), or <see cref="Automatic"/> for none.</param>
-	public static long Budget(int percentOfPhysical)
+	/// <param name="reclaimedBytes">Memory the caller gives back before the new frames are allocated (the outgoing
+	/// run's frames), counted as available: Windows still reports it as in use when asked now. Without it a re-run
+	/// measured next to its predecessor's store under-budgets by that store's size and spills a run that fits
+	/// (found on a 16 GB laptop, 2026-10-16).</param>
+	public static long Budget(int percentOfPhysical, long reclaimedBytes = 0)
+		=> Budget(AvailableBytes(), PhysicalBytes(), percentOfPhysical, reclaimedBytes);
+
+	/// <summary>The arithmetic of <see cref="Budget(int, long)"/> on given measurements, exact for the harness.</summary>
+	internal static long Budget(long availableBytes, long physicalBytes, int percentOfPhysical, long reclaimedBytes)
 	{
-		long byAvailable = AvailableBytes() - Margin;
+		long byAvailable = availableBytes + reclaimedBytes - Margin;
 		if (percentOfPhysical <= Automatic)
 		{
 			return Math.Max(0, byAvailable);
 		}
 		double share = Math.Clamp(percentOfPhysical, 1, 100) / 100.0;
-		long byShare = (long)(PhysicalBytes() * share);
+		long byShare = (long)(physicalBytes * share);
 		return Math.Max(0, Math.Min(byShare, byAvailable));
 	}
 

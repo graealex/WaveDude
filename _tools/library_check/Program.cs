@@ -724,6 +724,15 @@ internal static class Program
 		Check(FrameMemory.PhysicalBytes() > 1L << 30 && FrameMemory.AvailableBytes() <= FrameMemory.PhysicalBytes() && FrameMemory.Budget(50) <= FrameMemory.PhysicalBytes() / 2
 			&& Math.Abs(automatic - Math.Max(0, FrameMemory.AvailableBytes() - FrameMemory.Margin)) < 512L << 20 && FrameMemory.Budget(50) <= automatic + (512L << 20) && FrameMemory.Budget(1) <= FrameMemory.PhysicalBytes() / 100,
 			"memory: " + FrameMemory.Gigabytes(FrameMemory.PhysicalBytes()) + " physical, " + FrameMemory.Gigabytes(FrameMemory.AvailableBytes()) + " available, automatic " + FrameMemory.Gigabytes(automatic) + ", at most 50 % " + FrameMemory.Gigabytes(FrameMemory.Budget(50)));
+		// the outgoing run's frames count as available (reclaimed; the laptop finding of 2026-10-16): exact on the
+		// pure overload — 3 GB free + 5 GB reclaimed - 2 GB margin = 6 GB, capped by a 25 % share of 16 GB, never negative
+		const long gb = 1L << 30;
+		Check(FrameMemory.Budget(3 * gb, 16 * gb, FrameMemory.Automatic, 5 * gb) == 6 * gb
+			&& FrameMemory.Budget(3 * gb, 16 * gb, 25, 5 * gb) == 4 * gb
+			&& FrameMemory.Budget(3 * gb, 16 * gb, FrameMemory.Automatic, 0) == 1 * gb
+			&& FrameMemory.Budget(1 * gb, 16 * gb, FrameMemory.Automatic, 0) == 0
+			&& FrameMemory.Budget(1 * gb, 16 * gb, 100, 512L << 20) == 0,
+			"budget: reclaimed memory of the outgoing run counts as available, the share still caps it");
 
 		// a full-HD store of 1 GB: the writes must run at memory speed and the dispose must not flush the
 		// dirty pages to disk (the file is deleted anyway; this used to take a minute for a 10 GB run)

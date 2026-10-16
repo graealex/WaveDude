@@ -40,7 +40,7 @@ namespace WaveDudeNext.Runs;
 /// the memory manager's own allowance and then write at disk speed whatever the file's attributes say
 /// (a 10 GB full-HD run took 14 s against the drive with 40 GB of memory free), and a mapping paid a page
 /// fault per fresh page and flushed everything on unmap. The budget is ours, decided from what is free when
-/// the run starts (<see cref="FrameMemory.Budget"/>), so the machine is never pushed into its page file.
+/// the run starts (<see cref="FrameMemory.Budget(int, long)"/>), so the machine is never pushed into its page file.
 /// Threads: the run's worker is the only writer (<see cref="Write(int, ReadOnlySpan{Half}, ReadOnlySpan{Half})"/>,
 /// frames in order); any thread may read frames below <see cref="Count"/>, which is published after the
 /// frame's bytes. Reads and writes run concurrently; <see cref="Dispose"/> waits for them, frees the memory
@@ -177,7 +177,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	/// <param name="layers">The planes every frame holds; at least one.</param>
 	/// <param name="capacity">Number of frames the run produces (<see cref="RunSpec.FrameCount"/>).</param>
 	/// <param name="visualizeEvery">Steps per frame, kept for <see cref="StepOf"/>.</param>
-	/// <param name="ramBudget">Bytes of memory the frames may take; null takes <see cref="FrameMemory.Budget"/> at the default share.</param>
+	/// <param name="ramBudget">Bytes of memory the frames may take; null takes <see cref="FrameMemory.Budget(int, long)"/> at the default share.</param>
 	/// <exception cref="IOException">The file cannot be created or sized (for instance no disk space).</exception>
 	public static FrameStore Create(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null) =>
 		new(path, shape, layers, capacity, visualizeEvery, ramBudget ?? FrameMemory.Budget(FrameMemory.DefaultPercent));
