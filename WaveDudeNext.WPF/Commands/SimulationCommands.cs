@@ -37,7 +37,7 @@ public static class SimulationCommands
 	public static readonly RoutedUICommand EnsureRun = new("Run if needed", nameof(EnsureRun), typeof(SimulationCommands));
 
 	/// <summary>Sets the share of the memory a run's frames may take (the parameter: a percentage as text); the Simulation menu's choices.</summary>
-	public static readonly RoutedUICommand SetFrameMemory = new("Frames kept in memory", nameof(SetFrameMemory), typeof(SimulationCommands));
+	public static readonly RoutedUICommand SetFrameMemory = new("RAM cache size", nameof(SetFrameMemory), typeof(SimulationCommands));
 
 	/// <summary>Stops the run; the frames computed so far stay in the preview. Shift+F5, or Escape (the usual "stop what you are doing" key, and reachable without a modifier).</summary>
 	public static readonly RoutedUICommand Stop = new("Stop", nameof(Stop), typeof(SimulationCommands),

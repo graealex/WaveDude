@@ -23,7 +23,7 @@ using WaveDudeNext.Runs;
 namespace WaveDudeNext.WPF.Converters;
 
 /// <summary>
-/// The header of a Simulation > Frames kept in memory entry: "Auto" (the string table's
+/// The header of a Simulation > RAM cache size entry: "Auto" (the string table's
 /// <c>MenuSimulationFrameMemoryAuto</c>) for <see cref="FrameMemory.Automatic"/>, else the percentage of the
 /// RAM, "10 %" to "100 %". A multi-value converter whose first input is the option and whose second, the
 /// current language, only serves to re-read the resource on a language switch (2026-10-15).

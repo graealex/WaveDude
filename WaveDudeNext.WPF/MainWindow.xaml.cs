@@ -101,7 +101,7 @@ public partial class MainWindow : Window
 			}
 			else if (args.PropertyName == nameof(Settings.FrameMemoryPercent))
 			{
-				Logger.Info("Frames kept in memory: {Bound}, {Budget} right now (Simulation menu)",
+				Logger.Info("RAM cache size: {Bound}, {Budget} right now (Simulation menu)",
 					Settings.Default.FrameMemoryPercent <= FrameMemory.Automatic ? "automatic (what is free minus " + FrameMemory.Gigabytes(FrameMemory.Margin) + ")" : "at most " + Settings.Default.FrameMemoryPercent + " % of the RAM",
 					FrameMemory.Gigabytes(FrameMemory.Budget(Settings.Default.FrameMemoryPercent)));
 			}
@@ -353,7 +353,7 @@ public partial class MainWindow : Window
 		return dialog.ShowDialog(this) == true && SaveFile(dialog.FileName);
 	}
 
-	/// <summary>Simulation > Frames kept in memory: the chosen share of the RAM, applied to the next run.</summary>
+	/// <summary>Simulation > RAM cache size: the chosen share of the RAM, applied to the next run.</summary>
 	private void OnSetFrameMemory(object sender, ExecutedRoutedEventArgs e) => SetIntSetting(e, percent => Settings.Default.FrameMemoryPercent = percent);
 
 	/// <summary>View > Preview resolution: the canvas divisor (1, 2, 4), applied to the next scratch frame and run.</summary>

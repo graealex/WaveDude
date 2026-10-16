@@ -909,8 +909,9 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, 
   outgoing run's `Store.RamBytes`, counted as available since `DiscardRun` frees it moments later (2026-10-16,
   found on the 16 GB laptop: measured next to the old 5.4 GB store, a half-resolution re-run that fit whole in
   RAM got a 0.6 GB budget and spilled 90 % to the HDD; the workstation's re-runs hit the disk the same way; the
-  arithmetic is a pure internal overload that `library_check` checks exactly); Simulation > Frames
-  kept in memory (2026-10-15, the user's design after the three-step share read as crude) offers "Auto" (the
+  arithmetic is a pure internal overload that `library_check` checks exactly); Simulation > RAM cache
+  size (2026-10-15, the user's design after the three-step share read as crude; "Frames kept in memory" until
+  2026-10-16, renamed on the user's word since the cache is what it sizes) offers "Auto" (the
   same word in every language) and 10 % to 100 % of the physical RAM as an upper bound on top of that, the
   setting `FrameMemoryPercent` with 0 = Auto, the default (a `user.config` from before keeps its 50 until
   the user picks Auto); the submenu is generated from `MainWindow.FrameMemoryOptions` with the

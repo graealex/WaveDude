@@ -72,7 +72,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuSimulationStop">_Arrêter</s:String>
 	<s:String x:Key="MenuSimulationUseGpu">Utiliser le _GPU (OpenCL)</s:String>
 	<s:String x:Key="MenuSimulationAutoRerun">Relancer a_utomatiquement après une modification</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory">Images gardées en _mémoire</s:String>
+	<s:String x:Key="MenuSimulationFrameMemory">Taille du _cache RAM</s:String>
 	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Aide</s:String>
 	<s:String x:Key="MenuHelpAbout">À _propos de WaveDude Next</s:String>

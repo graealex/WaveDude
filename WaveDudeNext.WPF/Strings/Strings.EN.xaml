@@ -74,7 +74,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuSimulationStop">S_top</s:String>
 	<s:String x:Key="MenuSimulationUseGpu">Use the _GPU (OpenCL)</s:String>
 	<s:String x:Key="MenuSimulationAutoRerun">Re-run _automatically after edits</s:String>
-	<s:String x:Key="MenuSimulationFrameMemory">Frames kept in _memory</s:String>
+	<s:String x:Key="MenuSimulationFrameMemory">RAM _cache size</s:String>
 	<s:String x:Key="MenuSimulationFrameMemoryAuto">_Auto</s:String>
 	<s:String x:Key="MenuHelp">_Help</s:String>
 	<s:String x:Key="MenuHelpAbout">_About WaveDude Next</s:String>

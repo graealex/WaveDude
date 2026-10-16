@@ -63,7 +63,7 @@ public partial class MainWindow
 	}
 
 	/// <summary>
-	/// The choices of Simulation > Frames kept in memory: <see cref="FrameMemory.Automatic"/> (the application
+	/// The choices of Simulation > RAM cache size: <see cref="FrameMemory.Automatic"/> (the application
 	/// decides from what is free) and 10 % to 100 % of the RAM as an upper bound (2026-10-15, the user's design).
 	/// </summary>
 	public static int[] FrameMemoryOptions { get; } = [FrameMemory.Automatic, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];

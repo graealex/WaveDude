@@ -93,7 +93,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			</Setter>
 		</Style>
 		<!-- one entry per theme: check mark follows the current theme, click selects -->
-		<!-- Simulation > Frames kept in memory: "Auto" and 10 % to 100 % of the RAM as an upper bound (2026-10-15); the
+		<!-- Simulation > RAM cache size: "Auto" and 10 % to 100 % of the RAM as an upper bound (2026-10-15); the
 		     header re-reads its word on a language switch through the second binding -->
 		<Style x:Key="FrameMemoryMenuItemStyle" TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
 			<Setter Property="Header">
