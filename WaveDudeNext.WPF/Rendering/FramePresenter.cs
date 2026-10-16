@@ -52,7 +52,7 @@ public sealed class FramePresenter
 	private int _renderedFrame = -1;
 	private Job? _renderedJob;
 	private readonly Stopwatch _renderClock = new();
-	private readonly Stopwatch _colourClock = new(), _writeClock = new();
+	private readonly Stopwatch _copyClock = new(), _colourClock = new(), _writeClock = new();
 	private int _renderCount;
 
 	/// <param name="dispatcher">The UI thread's dispatcher, where the bitmaps live.</param>
@@ -214,13 +214,14 @@ public sealed class FramePresenter
 				{
 					continue;
 				}
-				_colourClock.Start();
+				_copyClock.Start();
 				bool copied = job.Indices != null ? job.Source.CopyLayer(frame, layer, job.Indices.AsSpan()) : job.Source.CopyLayer(frame, layer, job.Halves.AsSpan());
+				_copyClock.Stop();
 				if (!copied)
 				{
-					_colourClock.Stop();
 					continue;
 				}
+				_colourClock.Start();
 				if (job.Indices != null)
 				{
 					// palette indices: the brightness was applied when the frame was captured, only the palette is looked up
@@ -282,10 +283,11 @@ public sealed class FramePresenter
 		if (++_renderCount % RenderLogInterval == 0)
 		{
 			// the cost of one presented frame (copy, colouring, bitmap write), averaged; for judging the pipeline at full resolution
-			Logger.Debug("Preview: {Width}x{Height}, {Average:0.0} ms per frame over the last {Count} (colouring {Colour:0.0}, copy into the bitmap {Write:0.0}, both on the pool)",
+			Logger.Debug("Preview: {Width}x{Height}, {Average:0.0} ms per frame over the last {Count} (copy out of the store {Copy:0.0}, colouring {Colour:0.0}, copy into the bitmap {Write:0.0}, all on the pool)",
 				width, height, _renderClock.Elapsed.TotalMilliseconds / RenderLogInterval, RenderLogInterval,
-				_colourClock.Elapsed.TotalMilliseconds / RenderLogInterval, _writeClock.Elapsed.TotalMilliseconds / RenderLogInterval);
+				_copyClock.Elapsed.TotalMilliseconds / RenderLogInterval, _colourClock.Elapsed.TotalMilliseconds / RenderLogInterval, _writeClock.Elapsed.TotalMilliseconds / RenderLogInterval);
 			_renderClock.Reset();
+			_copyClock.Reset();
 			_colourClock.Reset();
 			_writeClock.Reset();
 		}

@@ -128,7 +128,9 @@ public sealed class ColorLut
 		{
 			return 0;
 		}
-		return (int)(Math.Min(Math.Sqrt(intensity) * brightness, 1.0) * 254.0);
+		// single precision throughout (2026-10-16): what the GPU's capture_index kernel computes and what the
+		// vectorised renderer reproduces bit for bit; the double arithmetic before differed in the last bit at most
+		return (int)(MathF.Min(MathF.Sqrt(intensity) * brightness, 1f) * 254f);
 	}
 
 	/// <summary>

@@ -193,7 +193,10 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			throw new InvalidOperationException("The run has already been started.");
 		}
 		State = RunState.Starting;
-		Task.Run(RunLoop);
+		// a thread of its own, not a pool thread (2026-10-16): the loop lives for the whole run and mostly waits on the
+		// GPU, which is not what pool threads are for; the writer below is the same. (A below-normal priority for the
+		// two was tried, to keep their busy-waits off the renderer's cores, and slowed the run by a quarter.)
+		Task.Factory.StartNew(RunLoop, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 	}
 
 	/// <summary>Parks the worker before its next step; <see cref="State"/> becomes Paused when it gets there.</summary>
@@ -290,7 +293,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 				}
 				writer?.Wait();
 			};
-			writer = Task.Run(() =>
+			writer = Task.Factory.StartNew(() =>
 			{
 				foreach (FrameSnapshot snapshot in pending.GetConsumingEnumerable())
 				{
@@ -303,7 +306,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 					Interlocked.Add(ref storeTicks, Stopwatch.GetTimestamp() - w1);
 					pool.Add(snapshot);
 				}
-			});
+			}, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 			for (int i = 0; i < Spec.Steps; i++)
 			{
 				if (!_gate.IsSet)

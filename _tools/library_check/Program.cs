@@ -184,6 +184,11 @@ internal static class Program
 			}
 			return 0;
 		}
+		if (args.Length > 0 && args[0] == "bench-render")
+		{
+			BenchRender(args.Length > 1 ? int.Parse(args[1]) : 1920, args.Length > 2 ? int.Parse(args[2]) : 1080, args.Length > 3 && args[3] == "load");
+			return 0;
+		}
 		if (args.Length > 0 && args[0] == "bench-export")
 		{
 			ExportChecks.Bench(args.Length > 1 ? int.Parse(args[1]) : 1920, args.Length > 2 ? int.Parse(args[2]) : 1080);
@@ -218,6 +223,99 @@ internal static class Program
 
 		Console.WriteLine(_failures == 0 ? "LIBRARY OK" : _failures + " check(s) failed");
 		return _failures == 0 ? 0 : 1;
+	}
+
+	/// <summary>"bench-render [w h]": what colouring a stored frame costs, per layer, at that size (the presenter's cost per picture).</summary>
+	private static void BenchRender(int w, int h, bool load = false)
+	{
+		Console.WriteLine($"--- bench-render {w}x{h} (Vector128 accelerated: {System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated}){(load ? ", under a frame store's load" : "")}");
+		using var stop = new CancellationTokenSource();
+		SimulationRun? run = null;
+		FrameStore? runStore = null;
+		if (load)
+		{
+			// the real thing: a GPU run of this size with its store, in this process, while the renderer is timed
+			var project = new Project();
+			project.Scene.Width = w;
+			project.Scene.Height = h;
+			project.Simulation.Steps = 4000;
+			project.Simulation.VisualizeEvery = 2;
+			Source source = project.AddSource();
+			source.X = w / 3;
+			source.Y = h / 2;
+			source.Frequency = 120;
+			RunSpec spec = RunSpec.Create(project, null, preferGpu: true);
+			string path = Path.Combine(Path.GetTempPath(), "library_check-bench-run-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+			runStore = FrameStore.Create(path, spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery);
+			run = new SimulationRun(spec, runStore, null);
+			run.Start();
+			Thread.Sleep(1500);
+			Console.WriteLine($"  run: {run.State}, {run.EngineDescription}");
+		}
+		var random = new Random(7);
+		var field = new Half[w * h];
+		var intensity = new Half[w * h];
+		for (int i = 0; i < field.Length; i++)
+		{
+			field[i] = (Half)(random.NextDouble() * 2 - 1);
+			intensity[i] = (Half)(random.NextDouble() * 1.5);
+		}
+		int[] lut = ColorLut.Build(ColorSchemeStore.LoadBuiltIn(null).First(s => s.Name == Display.DefaultFieldColorScheme)).Argb;
+		var pixels = new int[w * h];
+		foreach ((string name, Action render) in new (string, Action)[]
+		{
+			("intensity", () => FrameRenderer.RenderIntensity(intensity, w, h, lut, 1f, pixels)),
+			("field", () => FrameRenderer.RenderField(field, w, h, lut, 1f, pixels)),
+			("field, grey", () => FrameRenderer.RenderField(field, w, h, null, 1f, pixels)),
+			("intensity again", () => FrameRenderer.RenderIntensity(intensity, w, h, lut, 1f, pixels)),
+		})
+		{
+			for (int i = 0; i < 60; i++)
+			{
+				render();
+			}
+			Thread.Sleep(300); // the tiered JIT's background recompilation
+			var clock = Stopwatch.StartNew();
+			const int Runs = 100;
+			for (int i = 0; i < Runs; i++)
+			{
+				render();
+			}
+			double ms = clock.Elapsed.TotalMilliseconds / Runs;
+			Console.WriteLine($"  {name,-12} {ms,6:0.00} ms per layer  ({ms * 1e6 / (w * (double)h):0.00} ns per pixel)");
+		}
+		// one core's view: a single row, scalar helpers against the vector rows, no parallel loop and no memory traffic
+		{
+			var row = new float[w];
+			var got = new int[w];
+			var rng2 = new Random(3);
+			for (int i = 0; i < w; i++) { row[i] = (float)(rng2.NextDouble() * 2 - 1); }
+			foreach ((string name, Action render) in new (string, Action)[]
+			{
+				("field scalar", () => { for (int x = 0; x < w; x++) { got[x] = FrameRenderer.Colorize(ColorLut.FieldIndex(row[x], 1f), lut); } }),
+				("field vector", () => FrameRenderer.FieldRow(row, lut, 1f, got)),
+				("intensity scalar", () => { for (int x = 0; x < w; x++) { got[x] = FrameRenderer.Colorize(ColorLut.IntensityIndex(row[x], 1f), lut); } }),
+				("intensity vector", () => FrameRenderer.IntensityRow(row, lut, 1f, got)),
+				("grey scalar", () => { for (int x = 0; x < w; x++) { got[x] = FrameRenderer.Colorize(ColorLut.FieldIndex(row[x], 1f), null); } }),
+				("grey vector", () => FrameRenderer.FieldRow(row, null, 1f, got)),
+			})
+			{
+				for (int i = 0; i < 2000; i++) { render(); }
+				var clock = Stopwatch.StartNew();
+				const int Rows = 20000;
+				for (int i = 0; i < Rows; i++) { render(); }
+				double ns = clock.Elapsed.TotalMilliseconds * 1e6 / Rows / w;
+				Console.WriteLine($"  one thread, {name,-18} {ns:0.00} ns per pixel");
+			}
+		}
+		stop.Cancel();
+		if (run != null)
+		{
+			Console.WriteLine($"  run while measuring: {run.State}, {run.StepsDone} steps done");
+			run.Stop();
+			run.Completion.Wait(10000);
+			runStore?.Dispose();
+		}
 	}
 
 	/// <summary>"bench [w h]": what a step costs on each engine at that size, pure stepping and with a frame readback every 2 steps.</summary>
@@ -944,6 +1042,41 @@ internal static class Program
 		Check(pixels[1] == ColorLut.FieldIndex(0.5f, 1f) && pixels[1] == 190, "field with LUT uses FieldIndex (0.5 -> 190)");
 		var intensities = new Half[4] { (Half)0f, (Half)(-1f), (Half)0.25f, (Half)9f };
 		FrameRenderer.RenderIntensity(intensities, 2, 2, lut, 1f, pixels);
+		// the vectorised rows (2026-10-16) equal the scalar helpers bit for bit: awkward values, every brightness, odd widths, with and without a palette
+		{
+			float[] awkward = [0f, -0f, 1f, -1f, 0.5f, -0.5f, 1.0001f, -1.0001f, 127f, 1e-7f, -1e-7f, float.NaN, float.PositiveInfinity, float.NegativeInfinity, 6.1e-5f, 65504f, 0.0078125f, 0.99999f];
+			var rng = new Random(11);
+			bool vectorEqual = true;
+			foreach (int width in new[] { 1, 3, 4, 5, 37 })
+			{
+				var row = new float[width];
+				var got = new int[width];
+				foreach (float brightness in new[] { 0f, 0.37f, 1f, 3.5f })
+				{
+					for (int trial = 0; trial < 200 && vectorEqual; trial++)
+					{
+						for (int x = 0; x < width; x++)
+						{
+							row[x] = trial % 3 == 0 ? awkward[rng.Next(awkward.Length)] : (float)(rng.NextDouble() * 4 - 2);
+						}
+						foreach (int[]? palette in new[] { lut, null })
+						{
+							FrameRenderer.FieldRow(row, palette, brightness, got);
+							for (int x = 0; x < width; x++)
+							{
+								vectorEqual &= got[x] == FrameRenderer.Colorize(ColorLut.FieldIndex(row[x], brightness), palette);
+							}
+							FrameRenderer.IntensityRow(row, palette, brightness, got);
+							for (int x = 0; x < width; x++)
+							{
+								vectorEqual &= got[x] == FrameRenderer.Colorize(ColorLut.IntensityIndex(row[x], brightness), palette);
+							}
+						}
+					}
+				}
+			}
+			Check(vectorEqual, "the vectorised field and intensity rows equal the scalar helpers bit for bit (NaN, infinities, zeros, the clamp edges, odd widths, grey and palette)");
+		}
 		Check(pixels[0] == 0 && pixels[1] == 0 && pixels[2] == 127 && pixels[3] == 254, "intensity: <= 0 -> 0, sqrt(0.25) -> 127, clamp -> 254");
 		var stops = new Rgb[ColorScheme.StopCount];
 		for (int i = 0; i < stops.Length; i++)

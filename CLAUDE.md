@@ -125,8 +125,29 @@ WPF shell as it stands:
   and curve pens (2.3 ms to 1.1 per draw); and **the shown position advances only while the presenter is free**
   (`FramePresenter.IsBusy`, in the playback tick and the live follow): the clock keeps counting, so time stays right,
   and the overlays and the bar are redrawn once per picture that can be shown instead of sixty times a second for
-  pictures that never appear (this canvas presents 11 to 14 a second, colouring 61 ms of a 2880 x 1080 frame on the
-  pool, which is the next thing worth speeding up). Tried and reverted: the playback timer and the pixel copy at
+  pictures that never appear (this canvas presented 11 to 14 a second under the harness).
+  **The colouring, measured properly** (2026-10-16, later): `library_check -- bench-render [w h]` times the
+  renderer alone, parallel and on one thread, scalar against vector, with the warm-up the "Bench numbers need
+  the JIT warm" rule above demands (60 calls and a 300 ms pause; a first version with 20 calls reported 4.6 to
+  6.3 ms a layer for what is 2 ms warm, and a day's conclusions were drawn from it before the rule was reread).
+  Warm, the committed renderer coloured a 2880 x 1080 layer in 1.9 to 2.4 ms on ten cores; the "61 ms" the
+  presenter logged during a run was the harness's UI Automation traffic (a quiet run: 20 ms both layers during the
+  run, 7 after). What stayed: the run's stepping loop and writer on dedicated threads (`LongRunning`); the
+  presenter's Debug line splitting the copy out of the store, the colouring and the copy into the bitmap;
+  `bench-render ... load` timing the renderer beside a real GPU run with its store in the same process (no
+  slowdown: the run is not what slows it). Tried and reverted: below-normal priority for the run's threads (the run
+  a quarter slower, the renderer unchanged). **The renderer is vectorised** (`FrameRenderer.FieldRow`/`IntensityRow`,
+  four pixels per 128-bit register, NaN and non-positive lanes through masks, the scalar helpers for the tail; bit
+  for bit equal to `ColorLut.FieldIndex`/`IntensityIndex`, checked over NaN, infinities, zeros, the clamp edges, odd
+  widths, grey and palette; `IntensityIndex` in single precision, what the GPU's `capture_index` kernel computes) and
+  **the rows go to the workers in blocks of 32** (`Partitioner.Create`), not one at a time. Warm numbers: a palette
+  layer 1.9 to 2.4 ms before, 1.4 to 1.7 after; grey 2.3 to 1.1; on one core, the user's question about weak CPUs,
+  the field 5.9 to 2.9 ns a pixel and the intensity 4.8 to 3.0, so a laptop's few cores gain about two times, which
+  is why the rows stay. The palette lookup, four scalar table reads per register, is the floor; past it lies only
+  colouring on the GPU, where the halves already are when captured, not built. The start-up stall of about 350 ms
+  at window creation (the watchdog's Debug line, "run none") is unmeasured: it coincides with the scratch runner's
+  OpenCL compile on another thread, which proves nothing; log the UI thread's start-up milestones against the
+  episode before touching anything. Tried and reverted: the playback timer and the pixel copy at
   background priority (a mouse scrub then lagged behind every move), a fixed ten-frames-a-second cap on the presenter
   while the engine runs (the live follow stuttered), a yield to input priority after each presented frame (no
   effect). The watchdog stays (the user: a user would never know about a stall otherwise): two 100 ms timers at
