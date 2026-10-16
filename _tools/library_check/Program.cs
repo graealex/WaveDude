@@ -733,6 +733,24 @@ internal static class Program
 			&& FrameMemory.Budget(1 * gb, 16 * gb, FrameMemory.Automatic, 0) == 0
 			&& FrameMemory.Budget(1 * gb, 16 * gb, 100, 512L << 20) == 0,
 			"budget: reclaimed memory of the outgoing run counts as available, the share still caps it");
+		// the memory tier waits for that reclaimed memory (2026-10-16): a store made with a release task allocates
+		// nothing and a write to it waits until the task completes, then the frame lands in memory, not in a file
+		path = Path.Combine(Path.GetTempPath(), "library_check-wait-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		var release = new TaskCompletionSource();
+		using (var store = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field, 3, 1, ramBudget: 1L << 30, memoryReleased: release.Task))
+		{
+			Task write = Task.Run(() => store.Write(0, cpu.FieldData, null, cpu.Stride));
+			bool waited = !write.Wait(300) && store.Count == 0;
+			release.SetResult();
+			bool landed = write.Wait(5000) && store.Count == 1 && store.FramesInMemory == 1 && !store.HasFile;
+			Check(waited && landed, "the memory tier waits for the outgoing run's memory before its first allocation, then the frame lands in memory");
+		}
+		// a store whose release never comes is still disposed at once (the preparer's wait is cancelled)
+		path = Path.Combine(Path.GetTempPath(), "library_check-never-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		var never = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field, 3, 1, ramBudget: 1L << 30, memoryReleased: new TaskCompletionSource().Task);
+		var disposeClock = Stopwatch.StartNew();
+		never.Dispose();
+		Check(disposeClock.ElapsedMilliseconds < 1000, "a store still waiting for the released memory disposes at once (" + disposeClock.ElapsedMilliseconds + " ms)");
 
 		// a full-HD store of 1 GB: the writes must run at memory speed and the dispose must not flush the
 		// dirty pages to disk (the file is deleted anyway; this used to take a minute for a 10 GB run)

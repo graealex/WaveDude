@@ -77,6 +77,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	private readonly BlockingCollection<IntPtr> _prepared = new(PrepareDepth);
 	private readonly CancellationTokenSource _prepareCancel = new();
 	private readonly Task _preparer;
+	private readonly Task? _memoryReleased;
 	private readonly byte[] _staging;
 	private byte[]? _staging2;
 	private FileStream? _file;
@@ -85,8 +86,9 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	private int _count;
 	private bool _disposed;
 
-	private FrameStore(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long ramBudget)
+	private FrameStore(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long ramBudget, Task? memoryReleased)
 	{
+		_memoryReleased = memoryReleased;
 		shape.Validate();
 		ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
 		ArgumentOutOfRangeException.ThrowIfLessThan(visualizeEvery, 1);
@@ -114,15 +116,32 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 
 	/// <summary>
 	/// The background producer of memory blocks: allocates one per frame of the memory tier, touches every page
-	/// so the writer never takes a page fault, and queues it, at most <see cref="PrepareDepth"/> ahead. Ends when
-	/// every block is made, the store is disposed, or an allocation fails (the commit limit), after which the
-	/// writer spills the remaining frames to the file.
+	/// so the writer never takes a page fault, and queues it, at most <see cref="PrepareDepth"/> ahead. Allocates
+	/// nothing before the memory the budget counts on is released (<see cref="_memoryReleased"/>, the outgoing run's
+	/// store; 2026-10-16: the budget had counted it as free while the old store still held it, a race of tens of
+	/// milliseconds that a machine at its commit limit lost). Ends when every block is made, the store is disposed,
+	/// or an allocation fails (the commit limit), after which the writer spills the remaining frames to the file.
 	/// </summary>
 	private void PrepareBlocks()
 	{
 		CancellationToken token = _prepareCancel.Token;
 		try
 		{
+			if (_memoryReleased != null)
+			{
+				try
+				{
+					_memoryReleased.Wait(token);
+				}
+				catch (OperationCanceledException)
+				{
+					return;
+				}
+				catch (AggregateException)
+				{
+					// the release failed; the memory is in whatever state it is, the allocations below find out
+				}
+			}
 			for (int i = 0; i < RamFrames && !token.IsCancellationRequested; i++)
 			{
 				void* block;
@@ -178,13 +197,14 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	/// <param name="capacity">Number of frames the run produces (<see cref="RunSpec.FrameCount"/>).</param>
 	/// <param name="visualizeEvery">Steps per frame, kept for <see cref="StepOf"/>.</param>
 	/// <param name="ramBudget">Bytes of memory the frames may take; null takes <see cref="FrameMemory.Budget(int, long)"/> at the default share.</param>
+	/// <param name="memoryReleased">Completes when memory the budget counts on is released (the outgoing run's store being disposed); the memory tier is not allocated before. Null: nothing to wait for.</param>
 	/// <exception cref="IOException">The file cannot be created or sized (for instance no disk space).</exception>
-	public static FrameStore Create(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null) =>
-		new(path, shape, layers, capacity, visualizeEvery, ramBudget ?? FrameMemory.Budget(FrameMemory.DefaultPercent));
+	public static FrameStore Create(string path, FrameShape shape, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null, Task? memoryReleased = null) =>
+		new(path, shape, layers, capacity, visualizeEvery, ramBudget ?? FrameMemory.Budget(FrameMemory.DefaultPercent), memoryReleased);
 
-	/// <summary>Creates a full-quality store (every cell as a <see cref="Half"/>) for a canvas of <paramref name="width"/> × <paramref name="height"/>; see <see cref="Create(string, FrameShape, FrameLayers, int, int, long?)"/>.</summary>
-	public static FrameStore Create(string path, int width, int height, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null) =>
-		Create(path, FrameShape.Full(width, height), layers, capacity, visualizeEvery, ramBudget);
+	/// <summary>Creates a full-quality store (every cell as a <see cref="Half"/>) for a canvas of <paramref name="width"/> × <paramref name="height"/>; see <see cref="Create(string, FrameShape, FrameLayers, int, int, long?, Task?)"/>.</summary>
+	public static FrameStore Create(string path, int width, int height, FrameLayers layers, int capacity, int visualizeEvery, long? ramBudget = null, Task? memoryReleased = null) =>
+		Create(path, FrameShape.Full(width, height), layers, capacity, visualizeEvery, ramBudget, memoryReleased);
 
 	/// <summary>Bytes a file holding <paramref name="capacity"/> frames of this shape takes, for <see cref="FrameCache.CheckSpace"/> (the spilled part of a run).</summary>
 	public static long SizeOf(FrameShape shape, FrameLayers layers, int capacity) => HeaderSize + capacity * FrameBytesOf(shape, layers);

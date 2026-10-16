@@ -930,7 +930,13 @@ FrameStore (temporary file in %LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose, 
   sides and flushed everything on unmap (a minute-long freeze). Size: a 1920×1080 run of 2500 steps at
   `VisualizeEvery` 2 with both planes is **10.4 GB**, in RAM here. The file is deleted on
   dispose/exit/crash (`DeleteOnClose`); `FrameCache.Sweep` at start-up removes leftovers; the window
-  disposes a store on the thread pool, never on the UI thread. When a run is replaced the
+  disposes a store on the thread pool, never on the UI thread; `DiscardRun` returns the task of that disposal
+  and the next store takes it as `memoryReleased` (`FrameStore.Create`, 2026-10-16): its block preparer
+  allocates nothing before the old store's memory is given back, so the reclaimed bytes the budget counts on
+  are really free when the first block is made (before, the two overlapped for the tens of milliseconds the old
+  run needed to stop, which a machine at its commit limit lost to the disk; the harness writes to a store
+  whose release is pending and sees the write wait, and disposes one whose release never comes at once).
+  When a run is replaced the
   window drops `Run` before clearing the stale flag, so the preview never falls back to the old store
   for a moment (that showed the old frame for a second after every edit, 2026-10-09).
 - **Numbers (RTX 2080, 64 GB RAM, SATA SSD RAID, Debug build, 2026-10-09)**, from

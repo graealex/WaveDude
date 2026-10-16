@@ -92,15 +92,15 @@ public partial class MainWindow
 		RunSpec spec = RunSpec.Create(Project, LoadSceneImage(), Settings.Default.UseGpu, trackIntensity, quality);
 		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
 		// the rest needs room on the cache drive (2026-10-14). The outgoing run's frames count as free: DiscardRun
-		// below gives them back before the new store's blocks are touched (2026-10-16)
+		// below gives them back, and the new store allocates its memory tier only once they are gone (2026-10-16)
 		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, Run?.Store.RamBytes ?? 0);
 		int ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
 		if (ramFrames < spec.StoredFrameCount)
 		{
 			FrameCache.CheckSpace(FrameStore.SizeOf(spec.Shape, spec.Layers, spec.StoredFrameCount - ramFrames));
 		}
-		DiscardRun();
-		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery, budget);
+		Task memoryReleased = DiscardRun();
+		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery, budget, memoryReleased);
 		// the run's progress lands on the UI thread below input priority (2026-10-16): posted at normal priority, the
 		// frame counts kept the input queue starved for the whole run, since a new one was posted the moment the last
 		// was handled, and every click and key was delivered after the run (the watchdog's input-priority ticks were
@@ -184,7 +184,8 @@ public partial class MainWindow
 	/// Drops the current run: stops it and disposes its store (deleting the cache file) once the worker has
 	/// let go of it. Called before a new run, when the project is replaced and on closing.
 	/// </summary>
-	private void DiscardRun()
+	/// <returns>Completes when the old store is disposed and its memory given back (at once when there was no run); the next run's store waits for it before allocating its memory tier.</returns>
+	private Task DiscardRun()
 	{
 		if (Export?.IsActive == true)
 		{
@@ -204,11 +205,11 @@ public partial class MainWindow
 		IsProbesStale = false;
 		if (old == null)
 		{
-			return;
+			return Task.CompletedTask;
 		}
 		old.Stop();
 		// on the thread pool: unmapping a run's cache file is quick, but never the UI thread's wait
-		old.Completion.ContinueWith(_ =>
+		return old.Completion.ContinueWith(_ =>
 		{
 			old.Store.Dispose();
 			old.Dispose();
