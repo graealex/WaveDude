@@ -16,6 +16,7 @@
 // <https://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -51,6 +52,7 @@ public sealed class FramePresenter
 	private int _renderedFrame = -1;
 	private Job? _renderedJob;
 	private readonly Stopwatch _renderClock = new();
+	private readonly Stopwatch _colourClock = new(), _writeClock = new();
 	private int _renderCount;
 
 	/// <param name="dispatcher">The UI thread's dispatcher, where the bitmaps live.</param>
@@ -120,6 +122,13 @@ public sealed class FramePresenter
 		_settings[(int)layer] = new LayerSettings { Lut = lut, Brightness = brightness, Enabled = enabled };
 		Rebuild();
 	}
+
+	/// <summary>
+	/// Whether a frame is being rendered right now (2026-10-16): the pane advances the shown position only when this is
+	/// false, so the overlays and the timeline are redrawn once per picture that can be shown, not sixty times a
+	/// second for pictures that never appear; on a machine that renders at the display rate nothing changes.
+	/// </summary>
+	public bool IsBusy => Volatile.Read(ref _busy) == 1;
 
 	/// <summary>Requests frame <paramref name="frame"/> (clamped to the frames available); coalesced with pending requests.</summary>
 	public void Show(int frame)
@@ -194,34 +203,78 @@ public sealed class FramePresenter
 		int height = job.Source.Height;
 		Logger.Trace("Presenter render: frame {Frame} of {Source} (job {Job})", frame, job.Source.GetType().Name, job.GetHashCode());
 		_renderClock.Start();
-		foreach (FrameLayer layer in new[] { FrameLayer.Field, FrameLayer.Intensity })
+		var locked = new List<(WriteableBitmap Bitmap, Int32Rect Rect)>(2);
+		try
 		{
-			LayerSettings settings = job.Settings[(int)layer];
-			WriteableBitmap? bitmap = job.Bitmaps[(int)layer];
-			if (!settings.Enabled || bitmap == null || !job.Source.Has(layer))
+			foreach (FrameLayer layer in new[] { FrameLayer.Field, FrameLayer.Intensity })
 			{
-				continue;
+				LayerSettings settings = job.Settings[(int)layer];
+				WriteableBitmap? bitmap = job.Bitmaps[(int)layer];
+				if (!settings.Enabled || bitmap == null || !job.Source.Has(layer))
+				{
+					continue;
+				}
+				_colourClock.Start();
+				bool copied = job.Indices != null ? job.Source.CopyLayer(frame, layer, job.Indices.AsSpan()) : job.Source.CopyLayer(frame, layer, job.Halves.AsSpan());
+				if (!copied)
+				{
+					_colourClock.Stop();
+					continue;
+				}
+				if (job.Indices != null)
+				{
+					// palette indices: the brightness was applied when the frame was captured, only the palette is looked up
+					FrameRenderer.RenderIndexed(job.Indices, width, height, settings.Lut, job.Pixels);
+				}
+				else if (layer == FrameLayer.Field)
+				{
+					FrameRenderer.RenderField(job.Halves, width, height, settings.Lut, settings.Brightness, job.Pixels);
+				}
+				else
+				{
+					FrameRenderer.RenderIntensity(job.Halves, width, height, settings.Lut, settings.Brightness, job.Pixels);
+				}
+				_colourClock.Stop();
+				// the copy into the bitmap runs here, on the pool thread, between a lock and an unlock on the UI thread
+				// (2026-10-16): WritePixels did the 8 to 12 MB copy on the UI thread, over 100 ms of every second at eleven
+				// frames. The back buffer's pointer and stride are read inside the lock call, on the UI thread: they are
+				// dependency properties with thread affinity (read from here they threw on every frame, 2026-10-16). Both
+				// layers are unlocked in one call below, one render pass per presented frame instead of two. Render
+				// priority, on purpose: at background priority the calls waited behind every mouse move of a scrub
+				_writeClock.Start();
+				(IntPtr buffer, int stride) = _dispatcher.Invoke(() =>
+				{
+					bitmap.Lock();
+					return (bitmap.BackBuffer, bitmap.BackBufferStride);
+				}, DispatcherPriority.Render);
+				locked.Add((bitmap, new Int32Rect(0, 0, width, height)));
+				if (stride == width * 4)
+				{
+					Marshal.Copy(job.Pixels, 0, buffer, width * height);
+				}
+				else
+				{
+					for (int y = 0; y < height; y++)
+					{
+						Marshal.Copy(job.Pixels, y * width, buffer + y * stride, width);
+					}
+				}
+				_writeClock.Stop();
 			}
-			bool copied = job.Indices != null ? job.Source.CopyLayer(frame, layer, job.Indices.AsSpan()) : job.Source.CopyLayer(frame, layer, job.Halves.AsSpan());
-			if (!copied)
+		}
+		finally
+		{
+			if (locked.Count > 0)
 			{
-				continue;
+				_dispatcher.Invoke(() =>
+				{
+					foreach ((WriteableBitmap bitmap, Int32Rect rect) in locked)
+					{
+						bitmap.AddDirtyRect(rect);
+						bitmap.Unlock();
+					}
+				}, DispatcherPriority.Render);
 			}
-			if (job.Indices != null)
-			{
-				// palette indices: the brightness was applied when the frame was captured, only the palette is looked up
-				FrameRenderer.RenderIndexed(job.Indices, width, height, settings.Lut, job.Pixels);
-			}
-			else if (layer == FrameLayer.Field)
-			{
-				FrameRenderer.RenderField(job.Halves, width, height, settings.Lut, settings.Brightness, job.Pixels);
-			}
-			else
-			{
-				FrameRenderer.RenderIntensity(job.Halves, width, height, settings.Lut, settings.Brightness, job.Pixels);
-			}
-			// the bitmap belongs to the UI thread; wait for the copy so the pixel buffer can be reused
-			_dispatcher.Invoke(() => bitmap.WritePixels(new Int32Rect(0, 0, width, height), job.Pixels, width * 4, 0), DispatcherPriority.Render);
 		}
 		_renderClock.Stop();
 		_renderedFrame = frame;
@@ -229,8 +282,12 @@ public sealed class FramePresenter
 		if (++_renderCount % RenderLogInterval == 0)
 		{
 			// the cost of one presented frame (copy, colouring, bitmap write), averaged; for judging the pipeline at full resolution
-			Logger.Debug("Preview: {Width}x{Height}, {Average:0.0} ms per frame over the last {Count}", width, height, _renderClock.Elapsed.TotalMilliseconds / RenderLogInterval, RenderLogInterval);
+			Logger.Debug("Preview: {Width}x{Height}, {Average:0.0} ms per frame over the last {Count} (colouring {Colour:0.0}, copy into the bitmap {Write:0.0}, both on the pool)",
+				width, height, _renderClock.Elapsed.TotalMilliseconds / RenderLogInterval, RenderLogInterval,
+				_colourClock.Elapsed.TotalMilliseconds / RenderLogInterval, _writeClock.Elapsed.TotalMilliseconds / RenderLogInterval);
 			_renderClock.Reset();
+			_colourClock.Reset();
+			_writeClock.Reset();
 		}
 	}
 }

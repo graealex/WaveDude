@@ -44,8 +44,11 @@ WPF shell as it stands:
   (persisted in settings); the native title bar is darkened via DWM. Use `DynamicResource` for every
   theme brush.
 - Logging: NLog; `Info` and up reach the status bar (`Logging/StatusBarTarget`, Warn/Error coloured),
-  everything reaches the Messages pane in every build (2026-10-14; the pane hides Trace and Debug by default
-  in Release, its level toggles show them) and the log file next to the exe (Debug builds; Info and up in
+  everything reaches the Messages pane in a Debug build, Debug and up in Release (2026-10-16, the user's rule:
+  Trace is a Debug-build affair, the presenter traces every frame it draws and a Release build must not pay for
+  entries nobody can see; with no rule for Trace, NLog skips the call; the pane hides Debug by default in Release
+  and has no Trace toggle there, its level toggles show the rest) and the log file next to the exe (Debug builds
+  everything; Debug and up in Release since 2026-10-16, the user's rule: a bug report comes with the decision lines) and the log file next to the exe (Debug builds; Info and up in
   Release). Debug lines say what the application decides: scratch requests and their reason, stale marks,
   automatic re-runs postponed or skipped and why, discarded runs, every export step (path, format, range,
   the run decision, each target's colours, outline and boxes). Keep adding them where a decision is made.
@@ -97,7 +100,41 @@ WPF shell as it stands:
   other physics: half the cells per wavelength; the only lever for CPU stepping, which none of the three
   touches) and an automatic mode.
 - **Simulation** (2026-10-09): menu Simulation > Run (F5), Pause/Resume (F6), Stop (Shift+F5, also
-  Esc). `OnRun` decodes the scene image (`Rendering/SceneImageLoader`, WPF decoders → BGRA bytes),
+  Esc). **The window stays responsive during a run** (2026-10-16, after the user found every click and key
+  delivered only after the run). The cause, found by `MainWindow.Watchdog.cs`: the run posted its progress at
+  normal priority, and since a new frame count was posted the moment the last was handled, one was always pending;
+  WPF serves input only when nothing above input priority waits (Input ranks below Normal, DataBind and Render), so
+  input starved for the whole run. The fix: the run's context is
+  `new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background)`. After it the watchdog logs no
+  late tick during a run, and the true key latency (below) is 0 to 31 ms during a full-HD GPU run with Play on.
+  **A day was then spent chasing a latency that was mostly the harness**: a timeline-jump measure polled the
+  readout through UI Automation every 10 ms, and a UIA query walks the whole element tree through the UI thread it
+  measures (5000 to 8000 cross-thread calls a second); the "120 to 470 ms during a run" it reported never came back
+  once keys were posted without polling. Lesson, the user's rule: **measure input latency inside the app**
+  (`PreviewKeyDown` sees the message's own time stamp; the watchdog logs a second's keys when the worst waited over
+  150 ms) and never poll UIA while measuring. Two more traps met on the way: subscribing
+  `CompositionTarget.Rendering` to count render passes forces a pass every vertical sync (sixty a second of pure
+  measurement load), and `WriteableBitmap.BackBuffer` is a dependency property, readable on the UI thread only (read
+  from the pool it threw on every frame and the preview silently stopped updating; 291 errors in the log before
+  anyone read it). Changes that stayed because the app's own counters showed the work: the run's **one heartbeat**
+  (steps, frames and the probe batch in a single post at most 30 a second, `SimulationRun.PublishHeartbeat`; before,
+  three posts on three schedules were about 60 operations a second, each buying WPF a render pass); the presenter
+  copies into the bitmap on the pool thread between a lock and an unlock on the UI thread (the pointer taken inside
+  the lock call), both layers unlocked in one call; the timeline's ticks and labels are a cached frozen drawing and
+  its labels and pens are cached (a draw fell from 3 ms to 0.4); the probe graph boxes cache their formatted text
+  and curve pens (2.3 ms to 1.1 per draw); and **the shown position advances only while the presenter is free**
+  (`FramePresenter.IsBusy`, in the playback tick and the live follow): the clock keeps counting, so time stays right,
+  and the overlays and the bar are redrawn once per picture that can be shown instead of sixty times a second for
+  pictures that never appear (this canvas presents 11 to 14 a second, colouring 61 ms of a 2880 x 1080 frame on the
+  pool, which is the next thing worth speeding up). Tried and reverted: the playback timer and the pixel copy at
+  background priority (a mouse scrub then lagged behind every move), a fixed ten-frames-a-second cap on the presenter
+  while the engine runs (the live follow stuttered), a yield to input priority after each presented frame (no
+  effect). The watchdog stays (the user: a user would never know about a stall otherwise): two 100 ms timers at
+  normal and input priority gather late ticks into episodes and log one line each, a Warn from a second on (it
+  reaches the status bar), a Debug line below that. The dispatcher-operation accounting and the per-draw cost
+  scopes (`UiCost`) that found the day's numbers were removed again as noise; the notes above say what to measure. The
+  one episode it still reports is about 350 ms at start-up while the scratch runner builds its OpenCL engine
+  (not investigated). `OnRun` decodes the scene image (`Rendering/SceneImageLoader`, WPF decoders → BGRA bytes),
   snapshots the project into a `RunSpec`, checks the cache drive, creates the `FrameStore` and
   starts a `SimulationRun` posting to the dispatcher's `SynchronizationContext`; the right status
   bar item shows `State: done / total steps, engine` (`RunStatusConverter`, AutomationId

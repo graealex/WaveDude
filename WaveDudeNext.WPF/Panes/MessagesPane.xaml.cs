@@ -54,18 +54,22 @@ public partial class MessagesPane : UserControl, INotifyPropertyChanged
 	private bool _autoScroll = true;
 	private Regex? _regex;
 
-	/// <summary>Trace and Debug start visible in Debug builds only; Info and above always do.</summary>
+	/// <summary>
+	/// Trace and Debug start visible in Debug builds only; Info and above always do. A Release build logs no Trace at
+	/// all (no rule reaches the pane's target), so its level toggles start at Debug.
+	/// </summary>
 #if DEBUG
 	private const bool ShowDiagnosticsByDefault = true;
+	private static readonly LogLevel[] PaneLevels = [LogLevel.Trace, LogLevel.Debug, LogLevel.Info, LogLevel.Warn, LogLevel.Error, LogLevel.Fatal];
 #else
 	private const bool ShowDiagnosticsByDefault = false;
+	private static readonly LogLevel[] PaneLevels = [LogLevel.Debug, LogLevel.Info, LogLevel.Warn, LogLevel.Error, LogLevel.Fatal];
 #endif
 
 	public MessagesPane()
 	{
 		Levels = new ObservableCollection<LevelFilter>(
-			new[] { LogLevel.Trace, LogLevel.Debug, LogLevel.Info, LogLevel.Warn, LogLevel.Error, LogLevel.Fatal }
-				.Select(level => new LevelFilter(level, visible: ShowDiagnosticsByDefault || level >= LogLevel.Info)));
+			PaneLevels.Select(level => new LevelFilter(level, visible: ShowDiagnosticsByDefault || level >= LogLevel.Info)));
 		foreach (LevelFilter level in Levels)
 		{
 			level.PropertyChanged += (_, args) =>

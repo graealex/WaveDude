@@ -273,7 +273,8 @@ public sealed class TimelineBar : FrameworkElement
 		{
 			return;
 		}
-		var pen = new Pen(TickBrush, 1.0);
+		_dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip; // once per draw, not per label
+		Pen pen = PenFor(TickBrush);
 		var bar = new Rect(0.5, BarTop + 0.5, w - 1.0, BarHeight - 1.0);
 		dc.DrawRectangle(Background, pen, bar);
 
@@ -296,9 +297,97 @@ public sealed class TimelineBar : FrameworkElement
 		DrawBracket(dc, x0, bar, open: true);
 		DrawBracket(dc, x1, bar, open: false);
 
-		// ticks and labels; the labelled interval is the smallest candidate that leaves room for its text
+		// ticks and labels, from a cached drawing (2026-10-16): laid out afresh they cost over a millisecond per draw,
+		// and the bar is drawn on every position change, sixty times a second during playback; the drawing is rebuilt
+		// only when the width, the range, the brushes, the culture or the DPI change
 		if (Maximum > 0)
 		{
+			dc.DrawDrawing(TicksDrawing(w, bar, pen));
+		}
+
+		// the frame under the mouse
+		if (_hoverFrame is int hover && _drag == DragMode.None && hover != Value)
+		{
+			double x = Math.Round(XOf(hover)) + 0.5;
+			dc.PushOpacity(0.5);
+			dc.DrawLine(pen, new Point(x, bar.Top), new Point(x, bar.Bottom));
+			dc.Pop();
+		}
+
+		// the playhead: a line through the bar, a handle on top, the frame number next to it
+		double px = Math.Round(XOf(Value)) + 0.5;
+		dc.DrawLine(PenFor(Foreground), new Point(px, bar.Top), new Point(px, bar.Bottom));
+		var handle = new StreamGeometry();
+		using (StreamGeometryContext g = handle.Open())
+		{
+			g.BeginFigure(new Point(px - 5, bar.Top - 6), true, true);
+			g.LineTo(new Point(px + 5, bar.Top - 6), false, false);
+			g.LineTo(new Point(px, bar.Top), false, false);
+		}
+		dc.DrawGeometry(Foreground, null, handle);
+		FormattedText playhead = Label(Value.ToString(CultureInfo.CurrentCulture), Foreground, bold: true);
+		double tx = px + 8 + playhead.Width <= w ? px + 8 : px - 8 - playhead.Width;
+		dc.DrawRectangle(Background, null, new Rect(tx - 3, 0, playhead.Width + 6, LabelRowHeight)); // over the tick labels under it
+		dc.DrawText(playhead, new Point(tx, 0));
+
+		if (IsKeyboardFocused)
+		{
+			dc.DrawRectangle(null, PenFor(AccentBrush), new Rect(0.5, 0.5, w - 1, h - 1));
+		}
+	}
+
+	/// <summary>A bracket at x: a 2 px vertical bar with feet pointing into the range.</summary>
+	private void DrawBracket(DrawingContext dc, double x, Rect bar, bool open)
+	{
+		double foot = open ? 4 : -4;
+		double left = open ? x - 0.5 : x - 1.5;
+		dc.DrawRectangle(AccentBrush, null, new Rect(left, bar.Top, 2, bar.Height));
+		dc.DrawRectangle(AccentBrush, null, new Rect(Math.Min(left, left + foot), bar.Top, Math.Abs(foot) + 2, 2));
+		dc.DrawRectangle(AccentBrush, null, new Rect(Math.Min(left, left + foot), bar.Bottom - 2, Math.Abs(foot) + 2, 2));
+	}
+
+	// the labels and pens are cached (2026-10-16): built afresh, a draw of the bar cost 3 ms, mostly FormattedText,
+	// and the bar is drawn on every frame-count and position change; the cache is cleared when it grows large
+	// (the playhead's label changes per frame) and when the culture or the DPI changes, which the key carries
+	private readonly Dictionary<(string Text, bool Bold, Brush Brush, string Culture, double Dpi), FormattedText> _labels = new();
+	private readonly Dictionary<Brush, Pen> _pens = new();
+	private const int LabelCacheLimit = 2048;
+
+	private double _dpi = 1;
+
+	private FormattedText Label(string text, Brush brush, bool bold = false)
+	{
+		double dpi = _dpi;
+		var key = (text, bold, brush, CultureInfo.CurrentUICulture.Name, dpi);
+		if (!_labels.TryGetValue(key, out FormattedText? label))
+		{
+			if (_labels.Count >= LabelCacheLimit)
+			{
+				_labels.Clear();
+			}
+			label = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+				bold ? new Typeface(LabelTypeface.FontFamily, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal) : LabelTypeface,
+				11.0, brush, dpi);
+			_labels[key] = label;
+		}
+		return label;
+	}
+
+	private DrawingGroup? _ticks;
+	private (double Width, int Maximum, Brush Tick, Brush Label, string Culture, double Dpi) _ticksKey;
+
+	/// <summary>The minor and major ticks with their labels as one frozen drawing, rebuilt only when its inputs change.</summary>
+	private DrawingGroup TicksDrawing(double w, Rect bar, Pen pen)
+	{
+		var key = (w, Maximum, TickBrush, LabelBrush, CultureInfo.CurrentCulture.Name, _dpi);
+		if (_ticks != null && key == _ticksKey)
+		{
+			return _ticks;
+		}
+		var group = new DrawingGroup();
+		using (DrawingContext dc = group.Open())
+		{
+			// the labelled interval is the smallest candidate that leaves room for its text
 			double pxPerFrame = TrackWidth / Maximum;
 			int major = TickCandidates[^1];
 			foreach (int candidate in TickCandidates)
@@ -326,60 +415,26 @@ public sealed class TimelineBar : FrameworkElement
 				double x = Math.Round(XOf(f)) + 0.5;
 				dc.DrawLine(pen, new Point(x, bar.Top), new Point(x, bar.Top + 6));
 				FormattedText label = Label(f.ToString(CultureInfo.CurrentCulture), LabelBrush);
-				double lx = Math.Min(x + 2, w - label.Width - 1);
-				if (lx + label.Width <= Math.Round(XOf(Value)) - 4 || lx >= Math.Round(XOf(Value)) + 4 + PlayheadLabelWidth())
-				{
-					dc.DrawText(label, new Point(lx, 0));
-				}
+				dc.DrawText(label, new Point(Math.Min(x + 2, w - label.Width - 1), 0));
 			}
 		}
-
-		// the frame under the mouse
-		if (_hoverFrame is int hover && _drag == DragMode.None && hover != Value)
-		{
-			double x = Math.Round(XOf(hover)) + 0.5;
-			dc.PushOpacity(0.5);
-			dc.DrawLine(pen, new Point(x, bar.Top), new Point(x, bar.Bottom));
-			dc.Pop();
-		}
-
-		// the playhead: a line through the bar, a handle on top, the frame number next to it
-		double px = Math.Round(XOf(Value)) + 0.5;
-		dc.DrawLine(new Pen(Foreground, 1.0), new Point(px, bar.Top), new Point(px, bar.Bottom));
-		var handle = new StreamGeometry();
-		using (StreamGeometryContext g = handle.Open())
-		{
-			g.BeginFigure(new Point(px - 5, bar.Top - 6), true, true);
-			g.LineTo(new Point(px + 5, bar.Top - 6), false, false);
-			g.LineTo(new Point(px, bar.Top), false, false);
-		}
-		dc.DrawGeometry(Foreground, null, handle);
-		FormattedText playhead = Label(Value.ToString(CultureInfo.CurrentCulture), Foreground, bold: true);
-		double tx = px + 8 + playhead.Width <= w ? px + 8 : px - 8 - playhead.Width;
-		dc.DrawText(playhead, new Point(tx, 0));
-
-		if (IsKeyboardFocused)
-		{
-			dc.DrawRectangle(null, new Pen(AccentBrush, 1.0), new Rect(0.5, 0.5, w - 1, h - 1));
-		}
+		group.Freeze();
+		_ticks = group;
+		_ticksKey = key;
+		return group;
 	}
 
-	private double PlayheadLabelWidth() => Label(Value.ToString(CultureInfo.CurrentCulture), Foreground, bold: true).Width + 8;
-
-	/// <summary>A bracket at x: a 2 px vertical bar with feet pointing into the range.</summary>
-	private void DrawBracket(DrawingContext dc, double x, Rect bar, bool open)
+	/// <summary>A frozen one-pixel pen of <paramref name="brush"/>, made once per brush (the theme brushes are shared instances).</summary>
+	private Pen PenFor(Brush brush)
 	{
-		double foot = open ? 4 : -4;
-		double left = open ? x - 0.5 : x - 1.5;
-		dc.DrawRectangle(AccentBrush, null, new Rect(left, bar.Top, 2, bar.Height));
-		dc.DrawRectangle(AccentBrush, null, new Rect(Math.Min(left, left + foot), bar.Top, Math.Abs(foot) + 2, 2));
-		dc.DrawRectangle(AccentBrush, null, new Rect(Math.Min(left, left + foot), bar.Bottom - 2, Math.Abs(foot) + 2, 2));
+		if (!_pens.TryGetValue(brush, out Pen? pen))
+		{
+			pen = new Pen(brush, 1.0);
+			pen.Freeze();
+			_pens[brush] = pen;
+		}
+		return pen;
 	}
-
-	private FormattedText Label(string text, Brush brush, bool bold = false) =>
-		new(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-			bold ? new Typeface(LabelTypeface.FontFamily, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal) : LabelTypeface,
-			11.0, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
 	// ---------------------------------------------------------------- mouse
 

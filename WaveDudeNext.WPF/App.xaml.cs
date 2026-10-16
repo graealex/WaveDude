@@ -107,13 +107,18 @@ public partial class App : Application
 		// (2026-10-14, the user: a Release build had nothing to show there, the messages never got in)
 		var messages = new MessagesTarget { Name = "messages" };
 		config.AddTarget(messages);
-		config.AddRule(LogLevel.Trace, LogLevel.Fatal, messages);
 #if DEBUG
+		config.AddRule(LogLevel.Trace, LogLevel.Fatal, messages);
 		config.AddRule(LogLevel.Trace, LogLevel.Fatal, fileTarget);
 		config.AddRule(LogLevel.Trace, LogLevel.Fatal, new DebuggerTarget("debugger") { Layout = DebugLayout });
 		config.AddRule(LogLevel.Trace, LogLevel.Fatal, new ColoredConsoleTarget("console") { Layout = DebugLayout });
 #else
-		config.AddRule(LogLevel.Info, LogLevel.Fatal, fileTarget);
+		// Trace is a Debug-build affair (2026-10-16, the user's rule): the presenter traces every frame it draws, and a
+		// Release build must not pay for entries nobody can see; with no rule for Trace, NLog skips the call outright
+		config.AddRule(LogLevel.Debug, LogLevel.Fatal, messages);
+		// the file carries everything the build logs (the user's rule, 2026-10-16): a bug report comes with the
+		// decision lines without anyone opening the Messages pane
+		config.AddRule(LogLevel.Debug, LogLevel.Fatal, fileTarget);
 #endif
 		LogManager.Configuration = config;
 

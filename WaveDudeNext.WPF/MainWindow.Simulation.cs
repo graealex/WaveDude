@@ -18,6 +18,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using WaveDudeNext.Engine;
 using WaveDudeNext.Model;
 using WaveDudeNext.Runs;
@@ -99,7 +100,11 @@ public partial class MainWindow
 		}
 		DiscardRun();
 		FrameStore store = FrameStore.Create(FrameCache.NewPath(), spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery, budget);
-		var run = new SimulationRun(spec, store, SynchronizationContext.Current, automatic);
+		// the run's progress lands on the UI thread below input priority (2026-10-16): posted at normal priority, the
+		// frame counts kept the input queue starved for the whole run, since a new one was posted the moment the last
+		// was handled, and every click and key was delivered after the run (the watchdog's input-priority ticks were
+		// late, the normal-priority ones on time)
+		var run = new SimulationRun(spec, store, new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background), automatic);
 		run.PropertyChanged += (_, args) =>
 		{
 			if (args.PropertyName == nameof(SimulationRun.State))

@@ -139,13 +139,43 @@ public static class ProbeGraphDrawing
 		}
 		geometry.Freeze();
 		dc.PushClip(new RectangleGeometry(new Rect(layout.PlotX, layout.PlotY, layout.PlotWidth, layout.PlotHeight)));
-		dc.DrawGeometry(null, new Pen(CurveBrush, layout.LineWidth) { LineJoin = PenLineJoin.Round }, geometry);
+		dc.DrawGeometry(null, CurvePen(layout.LineWidth), geometry);
 		dc.Pop();
 	}
 
 	/// <summary>One line of text in the graph font.</summary>
-	public static FormattedText Text(string text, double size, Brush brush, double pixelsPerDip) =>
-		new(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface, size, brush, pixelsPerDip) { MaxLineCount = 1 };
+	// cached (2026-10-16): built afresh, a draw of the boxes cost over 2 ms per picture, mostly FormattedText, and the
+	// boxes are drawn on every position change and probe update; the readout changes per frame, so the cache is
+	// cleared when it grows large; the culture is part of the key
+	private static readonly Dictionary<(string Text, double Size, Brush Brush, double Dpi, string Culture), FormattedText> TextCache = new();
+	private static readonly Dictionary<double, Pen> CurvePens = new();
+	private const int TextCacheLimit = 4096;
+
+	public static FormattedText Text(string text, double size, Brush brush, double pixelsPerDip)
+	{
+		var key = (text, size, brush, pixelsPerDip, CultureInfo.CurrentUICulture.Name);
+		if (!TextCache.TryGetValue(key, out FormattedText? formatted))
+		{
+			if (TextCache.Count >= TextCacheLimit)
+			{
+				TextCache.Clear();
+			}
+			formatted = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Typeface, size, brush, pixelsPerDip) { MaxLineCount = 1 };
+			TextCache[key] = formatted;
+		}
+		return formatted;
+	}
+
+	private static Pen CurvePen(double width)
+	{
+		if (!CurvePens.TryGetValue(width, out Pen? pen))
+		{
+			pen = new Pen(CurveBrush, width) { LineJoin = PenLineJoin.Round };
+			pen.Freeze();
+			CurvePens[width] = pen;
+		}
+		return pen;
+	}
 
 	private static T Freeze<T>(T freezable) where T : Freezable
 	{

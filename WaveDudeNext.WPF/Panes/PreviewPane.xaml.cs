@@ -301,6 +301,8 @@ public partial class PreviewPane : UserControl
 		SetBinding(SceneHeightProperty, new Binding($"{nameof(Project)}.{nameof(Model.Project.Scene)}.{nameof(Scene.Height)}") { Source = this, Mode = BindingMode.OneWay });
 		UpdateCanvas();
 
+		// render priority, on purpose (2026-10-16): a try at background priority, to put input first, gained nothing
+		// measurable during a run and made the clock wait behind every mouse move while scrubbing
 		_timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(1.0 / 60.0) };
 		_timer.Tick += OnTick;
 		_busyDelay = new DispatcherTimer(DispatcherPriority.Normal) { Interval = BusyOverlayDelay };
@@ -606,8 +608,10 @@ public partial class PreviewPane : UserControl
 		{
 			case nameof(SimulationRun.FrameCount):
 				UpdateFrames();
-				if (IsLive)
+				if (IsLive && !_presenter.IsBusy)
 				{
+					// follow the newest frame, but only when the previous picture is done: the next heartbeat (30 a
+					// second) follows again, so the position trails the run by one picture at most
 					_following = true;
 					Position = NewestFrame;
 					_following = false;
@@ -954,8 +958,12 @@ public partial class PreviewPane : UserControl
 		_clock.Restart();
 		_carry += seconds * Fps * Speed;
 		int frames = (int)Math.Floor(_carry);
-		if (frames == 0)
+		if (frames == 0 || _presenter.IsBusy)
 		{
+			// nothing due, or the previous picture is still being rendered: the clock keeps counting and the next
+			// tick moves by all the frames that fell due meanwhile (2026-10-16: moving the position sixty times a
+			// second while eleven pictures a second could be shown redrew the overlays and the bar for nothing and
+			// kept the UI thread in render passes, so clicks and keys waited)
 			return;
 		}
 		_carry -= frames;

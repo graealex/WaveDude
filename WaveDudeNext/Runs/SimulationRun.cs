@@ -46,10 +46,15 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
 	/// <summary>Least interval between progress (<see cref="StepsDone"/>) posts.</summary>
-	private const long ProgressIntervalMs = 100;
+	/// <summary>
+	/// The one heartbeat to the user interface (2026-10-16): steps done, frames stored and the probe batch go in a
+	/// single post at most thirty times a second. Separate posts (steps at 10 Hz, frames at 30, probes at 20) were
+	/// about 60 operations a second, each buying WPF a full render pass of the window, and with the presenter's and
+	/// the pane's own work the UI thread ran over 200 render passes a second and served input late.
+	/// </summary>
+	private const long HeartbeatIntervalMs = 33;
 
 	/// <summary>Least interval between probe batches (<see cref="ProbesUpdated"/>).</summary>
-	private const long ProbeIntervalMs = 50;
 
 	/// <summary>Snapshots in circulation between the stepping task and the writer: one being captured, one or two being written.</summary>
 	private const int SnapshotPoolSize = 3;
@@ -59,7 +64,6 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	private readonly CancellationTokenSource _cancel = new();
 	private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 	private int _latestFrameCount;
-	private int _frameCountPostQueued;
 	private RunState _state = RunState.Created;
 	private int _stepsDone;
 	private int _frameCount;
@@ -264,7 +268,6 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			bool trackIntensity = Spec.TrackIntensity;
 			int frame = 0;
 			long lastProgressMs = 0;
-			long lastProbeMs = 0;
 			// where the time goes, for the log: stepping the engine, issuing the frame captures, and (on the
 			// writer task) waiting for the captures and storing them
 			long computeTicks = 0;
@@ -311,6 +314,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 					Post(() =>
 					{
 						StepsDone = done;
+						FrameCount = Volatile.Read(ref _latestFrameCount); // the paced publisher may have skipped the newest
 						State = RunState.Paused;
 					});
 					_gate.Wait(token);
@@ -346,23 +350,13 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 					frame++;
 					captureTicks += Stopwatch.GetTimestamp() - t1;
 				}
-				// the probe values go to the user interface about 20 times a second
-				if (collector != null && stopwatch.ElapsedMilliseconds - lastProbeMs >= ProbeIntervalMs)
-				{
-					lastProbeMs = stopwatch.ElapsedMilliseconds;
-					PublishProbes(engine, collector, stepsDone);
-				}
-				if (stopwatch.ElapsedMilliseconds - lastProgressMs >= ProgressIntervalMs)
+				if (stopwatch.ElapsedMilliseconds - lastProgressMs >= HeartbeatIntervalMs)
 				{
 					lastProgressMs = stopwatch.ElapsedMilliseconds;
-					int done = stepsDone;
-					Post(() => StepsDone = done);
+					PublishHeartbeat(engine, collector, stepsDone);
 				}
 			}
-			if (collector != null)
-			{
-				PublishProbes(engine, collector, stepsDone);
-			}
+			PublishHeartbeat(engine, collector, stepsDone);
 			DrainWriter();
 			Logger.Debug("Run timing: {Compute:0.00} s stepping ({PerStep:0.00} ms/step), {Capture:0.00} s issuing captures; writer: {Wait:0.00} s waiting for frames, {Store:0.00} s storing ({PerFrame:0.0} ms/frame)",
 				computeTicks / (double)Stopwatch.Frequency, computeTicks * 1000.0 / Stopwatch.Frequency / Math.Max(1, stepsDone),
@@ -426,41 +420,41 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	}
 
 	/// <summary>Collects the series the engine has (the profiles are collected per frame), takes a batch and applies it to <see cref="Traces"/> on the UI context.</summary>
-	private void PublishProbes(IWaveEngine engine, ProbeCollector collector, int stepsDone)
+	/// <summary>The heartbeat: steps done, the frames the writer has stored so far, and the probe batch, in one post.</summary>
+	private void PublishHeartbeat(IWaveEngine engine, ProbeCollector? collector, int stepsDone)
 	{
-		collector.Collect(engine, stepsDone);
-		ProbeUpdate update = collector.TakeForUi();
+		ProbeUpdate? update = null;
+		if (collector != null)
+		{
+			collector.Collect(engine, stepsDone);
+			update = collector.TakeForUi();
+		}
+		int done = stepsDone;
 		Post(() =>
 		{
-			for (int i = 0; i < Traces.Length && i < update.Samples.Length; i++)
+			StepsDone = done;
+			FrameCount = Volatile.Read(ref _latestFrameCount);
+			if (update != null)
 			{
-				Traces[i].Series.Add(update.Samples[i]);
-				foreach (float[] profile in update.Profiles[i])
+				for (int i = 0; i < Traces.Length && i < update.Samples.Length; i++)
 				{
-					Traces[i].AddProfile(profile, update.Lengths[i]);
+					Traces[i].Series.Add(update.Samples[i]);
+					foreach (float[] profile in update.Profiles[i])
+					{
+						Traces[i].AddProfile(profile, update.Lengths[i]);
+					}
+					Traces[i].StepsSampled = update.StepsDone;
 				}
-				Traces[i].StepsSampled = update.StepsDone;
+				ProbesUpdated?.Invoke(this, update);
 			}
-			ProbesUpdated?.Invoke(this, update);
 		});
 	}
 
 	/// <summary>Timeline frames covered by the first <paramref name="stored"/> stored frames: each stands for <see cref="RunSpec.FrameStride"/> of them, never beyond the run.</summary>
 	private int CoveredFrames(int stored) => (int)Math.Min((long)stored * Spec.FrameStride, Spec.FrameCount);
 
-	/// <summary>Posts the frame count, coalescing: never more than one post in flight, the handler reads the newest value.</summary>
-	private void PublishFrameCount(int count)
-	{
-		Volatile.Write(ref _latestFrameCount, count);
-		if (Interlocked.CompareExchange(ref _frameCountPostQueued, 1, 0) == 0)
-		{
-			Post(() =>
-			{
-				Volatile.Write(ref _frameCountPostQueued, 0);
-				FrameCount = Volatile.Read(ref _latestFrameCount);
-			});
-		}
-	}
+	/// <summary>Records the frames stored so far; the heartbeat, a pause and the end of the run publish it.</summary>
+	private void PublishFrameCount(int count) => Volatile.Write(ref _latestFrameCount, count);
 
 	/// <summary>Runs <paramref name="action"/> on the UI context, or inline when there is none.</summary>
 	private void Post(Action action)
